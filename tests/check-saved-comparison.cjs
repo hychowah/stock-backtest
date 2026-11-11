@@ -49,7 +49,7 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  await open(ids[0]);
  assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2]),acquired.length],[1,0,0,0]);assert(node('saved-comparison').hidden,'Details ticks nothing');
  let [plain,exact]=row(ids[0]).split('Exact recorded values');
- const parts=['US · USD · Fixed dates · 2015-01-01 → 2020-12-31 · every 12 month(s)','Last rank: 25','Minimum market cap (USD): $100M','Strategy CAGR 12.00% · SPY CAGR 8.00% · Difference vs SPY +4.00 pp · Growth of $1 $2.00','Saved ID: '+ids[0]];
+ const parts=['US · USD · Fixed dates · 2015-01-01 → 2020-12-31 · every 12 month(s)','Last rank: 25','Minimum market cap (USD): $100M','Strategy CAGR 12.00% SPY CAGR 8.00% Difference vs SPY +4.00 pp Growth of $1 $2.00','Saved ID: '+ids[0]];
  for(const part of parts)assert(text(plain).includes(part),'Missing '+part);
  assert.deepEqual(parts.map(part=>text(plain).indexOf(part)),parts.map(part=>text(plain).indexOf(part)).sort((a,b)=>a-b),'The parts keep this order');
  assert(text(exact).indexOf('Tune')>text(exact).indexOf('Minimum market cap (USD): 100000000'),'The actions follow the settings');

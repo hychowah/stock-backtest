@@ -1,11 +1,12 @@
 /* Navigation changes visibility, never the lifetime of the draft or result. A
-   view change and a tab change start at the top of the page.
+   view change starts at the top of the page. Each tab of the open result
+   remembers its scroll position.
    The queue tray borrows the existing mounted queue panel and its owner, then
    returns it to the top of Runs, above the Saved backtests rows. */
 const Workspaces=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let active='builder',section='overview',rendered='latest',queue={records:[],available:false,paused:false};
+  let active='builder',section='overview',positions={},rendered='latest',queue={records:[],available:false,paused:false};
   function closeQueue(){if(node('workspace-queue-tray').open)node('workspace-queue-tray').close();}
   function show(view){
     closeQueue();
@@ -26,6 +27,8 @@ const Workspaces=(()=>{
     if(view==='review')reviewSection(section);
   }
   function reviewSection(next){
+    const tabs=node('workspace-review-tabs'),stuck=tabs.getBoundingClientRect().top<1,changed=next!==section;
+    positions[section]=scrollY;
     section=next;node('workspace-review').dataset.section=next;
     // A block lists its tabs. A name such as random-returns or fixed-overview
     // shows it on that tab for that kind of result only.
@@ -34,7 +37,10 @@ const Workspaces=(()=>{
     document.querySelectorAll('[data-review]').forEach(button=>button.setAttribute('aria-current',button.dataset.review===next?'page':'false'));
     if(next==='selection')void SectorView.load();
     if(next==='returns'&&random)ScheduleView.inspectOriginal();
-    scrollTo(0,0);
+    // A tab that was shown before returns to its position. A first visit shows the start of the tab under the
+    // tab row when that row is stuck at the top of the window; otherwise the page does not move.
+    if(changed&&next in positions)scrollTo(0,positions[next]);
+    else if(changed&&stuck){let first=tabs.nextElementSibling;while(first&&!first.getClientRects().length)first=first.nextElementSibling;first?.scrollIntoView();}
   }
   function published(artifact,name){
     const scalar=node('scalar-evidence-view');
@@ -69,19 +75,20 @@ const Workspaces=(()=>{
     const window=description.observationWindow;
     node('workspace-result-window').textContent=(window.start??'Not recorded')+' → '+(window.end??'Not recorded')+' · '+(artifact.kind==='random'?'Random dates':artifact.kind==='january'?'Saved January books':'Fixed schedule');
     node('workspace-no-result').hidden=true;
-    SectorView.show(artifact);section='overview';show('review');
+    SectorView.show(artifact);section='overview';positions={};show('review');
   }
   // The status bar speaks for the queue: every dated test runs there.
   function status(){
     const running=queue.records.find(row=>['running','stopping'].includes(row.state));
     const waiting=queue.records.filter(row=>['queued','held'].includes(row.state)).length;
-    let title='Idle',detail=queue.available?'No active backtest.':'Connecting to the queue…';
+    // The dot before the state: idle, running, or attention for a paused queue and a stopping test.
+    let title='Idle',detail=queue.available?'No active backtest.':'Connecting to the queue…',state=queue.paused?'attention':'idle';
     if(running){
-      title=(running.state==='stopping'?'Stopping':'Running')+' · '+running.name;
+      title=(running.state==='stopping'?'Stopping':'Running')+' · '+running.name;state=running.state==='stopping'?'attention':'running';
       const event=running.progress;
       detail=event?.type==='waiting'?event.message:event?event.completed+' / '+event.total+' trials complete':'Backtest is running on the server.';
     }
-    node('workspace-run-state').textContent=title;node('workspace-run-detail').textContent=detail;
+    node('workspace-run-state').textContent=title;node('workspace-run-state').dataset.state=state;node('workspace-run-detail').textContent=detail;
     node('workspace-waiting').textContent=(queue.paused?'Queue paused · ':'')+waiting+' waiting';
     node('workspace-queue-count').textContent=String(queue.records.filter(row=>['queued','held','running','stopping'].includes(row.state)).length);
   }

@@ -13,9 +13,11 @@ const panels=[...new Set([...template.matchAll(/data-review-panel="([^"]+)"/g)].
 node('workspace-review').querySelectorAll=()=>panels;
 const shows=id=>{const name=template.slice(0,template.indexOf('id="'+id+'"')).match(/.*data-review-panel="([^"]+)"/s)[1];return !panels.find(panel=>panel.dataset.reviewPanel===name).hidden;};
 const blocks=()=>['robustness-chart','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer'].filter(shows);
-let copied=null,shown=null;const scrolls=[];
+let copied=null,shown=null,tabsTop=120,contentStarts=0;const scrolls=[];
+// The tab row of Result review and the content that follows it.
+Object.assign(node('workspace-review-tabs'),{getBoundingClientRect:()=>({top:tabsTop}),nextElementSibling:{getClientRects:()=>[{}],scrollIntoView(){contentStarts++;}}});
 const artifacts=require('../website/browser/result-artifacts.js');
-const context=vm.createContext({console,scrollTo:(x,y)=>scrolls.push(y),document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
+const context=vm.createContext({console,scrollY:0,scrollTo:(x,y)=>{scrolls.push(y);context.scrollY=y;},document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
  BacktestComparison:require('../website/browser/backtest-comparison.js'),SectorView:{init(){},show:a=>shown=a,load(){}},ScheduleView:{show(){},inspectOriginal(){}},EvidenceResults:{show(){}},copySavedBacktestSettings:a=>copied=a});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/workspaces.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context);
@@ -24,7 +26,7 @@ run('Workspaces.init()');
 const form=node('strategy-form'),queue=node('queue-panel');
 // Every view change starts at the top of the page.
 scrolls.length=0;for(const view of ['runs','review','builder','builder'])run(`Workspaces.show('${view}')`);
-assert.deepEqual(scrolls,[0,0,0,0,0],'Result review also sets its tab');
+assert.deepEqual(scrolls,[0,0,0,0]);
 // The tray borrows the queue panel and returns it to the top of Runs, above the Saved backtests rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
 node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
@@ -51,8 +53,13 @@ publish(fixed({cagr:.02}));assert.equal(tone(),'down');
 // The fixed result shows its chart, its pager and Explore in Overview; Returns adds the stocks. The per-trial block stays hidden.
 assert.deepEqual(blocks(),['robustness-chart','schedule-chart','schedule-period-pages','result-explorer']);
 run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
-// A tab change starts at the top of the page.
-scrolls.length=0;run("Workspaces.reviewSection('overview')");assert.deepEqual(scrolls,[0]);
+// Each tab of the open result remembers its scroll position. A first visit does not move the page (Returns from 40),
+// or shows the start of the tab when the tab row is stuck at the top of the window (Selection from 1500). A new
+// result forgets the positions.
+const visit=(name,from,top)=>{if(from!==undefined)context.scrollY=from;tabsTop=top??tabsTop;run(`Workspaces.reviewSection('${name}')`);};
+publish(fixed({}));scrolls.length=0;visit('returns',40,120);visit('selection',1500,0);visit('returns',700);visit('overview');
+assert.deepEqual([scrolls,contentStarts],[[1500,40],1]);
+publish(fixed({}));visit('returns');assert.deepEqual([scrolls,contentStarts],[[1500,40,0],2]);tabsTop=120;
 // The coverage line of a fixed result is a recorded note.
 assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));
 // A recorded warning stays above the tabs. Other notes wait in the notes disclosure.
@@ -74,4 +81,4 @@ run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
 context.queue={records:[],paused:false,available:true};run('Workspaces.queueStatus(queue)');assert.equal(node('workspace-run-state').textContent,'Idle');assert.equal(node('workspace-run-detail').textContent,'No active backtest.');
 assert.equal(form.innerHTML,'Mounted draft');
-console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, the scroll reset of a view change and a tab change, kind-specific review blocks from the page markup, recorded notes, the coverage line, and explicit copy.');
+console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, the scroll reset of a view change and the remembered position of each tab, kind-specific review blocks from the page markup, recorded notes, the coverage line, and explicit copy.');

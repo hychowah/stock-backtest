@@ -232,7 +232,7 @@ Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-yea
 
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
 chain is automatic; no separate preparation commands are needed. The browser
-opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, set the first trade date, end/mark date, and monthly, quarterly,
+opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **One fixed schedule**, then set the first trade date, end/mark date, and monthly, quarterly,
 half-yearly or yearly rebalance interval, then select **Add to queue**.
 
 Rebalances stay anchored to the starting day, clamp invalid month ends, and roll
@@ -264,8 +264,8 @@ period, followed by integrity checks and a successful retry.
 
 ## Random-date sensitivity
 
-In custom historical mode, select **Random date at every rebalance**. **Random
-trials** and **Advanced** appear only for this choice. Choose **Random trials**
+In Historical backtest mode, **Date testing** starts at **Random date at every
+rebalance**. **Random trials** and **Advanced** appear only for this choice. Choose **Random trials**
 (1–100, default 24). Each run draws fresh random dates by default.
 Under **Advanced**, optionally enable **Repeat the same dates** to use a fixed
 date-set number (seed), or enter a number from earlier results. Every trial draws

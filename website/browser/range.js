@@ -86,7 +86,7 @@ function initializeFilters(){
   selectMarket('us');
   document.getElementById('rebalance-months').value='12';
   if(document.getElementById('calendar-custom'))document.getElementById('calendar-custom').checked=false;
-  document.getElementById('date-testing').value='single';
+  document.getElementById('date-testing').value='random';
   document.getElementById('random-trials').value='24';
   document.getElementById('random-seed').value='42';
   StrategyDraft.reset();

@@ -73,16 +73,21 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
    opaque, and a control that gets focus scrolls into view below it. */
 #workspace-review-tabs{position:sticky;top:0;z-index:4;display:flex;gap:28px;margin:-12px 0 24px;padding-top:12px;background:#f5f6f2;border-bottom:1px solid #d7dfcf}
 html:has(#workspace-review:not([hidden])){scroll-padding-top:66px}
+/* The area below the tab row is at least a window tall, so the row can stay at
+   the top of the window while a tab loads its content. */
+#workspace-review:not([data-section=settings]) #custom-view,#workspace-review[data-section=settings] #workspace-settings{min-height:100vh}
 #workspace-review-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:0 0 13px;background:none;color:#6b7862;font-size:13px}
 #workspace-review-tabs button[aria-current=page]{border-bottom-color:#285e49;color:#285e49;font-weight:650}
 /* Result review: the headline of the original result, then the main chart and
-   its table. Explore and the notes follow them. */
-#workspace-headline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;margin:0 0 20px;padding:15px 18px;background:#fff;border:1px solid #dfe5d8;border-radius:10px}
-#workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))}
+   its table. Explore and the notes follow them. A headline is a grid of cells,
+   each a small label above its value; Details of a saved row shows the same cells. */
+.headline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;margin:0 0 20px}
+.headline:has(>:nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))}
+.headline>div{display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-width:0}
+.headline dt{font-size:12px;line-height:1.3;color:#617172}
+.headline dd{margin:0;font-size:24px;font-weight:500;line-height:1.2;color:#244f43;overflow-wrap:anywhere}
+#workspace-headline{padding:15px 18px;background:#fff;border:1px solid #dfe5d8;border-radius:10px}
 #workspace-headline:empty{display:none}
-#workspace-headline>div{display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-width:0}
-#workspace-headline dt{font-size:12px;line-height:1.3;color:#617172}
-#workspace-headline dd{margin:0;font-size:24px;font-weight:500;line-height:1.2;color:#244f43;overflow-wrap:anywhere}
 #workspace-headline [data-tone=up] dd{color:#13755a}
 #workspace-headline [data-tone=down] dd{color:#a93830}
 #workspace-recorded-notice{margin:0 0 20px}
@@ -124,13 +129,17 @@ html:has(#workspace-review:not([hidden])){scroll-padding-top:66px}
 .holding-details dd{margin:3px 0 0;overflow-wrap:anywhere}
 .holding-details button{font-size:11px;min-height:33px}
 .holding-details .step-trail{margin:8px 0;padding-left:18px;font-size:11px;line-height:1.6;overflow-wrap:break-word}
-#workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;border-top:1px solid #d5dfcd;background:#fbfcf7;box-shadow:0 -4px 20px #213c2806;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
+#workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;background:#172e26;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
 #workspace-statusbar button{font-size:12px;min-height:40px}
 #workspace-run-open{flex:1;border:0;background:none;text-align:left;padding:5px 0;min-width:0}
-#workspace-run-state{display:block;font-size:12px;color:#435e36;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:850px}
-#workspace-run-detail{display:block;font-size:10px;line-height:1.5;color:#809071;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:850px;margin-top:4px}
-#workspace-waiting{font-size:11px;color:#748266;white-space:nowrap}
-#workspace-queue-open{background:#edf2e5;border-color:#dce5d1;white-space:nowrap}
+#workspace-run-state{display:block;font-size:12px;color:#f3f7e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:850px}
+/* The dot before the state: grey when idle, green when a test runs, amber when the queue is paused or a test stops. */
+#workspace-run-state::before{content:'';display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:50%;background:#8b9a87}
+#workspace-run-state[data-state=running]::before{background:#5fcf8b}
+#workspace-run-state[data-state=attention]::before{background:#e8b04b}
+#workspace-run-detail{display:block;font-size:10px;line-height:1.5;color:#a2b59c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:850px;margin-top:4px;padding-left:16px}
+#workspace-waiting{font-size:11px;color:#c7d5c3;white-space:nowrap}
+#workspace-queue-open{background:#314d3b;border-color:#314d3b;color:#f3f7e8;white-space:nowrap}
 #workspace-queue-tray{position:fixed;inset:auto 18px 78px auto;width:min(680px,calc(100% - 36px));max-height:75vh;overflow:auto;border:1px solid #dbe4d0;border-radius:12px;padding:15px;box-shadow:0 12px 50px #193a2630;color:inherit}
 #workspace-queue-tray::backdrop{background:#18352424}
 .workspace-tray-close{display:block;margin-left:auto;font-size:12px;min-height:36px}
@@ -141,4 +150,4 @@ html:has(#workspace-review:not([hidden])){scroll-padding-top:66px}
 @media(max-width:1200px){main{padding-left:23px;padding-right:23px}.workspace-review-layout{grid-template-columns:minmax(0,1fr) 235px;gap:18px}#workspace-settings{padding:17px 14px}.workspace-review-heading{align-items:flex-start;flex-wrap:wrap}.workspace-review-main .latest-facts{gap:14px}.workspace-review-main .latest-facts strong{font-size:23px}}
 @media(max-width:1000px){.workspace-review-layout{display:block}.workspace-review-main{display:contents}#workspace-settings{display:none;position:static;max-height:none;margin-top:18px}#workspace-review[data-section=settings] #workspace-settings{display:block}.workspace-phone-settings{display:block}}
 @media(max-width:850px){main{margin-left:0;padding:20px}#workspace-nav{position:static;width:auto;display:flex;flex-direction:row;flex-wrap:wrap;padding:9px 14px;gap:4px}#workspace-nav .workspace-brand{display:none}#workspace-nav>a,#workspace-nav>button{padding:9px 11px;font-size:12px}#workspace-statusbar{left:0;padding:9px 18px}#workspace-queue-count{margin-left:7px}#workspace-nav>a:last-child{margin-left:auto}}
-@media(max-width:600px){main{padding:18px 14px}.builder-options label:not(.check),.schedule-row label:not(.check){flex:1 1 140px}.schedule-row label.check,.random-advanced{margin-top:0}#auto-run-note{min-height:0}.how-it-works>summary{min-height:44px;padding:13px 0}#workspace-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.strategy-actions #queue-name{flex:1 1 100%}#workspace-nav>a,#workspace-nav>button{font-size:11px;text-align:center;padding:8px 5px}#workspace-nav>a:last-child{margin-left:0}#workspace-statusbar{padding:8px 14px;gap:12px}#workspace-waiting{display:none}#workspace-statusbar button{font-size:11px}#workspace-run-state{font-size:11px}#workspace-run-detail{font-size:9px}#workspace-review{padding-top:20px}.workspace-review-heading h1{font-size:24px}#workspace-review-tabs{gap:23px}#workspace-review-tabs button{font-size:12px}#workspace-queue-tray{inset:auto 10px 75px;width:calc(100% - 20px);max-height:78vh;padding:12px}#workspace-settings{padding:18px}#workspace-headline,#workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(2,minmax(0,1fr));padding:14px}#workspace-headline dd{font-size:21px}}
+@media(max-width:600px){main{padding:18px 14px}.builder-options label:not(.check),.schedule-row label:not(.check){flex:1 1 140px}.schedule-row label.check,.random-advanced{margin-top:0}#auto-run-note{min-height:0}.how-it-works>summary{min-height:44px;padding:13px 0}#workspace-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.strategy-actions #queue-name{flex:1 1 100%}#workspace-nav>a,#workspace-nav>button{font-size:11px;text-align:center;padding:8px 5px}#workspace-nav>a:last-child{margin-left:0}#workspace-statusbar{padding:8px 14px;gap:12px}#workspace-waiting{display:none}#workspace-statusbar button{font-size:11px}#workspace-run-state{font-size:11px}#workspace-run-detail{font-size:9px}#workspace-review{padding-top:20px}.workspace-review-heading h1{font-size:24px}#workspace-review-tabs{gap:23px}#workspace-review-tabs button{font-size:12px}#workspace-queue-tray{inset:auto 10px 75px;width:calc(100% - 20px);max-height:78vh;padding:12px}#workspace-settings{padding:18px}.headline,.headline:has(>:nth-child(5)){grid-template-columns:repeat(2,minmax(0,1fr))}#workspace-headline{padding:14px}#workspace-headline dd{font-size:21px}}

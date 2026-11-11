@@ -65,10 +65,10 @@ if(process.argv[2]==='--builtins-parity'){
  assert.deepEqual(copy(run('StockScreener.latestScreen')({...prepared,latest:{...prepared.latest,legacy:[],cached:[]},metric_values:{cached:{}}},run('StrategyDraft.flat()')).options),{...run('StockScreener.defaults'),...flatDefaults});
  assert.equal(node('strategy-heading').textContent,'Highest EV/EBITDA yield');assert.equal(node('auto-run').disabled,false);
  // The Auto-run note is a status line: empty while auto-run can work. Random-date
- // and custom-interval inputs show only while their choice is on.
+ // and custom-interval inputs show only while their choice is on. A new draft tests random dates.
  assert.equal(node('auto-run-note').textContent,'');
  const shownInputs=()=>[node('random-controls').hidden,node('calendar-interval').hidden,!!node('rebalance-months').disabled];
- assert.deepEqual(shownInputs(),[true,true,false]);
+ assert.deepEqual(shownInputs(),[false,true,false]);
  node('date-testing').value='random';node('calendar-custom').checked=true;run('StrategyDraft.render()');assert.deepEqual(shownInputs(),[false,false,true]);
  node('date-testing').value='single';node('calendar-custom').checked=false;run('StrategyDraft.render()');assert.deepEqual(shownInputs(),[true,true,false]);
  run("screeningMode='backtest'");

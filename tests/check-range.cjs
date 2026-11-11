@@ -6,11 +6,11 @@ const embedded=html.match(/<script id="screening-data" type="application\/json">
 const prepared=JSON.parse(embedded),screener=require('../website/browser/screener.js');
 const latestDate=prepared.latest.metadata.asof;
 const latestCount=limit=>screener.latestScreen(prepared,{pool:'cached',rank_to:limit}).stocks.length;
-function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*>'))?.[0]||'').includes(' hidden'),open:false,disabled:false,dataset:{},style:{},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},focus(){},append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();},closest(){return this}});return els.get(id)}
+function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*>'))?.[0]||'').includes(' hidden'),open:false,disabled:false,dataset:{},style:{},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},getBoundingClientRect:()=>({top:1}),focus(){},append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();},closest(){return this}});return els.get(id)}
 const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:()=>[]};
 el('screening-data').textContent=embedded;
 const storage=new Map();
-const ctx=vm.createContext({document,console,Date,Math,scrollTo(){},AbortController,crypto:require('crypto').webcrypto,Uint8Array,setTimeout,clearTimeout,localStorage:{get length(){return storage.size},key:index=>[...storage.keys()][index],getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){}});
+const ctx=vm.createContext({document,console,Date,Math,scrollY:0,scrollTo(){},AbortController,crypto:require('crypto').webcrypto,Uint8Array,setTimeout,clearTimeout,localStorage:{get length(){return storage.size},key:index=>[...storage.keys()][index],getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){}});
 for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[1],ctx);
 const run=code=>vm.runInContext(code,ctx);
 // What Result review shows for a result: the window line and the headline cells.
@@ -182,6 +182,9 @@ console.log('Passed: a saved January result opens independently of its draft wit
  let calls=0;ctx.location={protocol:'http:'};ctx.fetch=()=>{calls++;throw Error('The builder must not request a calculation');};
  el('trade-start').value='2015-03-15';el('trade-end').value='2015-06-15';el('rebalance-months').value='3';
  run("screeningMode='backtest';setModeVisibility()");
+ // A new draft in Historical backtest mode tests random dates. A restored fixed-date test selects the fixed schedule.
+ const newDraft=run('currentSettings().mode');run("restoreBacktestSettings({mode:'custom',pool:'cached',start:'2015-03-15',end:'2015-06-15',months:3})");
+ assert.deepEqual([newDraft,el('date-testing').value,run('currentSettings().mode')],['random','single','custom']);
  const capFilter=addStep('filter',{kind:'builtin',id:'filter:market_cap',label:'Market cap ($ million)'});stepEvent('input',capFilter,'value','0');
  // In Historical backtest mode a form submit, such as Enter in a step field, starts nothing. A changed
  // setting starts nothing with Auto-run ticked.

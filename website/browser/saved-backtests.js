@@ -49,7 +49,7 @@ const SavedBacktests=(()=>{
     const shown=key=>description.parameters.find(row=>row.key===key)?.display,first=['mode','market','currency','start','end','interval','first','last','trials'];
     const rows=description.parameters.filter(row=>!first.includes(row.key)&&!row.recorded&&!row.quiet);
     return line([shown('market'),shown('currency'),shown('mode')+(shown('trials')?' · '+shown('trials')+' trials':''),shown('first')?shown('first')+'–'+shown('last'):shown('start')&&shown('start')+' → '+shown('end'),shown('interval')&&'every '+shown('interval')].filter(Boolean).join(' · '))+
-      rows.map(row=>line(row.label+': '+row.display)).join('')+line(description.headline.map(row=>row.label+' '+row.display).join(' · '))+'<p class="saved-id">Saved ID: '+id+'</p>'+
+      rows.map(row=>line(row.label+': '+row.display)).join('')+'<dl class="headline">'+description.headline.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd></div>').join('')+'</dl><p class="saved-id">Saved ID: '+id+'</p>'+
       '<details data-exact="'+id+'"'+(exactOpen?' open':'')+'><summary id="saved-exact-'+id+'">Exact recorded values</summary>'+description.parameters.map(row=>line(row.label+': '+(row.exact??row.display))).join('')+'</details>';
   }
   // One line per test in the columns that the In progress rows use. The name opens
