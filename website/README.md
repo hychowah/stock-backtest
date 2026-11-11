@@ -37,11 +37,11 @@ revision without watching. Ctrl+C stops the watcher and its server.
 2. Build the strategy as ordered steps under the stock universe. A new strategy has three steps: **Market cap** at least $100 million, **Enterprise value** at least $50 million, then a **Rank** by EBITDA/EV yield, highest first, ranks 1–50.
 3. Use **+ Add filter** or **+ Add rank**. Type in the new row to search one list: size and listing fields, EV/EBITDA metrics, built-in values, saved variables, measures and financial parameters. A Filter takes a comparison (more than, less than, at least, at most) and a value in the shown unit; sector and exchange filters take one choice. A Rank takes **Highest first** or **Lowest first** and an inclusive rank range. A new filter goes before the last Rank. Use a step's **↑**, **↓** and **✕** buttons (Move up, Move down and Remove) to change the order. On a window wider than 1200 px, each step is one line. On a narrower window, the step name and its buttons are above its fields. Built-in sources work offline; saved variables, measures and parameters need the local service. A stock with a missing value fails a filter and is left out of a Rank. Enter 10 for a 10% trailing return. Choose **Manage backtest data → Update data** to get financial-ratio inputs.
 4. Steps run in order. Each Rank keeps its range from the stocks that reach it. The last Rank sets the final order and ranks; filters after it keep original ranks and add no replacements. Survivors receive equal weight. Filters → Rank is the old filter-first order; Rank → filters is the old rank-first order. If 20 stocks pass after a top-50 Rank, each receives 5% weight.
-5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Latest picks run offline for filters it supports and one highest EV/EBITDA-yield Rank, first or last. **Screen latest** runs every other chain on the local service. Auto-run works for the offline shape only. Each selected stock's **Details** shows its step trail: each step's value and its rank or pass. Reset strategy restores the broad pool and the three default steps while preserving the chosen dates.
+5. In latest mode, click **Screen latest**. In **Historical backtest**, select **Add to queue**: every dated test runs from the queue, and its result is saved in **Runs & saved**. Latest picks run offline for filters it supports and one highest EV/EBITDA-yield Rank, first or last. **Screen latest** runs every other chain on the local service. Auto-run belongs to latest mode and works for the offline shape only. Each selected stock's **Details** shows its step trail: each step's value and its rank or pass. Reset strategy restores the broad pool and the three default steps while preserving the chosen dates.
 
-Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. In latest mode, the offline picks table follows the builder, and the coverage and range notes of the displayed result show below that table. A latest screen from the local service shows below these notes. In backtest mode, the notes show below the builder. The results notice shows when the displayed results and the current settings differ, when the settings have no result, or while a backtest runs. Results that match the settings show no notice. A status line appears only when it has a message.
+Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. In latest mode, the offline picks table follows the builder, and the coverage and range notes of the displayed result show below that table. A latest screen from the local service shows below these notes. In backtest mode, the notes show below the builder. The results notice belongs to the latest picks: it shows when the displayed picks and the current settings differ, or when the settings have no picks. Picks that match the settings show no notice. A status line appears only when it has a message.
 
-The menu has **Build strategy**, **Runs & saved** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank, then the other steps in step order. It adds the rebalance interval when that is not 12 months, and the market when that is not US, for example `Ranks 1–10 · EV / EBITDA yield · highest first · quarterly · Market cap ≥ $100M`. A name has 120 characters at most. The dates and the test type are columns in **Runs & saved**. The line below these buttons shows the result of **Add to queue** and of a held edit, and tells you when Auto-run waits for the queue. [Runs & saved](#save-and-reopen-completed-backtests) shows the waiting and running tests and the saved backtests in one table.
+The menu has **Build strategy**, **Runs & saved** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank, then the other steps in step order. It adds the rebalance interval when that is not 12 months, and the market when that is not US, for example `Ranks 1–10 · EV / EBITDA yield · highest first · quarterly · Market cap ≥ $100M`. A name has 120 characters at most. The dates and the test type are columns in **Runs & saved**. The line below these buttons shows the result of **Add to queue** and of a held edit. [Runs & saved](#save-and-reopen-completed-backtests) shows the waiting and running tests and the saved backtests in one table.
 
 **Tune** on a queued test or a saved backtest, and **Tune this strategy** in Result review, copy the settings of that record to the builder and empty the test-name box. The strategy returns as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
 
@@ -64,9 +64,8 @@ shows the original result. It shows above the tabs, on every tab.
 
 **Overview** then shows the main chart and its table. A fixed schedule shows
 returns by holding period. Random dates show the return distribution, the
-statistics of complete trials and the trial table. **Explore**, **Replay saved
-date test** and **Recorded coverage and notes** follow them. **Replay saved date
-test** shows when the browser has a saved date set. **Recorded coverage
+statistics of complete trials and the trial table. **Explore** and **Recorded
+coverage and notes** follow them. **Recorded coverage
 and notes** contains the notes that the result recorded and tells you when a
 saved result opened without a calculation. For a fixed schedule, it also
 contains the coverage line: the short and empty period counts and the cash
@@ -74,11 +73,14 @@ rules. When a headline value is **Unavailable**, the coverage line shows
 directly below the headline, because it gives the reason. A recorded warning
 stays above the tabs. For random dates, **How to read this** below the trial
 table contains the sampling and reading rules. A status line above the chart
-shows only when it has a message, such as a completed run or a failed read.
+shows only when it has a message, such as a failed read.
 
 **Returns** shows the period returns and the stocks of each rebalance. For
 random dates, it shows one trial below the title **Trial N of M**, with the
 coverage line of that trial. The headline continues to show all trials.
+An older result that stored its summary only shows a note in place of the
+trial: add the test to the queue again with **Repeat the same dates** to store
+its trials.
 
 ## Explore a completed result
 
@@ -112,8 +114,8 @@ Choose saved entry and exit blocks. Each trial keeps its own trade dates.
 The summary shows the shared window, with cash before each first selected trade
 and after each last selected exit for both strategy and SPY.
 
-**Reset to original** restores the recorded summary. Holding details, downloads,
-comparisons and **Save original backtest** use the original completed result.
+**Reset to original** restores the recorded summary. Holding details, downloads
+and comparisons use the original completed result.
 
 ## Manage backtest data
 
@@ -254,7 +256,7 @@ Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-yea
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
 chain is automatic; no separate preparation commands are needed. The browser
 opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, set the first trade date, end/mark date, and monthly, quarterly,
-half-yearly or yearly rebalance interval, then click **Run backtest**.
+half-yearly or yearly rebalance interval, then select **Add to queue**.
 
 Rebalances stay anchored to the starting day, clamp invalid month ends, and roll
 to the next cached session of the selected market. The final mark rolls back to an available session;
@@ -273,17 +275,13 @@ to support latest picks. Daily preparation writes the book store; it never
 downloads data.
 See `../docs/research-workflow.md` for timing and calculation semantics.
 
-While a custom backtest runs, the page shows a spinner, elapsed time and the
-requested date range. The Run button is disabled to prevent repeat submissions.
-You can edit the strategy draft. Those edits do not change the submitted run or
-start another run. Previous results stay visible until a new run succeeds.
-A lost connection starts reconnection; the calculation continues on the server.
-The Run button becomes available after completion, failure or confirmed Stop.
+While a queued test runs, its row in **Runs & saved** and the status bar show
+its progress. You can edit the draft, add more tests or close the page.
+**Stop test** in the Details of the row stops it.
 
-You can close the server during a backtest. Restart the launcher and run the
-schedule again: unfinished cache writes roll back, while previously committed
-books and original price/financial data remain intact. The unfinished request is
-not resumed automatically. Shutdown coverage in `tests/test_schedules.py` includes
+You can close the server during a backtest: unfinished cache writes roll back,
+while previously committed books and original price/financial data remain
+intact. After a restart the queue runs the interrupted test again. Shutdown coverage in `tests/test_schedules.py` includes
 both a `KeyboardInterrupt` and killing a subprocess with an uncommitted SQLite
 period, followed by integrity checks and a successful retry.
 
@@ -293,7 +291,7 @@ In custom historical mode, select **Random date at every rebalance**. **Random
 trials** and **Advanced** appear only for this choice. Choose **Random trials**
 (1–100, default 24). Each run draws fresh random dates by default.
 Under **Advanced**, optionally enable **Repeat the same dates** to use a fixed
-date-set number (seed), or replay a number from earlier results. Every trial draws
+date-set number (seed), or enter a number from earlier results. Every trial draws
 one trading session independently from each frequency-sized block, including
 the last partial block. Yearly means blocks of 12 months; **Every 2 years** uses
 24-month blocks. Holding intervals therefore vary around the nominal frequency.
@@ -310,13 +308,12 @@ trial CAGRs, not one investment portfolio.
 
 The batch plans shared missing books upfront. Worker processes calculate books
 in parallel from read-only SQLite connections. One parent saves complete trials
-in order. The progress bar counts completed trials; a separate book count and
-worker count show preparation ahead of those saves. Cached replays start no
-workers. Results include each trial's actual
+in order. The running row counts completed trials and new books. A test whose
+books are all saved starts no workers. Results include each trial's actual
 trade dates in the CSV. Select a trial and click **Show stocks and period returns**
 to inspect its usual stock tables and contribution charts. The trial opens in
 **Returns** below the title **Trial N of M**. Completed trial books
-survive an interrupted batch; restart the launcher and rerun the same seed.
+survive an interrupted batch; the queue retries the test with the same date set.
 
 On Windows, `backtest-web.cmd` and `start.cmd` use managed startup. A new launch
 stops this project’s identified server and starts current code in the invoking
@@ -329,9 +326,10 @@ Use the opened browser tab; refreshing an old tab does not reload Python server
 code. Unsupported API routes display a relaunch instruction rather than only
 “Unknown endpoint”.
 
-After a random batch completes, Advanced remembers its date-set number. Checking
-**Repeat the same dates** then replays that batch's dates with the same window
-and frequency. Leaving it unchecked draws fresh dates, without needing a number.
+When a random-date result opens, the date-set box under Advanced takes its
+number. Ticking **Repeat the same dates** then uses the dates of that result
+with the same window and frequency; **Tune** ticks it. Leaving it unticked
+draws fresh dates.
 
 ## Development diagnostics
 
@@ -368,17 +366,14 @@ added or saved. A long name takes two lines at most; point at it to read the
 full name. CAGR is the mean trial CAGR for random dates. A running row
 shows its progress with its status, and a failed row shows the reason there;
 a long reason adds lines to that row. One toolbar holds **Pause queue**,
-**Refresh** and the two counts. **Refresh** reads both groups again. A direct
-**Run backtest** shows as one line at the top of In progress while it runs,
-with **Stop backtest**. On a window narrower than 1300 px, and in the queue
+**Refresh** and the two counts. **Refresh** reads both groups again.
+On a window narrower than 1300 px, and in the queue
 tray, a row shows its name first and its other values below the name. The
 Saved backtests headings then show as a line of sort buttons.
 
-Completed queue tests move to Saved backtests automatically. To keep a direct run,
-use **Save original backtest** in the header of **Result review**. Give it a
-name if useful. The save keeps the submitted settings of the original result,
-all traded stocks, and all stock and period returns. Pending control edits are
-not included. A stopped or failed run does not replace the last completed result.
+Completed queue tests move to Saved backtests automatically; the page has no
+other save. A saved record keeps the submitted settings, all traded stocks, and
+all stock and period returns.
 
 Select the name of a saved backtest to reopen it. Opening restores its
 settings, charts, stock tables and downloads without rerunning a calculation.
@@ -394,12 +389,13 @@ scrolls as one box, so open Details are not cut off. They stay open when the
 lists update.
 
 Details of a saved row show one line with the market, the test type, the
-window and the interval, then the other recorded settings, the headline, the
+window and the interval, then the stock pool and the steps, the headline, the
 saved ID (the stable UUID database ID), and **Tune**, **Rename** and
-**Delete**. A setting reads in plain wording, such as `Market cap ≥ $100M`.
-When that wording leaves out a recorded id, unit, canonical value or variable
-revision, a closed **Exact recorded values** below the settings shows the exact
-recorded text. Details reads the stored result of that test when you open it
+**Delete**. A test from before the step list shows its ranks, metric, pool and
+the bounds and conditions that hold a value. A setting reads in plain wording,
+such as `Market cap ≥ $100M`. A closed **Exact recorded values** lists every
+recorded row with its exact text; only this list shows the recorded facts and
+the settings that hold only their default, such as the Original engine. Details reads the stored result of that test when you open it
 the first time and shows **Reading the saved settings…** until the text
 arrives; the actions work during the read. A failed read shows the reason in
 the row with **Retry**.
@@ -470,8 +466,8 @@ unidentified. Random comparisons show requested date policy, recorded seed and
 stored trial distributions. Mean trial CAGR is not one portfolio return.
 Different test types or requested/recorded windows receive a one-line notice.
 
-The maximum is 100 records. When full, delete a chosen record before saving
-another. Deletion asks for confirmation and removes only that record. It does
+The maximum is 100 records, and every finished test takes one. When full,
+delete a chosen record: the next finished test then moves in. Deletion asks for confirmation and removes only that record. It does
 not remove the result currently displayed in the page.
 
 Check with `python3 tests/test_saved_backtests.py`,
@@ -485,18 +481,16 @@ Run the persistence checks with native Windows Python too.
 Random-date saves include every trial's exact trade dates, stock rows and period
 returns, plus the seed and distribution summary. Trial inspection uses these
 stored rows. It does not recalculate the book. The
-[submission and reader contract](../docs/evidence-views.md#dated-submissions-and-replay)
-describes request formats, replay, limits and legacy queue edits.
-Save a completed new run; older summary-only
-results do not contain enough evidence for a complete random backtest record.
+[submission and reader contract](../docs/evidence-views.md#dated-submissions)
+describes request formats, limits and legacy queue edits.
 
 ### Completed-result ownership and saved-record compatibility
 
 `result-artifacts.js` owns one immutable completed artifact per view. Its submitted
 settings, result, catalog and semantic presentation context travel together.
-Fresh calculation and saved-record opening use the same publication and rendering
-path. Renderers, downloads, stale-setting notices and the library read this
-artifact. The library owns record operations and the shared record list.
+A latest screen and saved-record opening use the same publication and rendering
+path. Renderers, downloads, the stale-setting notice of latest picks and the
+library read this artifact. The library owns record operations and the shared record list.
 
 Version-2 saved snapshots store coverage text, warning severity, range notes and
 period labels without page selectors or CSS classes. The browser decodes
@@ -505,7 +499,7 @@ are not rewritten. Saved labels take precedence while displaying saved results.
 New calculations use the current catalog. Random trial inspection reads the
 selected trial from the same completed artifact.
 
-An acknowledged save or deletion updates the visible list immediately. A
+An acknowledged rename or deletion updates the visible list immediately. A
 background refresh reconciles other sessions' records. A refresh failure reports
 that the action succeeded and the list could not be refreshed. Older list
 responses cannot replace a newer acknowledged change.
@@ -516,8 +510,8 @@ checks. The library checks include failed refreshes and out-of-order responses.
 
 ### Calculation engine
 
-The website runs only Original. A new draft shows no engine choice. Custom
-dated, random and variable-strategy runs use Original on the local service.
+The website runs only Original. A new draft shows no engine choice. Queued
+tests and latest screens on the local service use Original.
 The latest screen keeps its shared prepared path. Normal startup and
 rebuild need no numerical packages.
 
@@ -526,7 +520,7 @@ request that names it with `UNSUPPORTED_CAPABILITY` at `/engine`. A restored
 test that names it keeps that engine and shows the engine choice, so the user
 can choose Original. A waiting queued test that names it stays waiting until
 the user edits or deletes it. `options.engine` is `original` or `experimental`.
-Jobs, queue receipts, held edits, recovery and replay keep the recorded value;
+Jobs, queue receipts, held edits and recovery keep the recorded value;
 it is never rewritten to Original. Manage backtest
 data has no experimental preparation action. New results and CSVs identify
 their recorded producer; older evidence stays unidentified. Opening stored

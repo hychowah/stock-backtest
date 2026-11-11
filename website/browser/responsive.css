@@ -21,8 +21,6 @@ th{z-index:2}
 .latest-facts{grid-template-columns:repeat(3,minmax(0,1fr))}
 .latest-facts strong{overflow-wrap:anywhere}
 #schedule-period,#robustness-trial{max-width:100%}
-.backtest-progress > div{min-width:0;flex:1}
-.backtest-progress p{overflow-wrap:anywhere}
 @media(max-width:850px){
   main{padding:28px 20px}
   .filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -45,8 +43,6 @@ th{z-index:2}
   .latest-facts strong{font-size:27px;margin-top:5px}
   .contribution-pies{grid-template-columns:repeat(2,minmax(0,1fr))}
   .contribution-legend{overflow-wrap:anywhere}
-  .backtest-progress{gap:12px;padding:14px;flex-wrap:wrap}
-  .backtest-elapsed{margin-left:38px}
   #custom-view > button,#schedule-results > button{display:block;width:100%;margin:10px 0}
   footer{overflow-wrap:anywhere}
 }

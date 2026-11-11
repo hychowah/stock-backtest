@@ -19,7 +19,7 @@ const complete=input=>({format:'strategy-capture',version:2,universe:input.inten
   variables:input.submitted?.length?{program:{bundle:{definitions:input.submitted},definitions:input.submitted.map(entry=>({...entry,...entry.definition.output}))},presentation:input.labels}:null,builtins:catalogBuiltins,limits:{bytes:196608}});
 const context=vm.createContext({console,document,StockScreener:require('../website/browser/screener.js'),FilterPicker:{refresh(){}},
  CalendarSettings:{read:()=>({start:'2015-01-02',end:'2015-01-05',months:12}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:node('backtest-engine').value||'original'}),sync(){}},
- ResultArtifacts:{forView:()=>null,matches:()=>false},ScheduleView:{isRunning:()=>false},SavedBacktests:{update(){}},BacktestQueue:{isManaging:()=>false},Workspaces:{show(){}},
+ ResultArtifacts:{forView:()=>null,matches:()=>false},Workspaces:{show(){}},
  VariableWorkspace:{content:workspaceModule.exports.content,displayName:value=>value,displays:unit=>({scalar:['number','multiple','percent','percentage_points']}[unit]||[]),sources:async()=>({library:[],measures:[],parameters:[]}),
   builtin:id=>useWire?wire.builtins.find(item=>item.id===id):builtins[id.slice(7)],
   request:async(route,input)=>{if(route==='/catalog')return {builtins:useWire?wire.builtins:catalogBuiltins};assert(['/capture','/detached'].includes(route));requests.push(structuredClone(input));if(pause)await new Promise(resolve=>release=resolve);if(useWire){const body=JSON.stringify(input);assert(Buffer.byteLength(body)<=256*1024);const response=await fetch(wireOrigin+'/api/variables'+route,{method:'POST',headers:{'Content-Type':'application/json'},body});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}return route==='/detached'?{authored:input.capture.program.bundle.definitions}:{strategy:complete(input)};}},
@@ -29,7 +29,7 @@ const context=vm.createContext({console,document,StockScreener:require('../websi
 });
 const source=fs.readFileSync(path.join(__dirname,'../website/browser/range.js'),'utf8');
 vm.runInContext(source.slice(0,source.indexOf('\ninitializeFilters();')),context);
-vm.runInContext("const autoRun=document.getElementById('auto-run');initializeFilters();",context);
+vm.runInContext('initializeFilters();',context);
 context.ResultArtifacts.decode=require('../website/browser/result-artifacts.js').decode;
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-runs.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context),copy=value=>JSON.parse(JSON.stringify(value)),tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -47,11 +47,16 @@ const formulaExtra=',capture:detached,authored';
 const flatDefaults={rank_from:1,rank_to:50,selection_order:'filter_first',metric:'ev_ebitda',pool:'cached',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:[]};
 if(process.argv[2]==='--builtins-parity'){
  const table=JSON.parse(fs.readFileSync(0,'utf8'));
+ // The path of a copied flat test: its settings go into the builder, and the submission captures one chain.
  context.VariableWorkspace.request=async(route,input)=>route==='/catalog'?{builtins:table.builtins}:{strategy:input.intent};
- Promise.all(table.cases.map(async options=>{
-   try{return {intent:(await run('StrategyDraft.captureBuiltins')(options)).strategy};}
-   catch(error){return {error:error.message};}
- })).then(rows=>process.stdout.write(JSON.stringify(rows))).catch(error=>{console.error(error);process.exitCode=1;});
+ (async()=>{
+   const rows=[];
+   for(const options of table.cases){
+     try{restore({mode:'custom',...options});rows.push({intent:(await submit()).strategy});}
+     catch(error){rows.push({error:error.message});}
+   }
+   process.stdout.write(JSON.stringify(rows));
+ })().catch(error=>{console.error(error);process.exitCode=1;});
 }else (async()=>{
  // A new strategy: size floors, then EV/EBITDA yield highest, ranks 1–50. It
  // is the familiar offline shape, so latest picks and auto-run stay available.
@@ -111,7 +116,7 @@ if(process.argv[2]==='--builtins-parity'){
  assert.equal(node('strategy-heading').textContent,'Lowest EV/3y EBITDA multiple');
  // Latest picks for a chain outside the offline shape run on the service
  // with the captured chain; a finished result then matches the draft.
- let latestRun=null;context.ScheduleView.runPrepared=settings=>{latestRun=copy(settings);};
+ let latestRun=null;context.ScheduleView={runPrepared:settings=>{latestRun=copy(settings);}};
  run("screeningMode='latest';StrategyDraft.render()");assert.equal(node('run-screen').disabled,false);
  run('applyRange()');await tick();
  assert.equal(latestRun.mode,'latest');assert.equal(latestRun.strategy.version,2);assert.equal(latestRun.strategy.steps.length,4);assert(!('start' in latestRun));
@@ -249,7 +254,7 @@ if(process.argv[2]==='--builtins-parity'){
  assert.equal(snapshot.strategy.steps.at(-1).rank_to,40);
  // Capture completes before retry ID allocation; uncertain start uses exact content.
  const fresh=await submit();context.prepared=fresh;
- assert.equal(ids.length,0);const actual=run('{const {mode,...options}=prepared;BacktestRuns.create(mode,options)}');assert.equal(ids.length,1);
+ assert.equal(ids.length,0);const actual=run('{const {mode,...options}=prepared;BacktestRuns.create(options)}');assert.equal(ids.length,1);
  fresh.strategy.steps.at(-1).rank_to=1;assert.equal(actual.options.strategy.steps.at(-1).rank_to,5);
  await run('BacktestRuns.follow(BacktestRuns.pending(),()=>{})');assert.equal(posted[0].options.strategy.steps.at(-1).rank_to,5);
 
@@ -257,8 +262,9 @@ if(process.argv[2]==='--builtins-parity'){
  // opening a result is a separate path that leaves the draft alone.
  const savedCopy={version:4,kind:'random',settings:{mode:'random',start:'2015-01-02',end:'2015-01-05',months:12,trials:1,engine:'experimental',strategy:chainA.strategy},result:{configuration:{seed:321}},catalog:{metrics:{},filters:{}},evidence:{id:'a'.repeat(32),format_version:2,trials:1,periods:1,holdings:1}};
  context.savedCopy=savedCopy;const copyBytes=JSON.stringify(savedCopy),requestsBeforeCopy=requests.length;
+ // Auto-run belongs to Latest stock picks: a copy into the builder leaves it as the user set it.
  node('auto-run').checked=true;run('copySavedBacktestSettings(savedCopy)');
- assert.equal(node('auto-run').checked,false);assert.equal(storage.get('backtest-auto-run'),'false');
+ assert.equal(node('auto-run').checked,true);assert.equal(storage.has('backtest-auto-run'),false);
  assert.equal(node('random-seed').value,'321');assert.equal(node('backtest-engine').value,'experimental');
  assert.equal(requests.length,requestsBeforeCopy);assert.equal(JSON.stringify(savedCopy),copyBytes);
  assert.deepEqual(copy((await submit()).strategy),chainA.strategy);
@@ -313,16 +319,14 @@ if(process.argv[2]==='--builtins-parity'){
   const shared=await submit();assert.deepEqual(copy(shared.strategy),wire.shared.strategy);
   assert.equal(requests.at(-1).submitted.length,9);assert.equal(requests.at(-1).labels.length,9);assert(!('detached' in requests.at(-1)));assert(!('original' in requests.at(-1)));
  }
- // The results line under the builder shows only when it has something to say:
- // no result for the settings, changed settings, or a running backtest.
+ // The results line under the builder speaks for the latest picks, and only when it has something to say:
+ // no picks for the settings, or changed settings. Historical backtest mode shows no line.
  const resultsLine=()=>{run('updateResultsState()');return node('results-state').textContent;};
- const running=' A backtest is running with the settings submitted at its start.',stubs={...context.ResultArtifacts},notRunning=context.ScheduleView.isRunning;
- run("screeningMode='backtest'");assert.equal(resultsLine(),'No results for these settings yet. Select Run backtest.');
+ const stubs={...context.ResultArtifacts};
  run("screeningMode='latest'");assert.equal(resultsLine(),'No results for these settings yet. Select Screen latest.');
- context.ScheduleView.isRunning=()=>true;assert.equal(resultsLine(),'No results for these settings yet. Select Screen latest.'+running);
- Object.assign(context.ResultArtifacts,{forView:()=>({kind:'custom'}),matches:()=>true});assert.equal(resultsLine(),running.trim());
- context.ScheduleView.isRunning=notRunning;assert.equal(resultsLine(),'','Results that match the settings need no line');
+ Object.assign(context.ResultArtifacts,{forView:()=>({kind:'latest'}),matches:()=>true});assert.equal(resultsLine(),'','Results that match the settings need no line');
  context.ResultArtifacts.matches=()=>false;assert(resultsLine().startsWith('Settings changed — displayed results do not match the current settings.'));
+ run("screeningMode='backtest'");assert.equal(resultsLine(),'');
  Object.assign(context.ResultArtifacts,stubs);
  console.log('Passed: default chain and offline shape, both example chains, repeated Ranks, keyboard moves, stale replies, units and equality, flat/capture-1/capture-2 restore with ranks 20–40 and exact spellings, 50-step refusal, held save/cancel, snapshot-before-await, capture-before-ID and copy without calculation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

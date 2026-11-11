@@ -179,7 +179,7 @@ python3 website/build.py
 
 Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the ignored portable export `website/dist/` unchanged. Only `python3 website/build.py --snapshot` writes it, with `snapshot.json` (its latest date and source hashes). Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable export instead.
 
-The website builder reads the latest book of the daily cache and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. A complete period with no matching stocks holds cash at 0% until rebalance. SPY keeps its period return, and CAGR uses the full elapsed window. Saved originals retain their recorded totals.
+The website builder reads the latest book of the daily cache and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest to apply financial filters to the latest picks; a dated test runs from Add to queue. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. A complete period with no matching stocks holds cash at 0% until rebalance. SPY keeps its period return, and CAGR uses the full elapsed window. Saved originals retain their recorded totals.
 
 `backtest/engines/reference/revalue.py` remains a slower, independent cache-based calculation of the January study. Only the development check uses it; no build, startup or preparation runs it. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Choose the portfolio size with the ranks in the strategy builder.
 
@@ -358,53 +358,38 @@ The [experiment summaries](../results/experiments/README.md) keep these numbers.
 
 ### Running and interrupted backtests
 
-Custom and random backtests run in a server-owned thread. The browser saves an
-unguessable run ID before submission. It follows `/api/backtest-runs/<id>/status`
-with short polling requests. This route omits the large result. The browser
-retrieves completed holdings from `/api/backtest-runs/<id>`. Repeated submissions
-with that ID reuse the same run.
-Each run has a separate browser recovery record. The record tracks server
-acceptance and Stop intent. A refresh before acceptance retries the same
-submission ID. Once accepted, recovery retrieves the run and never starts
-expired work again. A rejected submission in another tab does not remove
-the accepted run's recovery record.
-Recovery checks saved candidates against current server status. It selects
-active work first. Otherwise, it selects the newest available completed run.
-It skips failed, stopped and expired candidates.
-Locking a phone, refreshing, closing the page or changing views does not cancel
-the calculation. Reopen the same address in the same browser to restore the
-submitted settings and retrieve progress or the completed result. Browser
-storage must remain available. A lost connection retries without starting a new
-calculation.
+Every dated test runs from the [queue](#overnight-queue). Locking a phone,
+refreshing or closing the page does not cancel it. Its row in Runs & saved shows
+its progress, and **Stop test** in that row stops it.
 
-The page shows a spinner and elapsed time. It does not invent a completion
-percentage. Settings remain editable. Edits do not change the submitted run or
-queue a second run. The Run button prevents duplicate submissions. Previous
-results remain labelled until a new run finishes. Use **Stop backtest** to send
-an explicit stop request. The controls stay busy until the server confirms
-worker cleanup and database closure. A Stop request made while disconnected
-retries when this browser reconnects.
+The server keeps its direct run route, `/api/backtest-runs/<id>`. The page uses
+it only for a latest screen of a chain that it cannot screen offline. The
+browser saves an unguessable run ID before submission and follows
+`/api/backtest-runs/<id>/status` with short polling requests. Repeated
+submissions with that ID reuse the same run. A lost connection retries without
+starting a new calculation, and a reload shows the newest screen that the
+server still has.
 
 `backtest/application/jobs.py` accepts one active run per server. It uses the
 existing engine cancellation checks and the calculation owner's financial cache
 ownership (`cache_access.access()`, held through the daily connection's close).
 Shutdown requests a stop and joins the thread before server lifetime ownership
 ends. Finished results remain in server memory for 24 hours, up to four recent
-runs. They are temporary and disappear when the server exits. Use the existing
-saved-backtest library to retain a result. The server computer must stay awake.
+runs. They are temporary and disappear when the server exits. The server
+computer must stay awake.
 
 Dated books for a request are written inside a SQLite transaction. Closing the
 server before commit rolls those writes back on recovery. Previously committed
-books and input prices/financials remain unchanged. Restart `start.cmd` and rerun
-the schedule; unfinished requests are not resumed. `tests/test_schedules.py`
+books and input prices/financials remain unchanged. After a restart the queue
+runs an interrupted test again. `tests/test_schedules.py`
 checks rollback after `KeyboardInterrupt`, then forcibly kills a real SQLite
 writer while a new period is uncommitted, reopens the file, runs
 `PRAGMA integrity_check`, verifies prior row counts, and retries the schedule.
 `tests/test_backtest_jobs.py` checks real HTTP disconnects, reconnects, explicit
 stops, idempotent submission, retention and shutdown ownership on WSL and native
 Windows. `tests/check-backtest-runs.cjs` checks browser transport and stored-ID
-recovery. `tests/check-range.cjs` checks loading/timer state, duplicate
-suppression, completion, reconnects and changes of view.
+recovery of a latest screen. `tests/check-range.cjs` checks that Historical
+backtest mode starts nothing outside the queue.
 
 ### Overnight queue
 
@@ -413,9 +398,7 @@ set parameters and add the current test. Change settings to add more tests.
 **Runs & saved** shows the waiting and running tests under In progress and the saved
 results under Saved backtests. The line below the Add to queue button shows the result
 of each addition and of a held edit.
-Auto-run is suspended while waiting/running queue work exists. Adding, tuning
-or editing a queue item also turns it off so setup stays manual between fast
-cached tests. Explicit Run still starts an immediate test. Queue tests run one at a time. Browser closure
+The queue is the only way to run a dated test. Queue tests run one at a time. Browser closure
 does not affect them. Keep the server computer awake and its terminal open.
 
 Edit holds a waiting item so it cannot start with incomplete edits. Save changes
@@ -533,10 +516,8 @@ and dated books both call `books.book` over `facts.BookFacts`;
 `revalue.py` remains the independent reference of the development check.
 
 Random streams publish their resolved configuration before executing trials.
-The browser saves that configuration locally immediately. **Replay saved date
-test** repeats the window, filters, frequency, trial count and seed after a
-disconnection or launcher restart; completed books are reused. Fresh runs still
-generate a new seed by default.
+The queue retries an interrupted test with that configuration; completed books
+are reused. Fresh runs still generate a new seed by default.
 
 ### Upfront parallel-book benchmark
 
@@ -545,7 +526,7 @@ On native Windows Python 3.12, 100 full-history annual random-date trials took
 A fresh serial requested-pool control took 133.3 seconds, matching the earlier
 133.1-second measurement. A four-worker run of the applied implementation,
 including forced-shutdown worker cleanup, took 43.2 seconds (about 3.1× faster
-than the serial control). Cached replays took about 5.6 seconds. These timings
+than the serial control). Repeats with every book saved took about 5.6 seconds. These timings
 do not measure the current automatic policy of up to eight workers for at least
 16 missing books, or the once-per-worker financial decoding.
 
@@ -599,7 +580,7 @@ Python screen functions and schedule options accept
 `selection_order='filter_first'` or `selection_order='rank_first'`.
 Omitted values retain the original
 filter-first behavior. Invalid values fail validation. Browser results, exports,
-background runs, queued settings, explicit-seed replay and saved artifacts retain
+queued settings, explicit-seed repeats and saved artifacts retain
 the submitted order. Older saved records omit the field and restore filter-first
 without being rewritten or recalculated. Original ranks remain in CSV exports.
 An older queued test keeps its random plan when a name-only edit exposes the

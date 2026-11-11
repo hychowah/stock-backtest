@@ -3,7 +3,7 @@
 This format preserves complete evidence without collecting all output in memory.
 Captured scalar strategies use codec 2 through Jobs and the queue. Existing
 codec-1 evidence remains readable. The [reader contract](evidence-views.md) owns
-submission and replay behavior.
+submission behavior.
 The [version-3 durable container](durable-evidence.md) stores complete evidence.
 [Acquired readers](evidence-views.md) supply inspection and attachments.
 
@@ -137,7 +137,7 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 
 `Jobs.start` selects bounded evidence when options contain a captured strategy.
 Original's `calculate_into` writes scalar codec 2 in process. The
-[submission contract](evidence-views.md#dated-submissions-and-replay) owns request
+[submission contract](evidence-views.md#dated-submissions) owns request
 limits and legacy execution compatibility.
 Application artifact 4 describes scalar results; the durable container remains
 version 3. Existing application-artifact-3/codec-1 readers remain available.

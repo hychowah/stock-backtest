@@ -1,4 +1,5 @@
-/* Durable queue controls. Live form edits never change submitted work. */
+/* Durable queue controls. Every dated test runs from this queue. Live form edits
+   never change submitted work. */
 const BacktestQueue=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -7,7 +8,6 @@ const BacktestQueue=(()=>{
   const rendered=new Map();
   const storageKey='backtest-queue-submission';
   const waiting=record=>['queued','held'].includes(record.state);
-  const isManaging=()=>!!editing||records.some(record=>['queued','held','running','stopping'].includes(record.state));
   // Add and a held edit report beside the name box in Build strategy. The queue
   // and its row actions report on Runs.
   const RUNS='queue-status',BUILDER='queue-add-status',markets={us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'};
@@ -26,7 +26,7 @@ const BacktestQueue=(()=>{
     if(record?.state==='held'&&edit?.id===editing.token&&edit.state==='active'){
       if(editing.loading){
         editing.revision=edit.revision;editing.loading=false;node('queue-name').value=record.name;
-        callbacks.prepare?.();editing.draft.restore({mode:record.mode,...record.options});
+        callbacks.showBuilder?.();editing.draft.restore({mode:record.mode,...record.options});
         node('strategy-heading').scrollIntoView?.({behavior:'smooth',block:'start'});
       }
       if(edit.revision===editing.revision)return;
@@ -40,7 +40,7 @@ const BacktestQueue=(()=>{
   async function acquireEdit(){
     const session=editing;
     await mutate('/'+session.id+'/hold',{revision:session.baseRevision,edit_id:session.token},
-      {success:'Test held. Edit the strategy controls, then select Save queued test.',target:BUILDER});
+      {success:'Test held.',target:BUILDER});
     reconcileEdit();
   }
   async function finishEdit(action,target=BUILDER){
@@ -121,9 +121,9 @@ const BacktestQueue=(()=>{
     node('queue-add').disabled=busy||!available||editing?.pending?.action==='release'||(!editing&&!pending&&records.length>=limit);
     node('queue-cancel-edit').hidden=!editing;node('queue-cancel-edit').disabled=busy||editing?.pending?.action==='update';
     node('queue-cancel-edit').textContent=editing?.pending?.action==='release'?'Retry cancel':'Cancel edit';
-    // One line beside the name box: the last Add or held-edit message, then why Auto-run waits.
-    node('queue-edit-note').textContent=!isManaging()?'':editing?'This test is held while you edit the strategy controls. Auto-run is suspended. Save the queued test to release it, or cancel to keep its previous settings.':'Auto-run is suspended while the queue has waiting or running tests. Run backtest still starts an immediate test.';
-    node('queue-builder-status').hidden=!isManaging()&&!node(BUILDER).textContent;
+    // One line below the name box: the last Add or held-edit message, then what a held edit waits for.
+    node('queue-edit-note').textContent=editing?'Edit the strategy controls in Historical backtest mode. Then select Save queued test to release this test, or Cancel edit to keep its previous settings.':'';
+    node('queue-builder-status').hidden=!editing&&!node(BUILDER).textContent;
     const states={queued:'Waiting',held:'Held for editing',running:'Running',stopping:'Stopping',complete:'Complete',failed:'Failed',cancelled:'Stopped'};
     records=records.slice().sort((a,b)=>a.position-b.position);
     const waitingIds=records.filter(waiting).map(record=>record.id);
@@ -144,7 +144,7 @@ const BacktestQueue=(()=>{
       // A waiting test that names an engine this server does not run never starts.
       const blocked=record.state==='queued'&&!EngineControls.runnable(o.engine??'original')?EngineControls.label(o.engine??'original')+' cannot run on this server. Edit it to choose Original, or delete it.':'';
       // The note below the state: progress, a failure, or why a completed result is still here.
-      const note=record.state==='complete'?(record.transfer?.error==='too_large'?'This inline backtest exceeds the 128 MiB save and open limit. The result stays in the queue.':record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry.':''):record.error||progress||blocked;
+      const note=record.state==='complete'?(record.transfer?.error==='too_large'?'This inline backtest exceeds the 128 MiB save and open limit. The result stays in the queue.':record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry.':record.transfer?.error==='full'?'All saved slots are used. Delete a saved backtest to make room.':''):record.error||progress||blocked;
       const cagr=record.state!=='complete'?'':Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'—';
       // The open Details lists every setting in plain wording. The exact recorded text waits in a closed disclosure.
       const line=text=>'<p>'+escape(text)+'</p>',captured=o.strategy?BacktestComparison.scalarRows(o.strategy):[];
@@ -214,11 +214,6 @@ const BacktestQueue=(()=>{
   }
   async function add(){
     await perform(async()=>{
-      if(!editing&&!pending&&!['custom','random'].includes(callbacks.settings().mode)&&callbacks.configure){
-        callbacks.prepare?.();callbacks.configure();
-        message('Queue setup is ready. Choose fixed or random dates and adjust the settings, then select Add to queue beside Run backtest. No test has started.',false,BUILDER);
-        return;
-      }
       if(editing){
         if(editing.loading)await acquireEdit();else await finishEdit('update');
         return;
@@ -226,7 +221,6 @@ const BacktestQueue=(()=>{
       if(!pending){const spec=await specification();remember({id:identifier(),...spec});}
       try{
         await mutate('',pending,{success:'Test added to the queue. You can change the settings and add another.',target:BUILDER});
-        callbacks.prepare?.();
         remember(null);node('queue-name').value='';
       }catch(error){if(error.status>=400&&error.status<500)remember(null);throw error;}
     },BUILDER);
@@ -244,7 +238,7 @@ const BacktestQueue=(()=>{
         if(used.consumed)message('Opened “'+record.name+'” from its stored results.');return;
       }
       if(action==='copy'){
-        callbacks.prepare?.();callbacks.restore({mode:record.mode,...record.options});
+        callbacks.showBuilder?.();callbacks.restore({mode:record.mode,...record.options});
         message('Settings copied to the strategy controls. Change them and add a new test.');return;
       }
       if(action==='edit'){
@@ -281,5 +275,5 @@ const BacktestQueue=(()=>{
     refresh().then(()=>{message('Queue ready. Tests and results are saved on the server.');if(pending)void add();}).catch(error=>message(error.message,true));
     setInterval(()=>{if(!busy)refresh().catch(()=>{});},2000);
   }
-  return {init,add,action,refresh,isEditing:()=>!!editing,isManaging};
+  return {init,add,action,refresh,isEditing:()=>!!editing};
 })();

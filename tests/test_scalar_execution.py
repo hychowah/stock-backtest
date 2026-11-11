@@ -124,7 +124,7 @@ class ScalarTests(unittest.TestCase):
                     continue
                 if len(options['filters'])==50:
                     # Fifty filters plus the bounds exceed the 50-step chain ceiling.
-                    self.assertIn('at most 50 steps',submitted['error'])
+                    self.assertIn('more than 50 steps',submitted['error'])
                     continue
                 actual,_=fixture.select(s.capture_strategy(submitted['intent']))
                 self.assertEqual([(h['symbol'],h['rank'],h['ranking_value']) for h in actual],

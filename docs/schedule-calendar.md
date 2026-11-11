@@ -175,8 +175,7 @@ Original stored settings, labels and version-1/version-2 snapshots stay intact.
 The capability endpoint is `/api/backtest-capabilities`. The normal app returns
 an `engines` list. The list names only Original, with `calendar:1`. The submitted `options.engine` is recorded.
 Omission means Original. Submission and execution refuse an engine that the
-server does not run, such as the deleted experimental engine. Browser replay keeps its engine
-separate from the financial plan and checks the recorded choice. A live selector
+server does not run, such as the deleted experimental engine. A live selector
 change cannot alter the recorded producer of an existing result. Direct-file pages cannot run
 dated calculations.
 Stored canonical results remain readable and exportable without this capability.

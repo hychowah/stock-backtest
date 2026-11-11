@@ -19,6 +19,8 @@ main>header .pill{font-size:10px}
    explanations wait in its closed How this works disclosure. */
 #workspace-builder>.panel:first-of-type{margin-top:0;padding-top:18px;padding-bottom:18px}
 #strategy-form h2{margin:0}
+/* The builder buttons stay on the row of the heading, also during a held edit. */
+@media(min-width:601px){#strategy-form>.toolbar>:first-child{flex-basis:200px}}
 #strategy-form select{border:1px solid #ccd5d0;border-radius:5px;background:#fff;padding:9px 6px}
 .section-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px}
 .section-heading .hint{margin:0}
@@ -26,7 +28,7 @@ main>header .pill{font-size:10px}
    move them. A control without a label line starts one line lower. */
 .builder-options,.schedule-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px;margin-top:12px}
 .schedule-row{align-items:flex-start}
-#calendar-controls,#calendar-interval,#random-controls{display:contents}
+#calendar-controls,#calendar-interval,#random-controls,#auto-run-controls{display:contents}
 .builder-options label,.schedule-row label{flex:0 1 170px;min-width:0;font-size:12px;line-height:15px;color:#536762}
 .builder-options label{flex-basis:250px}
 .schedule-row label.wide{flex-basis:290px}
@@ -67,17 +69,11 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 .workspace-review-heading>div:first-child{flex:1 1 480px;min-width:0}
 .workspace-review-heading h1{font-size:28px;line-height:1.2;letter-spacing:-.5px;margin:8px 0;overflow-wrap:anywhere}
 .workspace-review-heading p{font-size:12px;margin:0}
-/* Save the displayed original result from the header of Result review. The save
-   controls go below a long title. */
-.workspace-review-actions{flex:0 1 auto;min-width:0;max-width:100%}
-.saved-save{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.saved-save input{flex:1 1 170px;width:auto;min-width:0}
-.workspace-review-actions>p{margin-top:6px;font-size:11px}
 #workspace-review-tabs{display:flex;gap:28px;border-bottom:1px solid #d7dfcf;margin-bottom:24px}
 #workspace-review-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:0 0 13px;background:none;color:#6b7862;font-size:13px}
 #workspace-review-tabs button[aria-current=page]{border-bottom-color:#285e49;color:#285e49;font-weight:650}
 /* Result review: the headline of the original result, then the main chart and
-   its table. Explore, replay and the notes follow them. */
+   its table. Explore and the notes follow them. */
 #workspace-headline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;margin:0 0 20px;padding:15px 18px;background:#fff;border:1px solid #dfe5d8;border-radius:10px}
 #workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))}
 #workspace-headline:empty{display:none}
@@ -104,7 +100,6 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #result-explorer{margin-top:24px}
 #result-explorer:not([open]){padding-top:6px;padding-bottom:6px}
 #result-explorer>summary{padding:11px 0}
-#robustness-replay-note{margin:8px 0 0}
 #workspace-recorded-context{margin-top:10px}
 #workspace-settings{position:sticky;top:18px;max-height:calc(100vh - 110px);overflow:auto;margin:0;padding:20px 17px;background:#eff2e8;scrollbar-gutter:stable}
 #workspace-settings h2{font-size:14px;margin:10px 0 17px}

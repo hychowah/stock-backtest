@@ -12,11 +12,11 @@ const template=fs.readFileSync(path.join(__dirname,'../website/browser/template.
 const panels=[...new Set([...template.matchAll(/data-review-panel="([^"]+)"/g)].map(match=>match[1]))].map(reviewPanel=>({dataset:{reviewPanel},hidden:false}));
 node('workspace-review').querySelectorAll=()=>panels;
 const shows=id=>{const name=template.slice(0,template.indexOf('id="'+id+'"')).match(/.*data-review-panel="([^"]+)"/s)[1];return !panels.find(panel=>panel.dataset.reviewPanel===name).hidden;};
-const blocks=()=>['robustness-chart','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer','robustness-replay'].filter(shows);
+const blocks=()=>['robustness-chart','schedule-trial-missing','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer'].filter(shows);
 let copied=null,shown=null;
 const artifacts=require('../website/browser/result-artifacts.js');
 const context=vm.createContext({console,document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
- BacktestComparison:require('../website/browser/backtest-comparison.js'),SectorView:{init(){},show:a=>shown=a,load(){}},ScheduleView:{show(){},cancel(){},inspectOriginal(){}},EvidenceResults:{show(){}},copySavedBacktestSettings:a=>copied=a});
+ BacktestComparison:require('../website/browser/backtest-comparison.js'),SectorView:{init(){},show:a=>shown=a,load(){}},ScheduleView:{show(){},inspectOriginal(){}},EvidenceResults:{show(){}},copySavedBacktestSettings:a=>copied=a});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/workspaces.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context);
 node('rank-to').value='25';node('filter-value').value='17';node('strategy-form').innerHTML='Mounted draft';
@@ -26,9 +26,10 @@ for(const view of ['runs','review','builder'])run(`Workspaces.show('${view}')`);
 // The tray borrows the queue panel and returns it to the top of Runs, above the Saved backtests rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
 node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
-assert.equal(node('workspace-direct-run').hidden,true,'No direct run shows no line in In progress');
 context.queue={records:[{state:'running',name:'Existing run',progress:{completed:2,total:5}},{state:'held'}],paused:false,available:true};
-run('Workspaces.queueStatus(queue)');assert(node('workspace-run-detail').textContent.includes('2 / 5'));assert(node('workspace-waiting').textContent.includes('1 waiting'));
+// The status bar shows queue states only: idle, then the running test with its progress and the waiting count.
+assert.equal(node('workspace-run-state').textContent,'Idle');
+run('Workspaces.queueStatus(queue)');assert.equal(node('workspace-run-state').textContent,'Running · Existing run');assert(node('workspace-run-detail').textContent.includes('2 / 5'));assert(node('workspace-waiting').textContent.includes('1 waiting'));
 assert.equal(node('rank-to').value,'25');assert.equal(node('filter-value').value,'17');assert.equal(node('strategy-form'),form);assert.equal(form.innerHTML,'Mounted draft');
 context.input=artifacts.create({mode:'custom',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50},{cagr:.1,spy_cagr:.05,growth:1.1,start:'2015-01-02',end:'2016-01-04'},{metrics:{},filters:{}},{});
 run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
@@ -47,7 +48,7 @@ const publish=(artifact,...rest)=>{context.next=artifact;context.rest=rest;run('
 publish(fixed({cagr:.02}));assert.equal(tone(),'down');
 publish(fixed({cagr:.1+.2,spy_cagr:.3}));assert.equal(headline()[2],'Difference vs SPY 0.00 pp');assert.equal(tone(),undefined);
 // The fixed result shows its chart, its pager and Explore in Overview; Returns adds the stocks. The per-trial block stays hidden.
-assert.deepEqual(blocks(),['robustness-chart','schedule-chart','schedule-period-pages','result-explorer','robustness-replay']);
+assert.deepEqual(blocks(),['robustness-chart','schedule-chart','schedule-period-pages','result-explorer']);
 run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
 // The coverage line of a fixed result is a recorded note. It moves below the headline when a headline value is unavailable.
 assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));assert.equal(node('workspace-recorded-context').hidden,false);
@@ -70,14 +71,12 @@ assert.equal(node('workspace-recorded-context').hidden,true,'No recorded note le
 node('result-producer').textContent='Calculated by Original.';publish(random,'Random test');assert.equal(node('workspace-recorded-context').hidden,false);
 node('result-producer').hidden=true;publish(random,'Random test');assert.equal(node('workspace-recorded-context').hidden,true);
 Object.assign(node('result-producer'),{textContent:'',hidden:false});
-// The random-date result shows its distribution in Overview; Returns shows one trial with its chart and stocks.
-assert.deepEqual(blocks(),['robustness-chart','result-explorer','robustness-replay']);
-run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
+// The random-date result shows its distribution in Overview; Returns shows one trial with its chart and stocks,
+// or the note of a result that stored no trials.
+assert.deepEqual(blocks(),['robustness-chart','result-explorer']);
+run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-trial-missing','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
 run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
-run("Workspaces.runStatus({detail:'Preparing original books',elapsed:'0:02'})");assert(node('workspace-run-detail').textContent.includes('Preparing original books'));
-// A direct run is one line in In progress, only while it runs.
-assert.equal(node('workspace-direct-run').hidden,false);assert(node('workspace-direct-status').textContent.includes('Preparing original books'));
-run("Workspaces.runStatus({running:false,detail:'Completed in 0:03'})");assert.equal(node('workspace-direct-run').hidden,true);assert.equal(node('workspace-direct-status').textContent,'');
+context.queue={records:[],paused:false,available:true};run('Workspaces.queueStatus(queue)');assert.equal(node('workspace-run-state').textContent,'Idle');assert.equal(node('workspace-run-detail').textContent,'No active backtest.');
 assert.equal(form.innerHTML,'Mounted draft');
-console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, the direct-run line, original recorded settings, the result headline and its tone, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, explicit copy, and independent background-status updates.');
+console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, and explicit copy.');

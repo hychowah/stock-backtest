@@ -4,14 +4,7 @@ const RobustnessView=(()=>{
   const node=id=>document.getElementById(id);
   const pct=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let configuration=null,getResult=()=>null,displayed=null;
-  function remember(next,engine){
-    configuration=engine?{...next,engine}:next;
-    try{localStorage.setItem('backtest-experiment',JSON.stringify(configuration));}catch(_){}
-    if(!node('repeat-random').checked)node('random-seed').value=String(next.seed);
-    node('robustness-replay').hidden=false;
-    node('robustness-replay-note').textContent='Date set saved. Replay uses the same dates, filters and window, including after an interrupted run.';
-  }
+  let getResult=()=>null,displayed=null;
   function chart(result){
     const key=node('robustness-measure').value||'cagr';
     const label={cagr:'CAGR',total_return:'Total return',excess_cagr:'CAGR difference vs SPY (pp)'}[key];
@@ -59,8 +52,10 @@ const RobustnessView=(()=>{
     svg.innerHTML=out;
     if(series.every(s=>!s.sd))node('robustness-chart-note').textContent+=' Each series has identical returns; no bell curves are fitted.';
   }
-  function render(next,engine){
-    remember(next.configuration,engine);
+  function render(next){
+    // The date-set box takes the number of the shown result, so that Repeat the same dates can use
+    // its dates. A ticked box keeps the number that the user set.
+    if(!node('repeat-random').checked)node('random-seed').value=String(next.configuration.seed);
     // A new result starts at its first trial.
     node('robustness-trial').value='';
     preview(next);
@@ -101,13 +96,11 @@ const RobustnessView=(()=>{
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='random-dates-seed-'+result.configuration.seed+'.csv';link.click();URL.revokeObjectURL(url);
   }
-  function init(inspect,replay,readResult=()=>null){
+  function init(inspect,readResult=()=>null){
     getResult=readResult;
-    try{const saved=JSON.parse(localStorage.getItem('backtest-experiment'));if(saved)remember(saved);}catch(_){}
-    node('robustness-replay').addEventListener('click',()=>configuration?replay(configuration):undefined);
     node('robustness-measure').addEventListener('change',()=>{const result=displayed??getResult();if(result)chart(result);});
     node('robustness-download').addEventListener('click',download);
-    node('robustness-inspect').addEventListener('click',()=>{const result=getResult(),index=+node('robustness-trial').value;return result?inspect(result.trials[index],result.configuration,result.trial_results?.[index],index):undefined;});
+    node('robustness-inspect').addEventListener('click',()=>getResult()?inspect(+node('robustness-trial').value):undefined);
   }
-  return {render,preview,init,remember};
+  return {render,preview,init};
 })();

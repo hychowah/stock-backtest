@@ -4,7 +4,7 @@ The queue and saved library store complete results inside their existing
 databases. The version-3 container stores application artifact 4 / evidence codec
 2 and reads existing artifact-3/codec-1 records. Opening needs no calculation,
 readiness check or current financial inputs. The [reader contract](evidence-views.md)
-owns submission, replay, transport limits and acquired-reader lifetime.
+owns submission, transport limits and acquired-reader lifetime.
 
 ## Operations and ownership
 

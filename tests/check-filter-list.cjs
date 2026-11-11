@@ -24,7 +24,7 @@ const workspace={
 };
 const context=vm.createContext({console,document,StockScreener:require('../website/browser/screener.js'),
   CalendarSettings:{read:()=>({}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:'original'}),sync(){}},
-  ResultArtifacts:{forView:()=>null,matches:()=>false},ScheduleView:{isRunning:()=>false},SavedBacktests:{update(){}},BacktestQueue:{isManaging:()=>false},
+  ResultArtifacts:{forView:()=>null,matches:()=>false},
   VariableWorkspace:workspace,localStorage:{getItem:()=>null,setItem(){}},crypto:require('node:crypto').webcrypto,Uint8Array,setTimeout,clearTimeout});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/filter-picker.js'),'utf8'),context);
 const source=fs.readFileSync(path.join(__dirname,'../website/browser/range.js'),'utf8');

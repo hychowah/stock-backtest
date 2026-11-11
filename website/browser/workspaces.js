@@ -4,7 +4,7 @@
 const Workspaces=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let active='builder',section='overview',rendered='latest',direct=null,lastDirect=null,queue={records:[],available:false,paused:false};
+  let active='builder',section='overview',rendered='latest',queue={records:[],available:false,paused:false};
   function closeQueue(){if(node('workspace-queue-tray').open)node('workspace-queue-tray').close();}
   function show(view){
     closeQueue();active=view;
@@ -74,6 +74,7 @@ const Workspaces=(()=>{
     node('workspace-no-result').hidden=true;
     SectorView.show(artifact);section='overview';show('review');
   }
+  // The status bar speaks for the queue: every dated test runs there.
   function status(){
     const running=queue.records.find(row=>['running','stopping'].includes(row.state));
     const waiting=queue.records.filter(row=>['queued','held'].includes(row.state)).length;
@@ -83,19 +84,14 @@ const Workspaces=(()=>{
       const event=running.progress;
       detail=event?.type==='waiting'?event.message:event?event.completed+' / '+event.total+' trials complete':'Backtest is running on the server.';
     }
-    if(direct){title='Running · direct backtest';detail=direct.detail+' · '+direct.elapsed+' elapsed';}
-    else if(!running&&lastDirect?.detail){title='Direct backtest finished';detail=lastDirect.detail;}
     node('workspace-run-state').textContent=title;node('workspace-run-detail').textContent=detail;
     node('workspace-waiting').textContent=(queue.paused?'Queue paused · ':'')+waiting+' waiting';
     node('workspace-queue-count').textContent=String(queue.records.filter(row=>['queued','held','running','stopping'].includes(row.state)).length);
-    // The direct run is one line at the top of In progress, only while it runs.
-    node('workspace-direct-run').hidden=!direct;node('workspace-direct-status').textContent=direct?detail:'';
   }
   function init(){
     document.querySelectorAll('[data-workspace]').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();show(button.dataset.workspace);}));
     document.querySelectorAll('[data-review]').forEach(button=>button.addEventListener('click',()=>reviewSection(button.dataset.review)));
     node('workspace-run-open').addEventListener('click',()=>show('runs'));
-    node('workspace-direct-stop').addEventListener('click',()=>ScheduleView.cancel());
     node('workspace-edit-copy').addEventListener('click',()=>{
       const artifact=ResultArtifacts.forView('custom');
       if(artifact){try{copySavedBacktestSettings(artifact);}catch(error){node('schedule-message').textContent=error.message;}}
@@ -107,6 +103,5 @@ const Workspaces=(()=>{
     const scalar=node('scalar-evidence-view');if(scalar)node('workspace-builder').append(scalar);
     SectorView.init(()=>active==='review'&&section==='selection');show('builder');status();
   }
-  return {init,show,published,reviewSection,active:()=>active,
-    runStatus:value=>{lastDirect=value;direct=value?.running===false?null:value;status();},queueStatus:value=>{queue=value;status();}};
+  return {init,show,published,reviewSection,active:()=>active,queueStatus:value=>{queue=value;status();}};
 })();

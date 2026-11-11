@@ -30,15 +30,19 @@ assert(el('strategy-steps').innerHTML.includes('Highest first'));
 assert.equal(el('latest-view').hidden,false);assert.equal(el('custom-view').hidden,true);assert.equal(el('schedule-controls').hidden,true);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.asof'),latestDate);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),latestCount(50));
+// Each mode shows its own run controls: Screen latest and Auto-run for latest picks, the test name and
+// Add to queue for a dated test.
+const modeControls=()=>['run-screen','auto-run-controls','queue-controls'].filter(id=>!el(id).hidden);
+assert.deepEqual(modeControls(),['run-screen','auto-run-controls']);
 // Opening the dated view starts nothing; it shows the schedule controls. A
 // latest evidence panel in the builder hides with latest mode.
 el('workspace-builder').append(el('scalar-evidence-view'));el('scalar-evidence-view').hidden=false;
 run("switchMode('backtest')");assert.equal(el('scalar-evidence-view').hidden,true);
 assert.equal(el('workspace-builder').hidden,false);assert.equal(el('workspace-review').hidden,true);assert.equal(el('latest-view').hidden,true);assert.equal(el('schedule-controls').hidden,false);
-assert.equal(el('run-screen').textContent,'Run backtest');assert.equal(run('ScheduleView.isRunning()'),false);assert.equal(el('screen-error').textContent,'');
+assert.deepEqual(modeControls(),['queue-controls']);assert.equal(el('screen-error').textContent,'');
 assert.equal(run('ResultArtifacts.forView("custom")'),undefined);
-run("switchMode('latest')");
-console.log('Passed: default latest mode, the default chain and the dated view opening without a run.');
+run("switchMode('latest')");assert.deepEqual(modeControls(),['run-screen','auto-run-controls']);
+console.log('Passed: default latest mode, the default chain, the run controls of each mode and the dated view opening without a run.');
 // Market changes in manual mode restore local choices and bounds without a run.
 el('auto-run').checked=false;el('auto-run').handlers.change();
 const heldLatest=run('ResultArtifacts.forView(LATEST_VIEW)');
@@ -63,7 +67,6 @@ ctx.Blob=class{constructor(parts){this.parts=parts;}};
 ctx.URL={createObjectURL(blob){savedCsv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}};
 document.createElement=()=>({click(){downloadName=this.download;}});
 assert.equal(el('latest-view').hidden,false);assert.equal(el('custom-view').hidden,true);
-assert.equal(el('run-screen').textContent,'Screen latest');
 assert.equal(el('latest-date').textContent,latestDate);
 assert.equal((el('latest-body').innerHTML.match(/<tr>/g)||[]).length,Math.max(1,latestCount(50)));
 assert(run("ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>h.price_date===screeningData.latest.metadata.asof && !('return_value' in h))"));
@@ -82,7 +85,7 @@ assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),0)
 assert.equal(el('latest-median-cap').textContent,'—');
 el('reset-strategy').handlers.click();el('mode-backtest').handlers.click();
 assert.equal(el('workspace-builder').hidden,false);assert.equal(el('latest-view').hidden,true);
-assert.equal(el('run-screen').textContent,'Run backtest');
+assert.deepEqual(modeControls(),['queue-controls']);
 console.log('Passed: exact-date picks, shared filters and ranks, invalid-input recovery, current CSV, empty latest screen, and switching to the dated view.');
 run("switchMode('latest')");run('chooseStep("'+rankId()+'",{kind:"builtin",id:"metric:ev_ebitda_3y:yield",label:"3-year yield"})');
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.metric'),'ev_ebitda_3y');
@@ -130,8 +133,9 @@ const tradeStart=el('trade-start').value,beforeCopy=run('currentArtifact()');
 el('auto-run').checked=true;stepEvent('input',rankId(),'rank_to','3');
 ctx.fetch=()=>{throw Error('Saved results must not calculate')};
 run('copySavedBacktestSettings(savedJanuary)');
-assert.deepEqual(steps().map(row=>[row.kind,row.op??row.direction,row.value??row.rank_to]),[['filter','ge','100'],['filter','ge','50'],['filter','gt','0'],['rank','highest',7]]);assert.equal(el('auto-run').checked,false);
-assert.equal(storage.get('backtest-auto-run'),'false');assert.strictEqual(run('currentArtifact()'),beforeCopy);
+assert.deepEqual(steps().map(row=>[row.kind,row.op??row.direction,row.value??row.rank_to]),[['filter','ge','100'],['filter','ge','50'],['filter','gt','0'],['rank','highest',7]]);
+// Auto-run belongs to latest picks: a copy into the builder leaves it as the user set it.
+assert.equal(el('auto-run').checked,true);assert.equal(storage.get('backtest-auto-run'),'true');assert.strictEqual(run('currentArtifact()'),beforeCopy);
 assert(el('strategy-steps').innerHTML.includes('Saved valuation label yield'));assert(el('strategy-steps').innerHTML.includes('Saved cap threshold'));
 assert.equal(el('trade-start').value,tradeStart,'January book years never become a calendar.');
 run('restoreSavedBacktest(savedJanuary)');
@@ -148,7 +152,7 @@ assert.equal(el('workspace-review').hidden,false);assert.equal(el('workspace-bui
 assert(el('workspace-parameters').innerHTML.includes('Saved valuation label'));
 assert.equal(el('workspace-recorded-notice').textContent,'Saved warning');assert(el('workspace-recorded-notice').className.includes('warning'));
 assert.equal(el('workspace-recorded-coverage').textContent,'Saved coverage');assert.equal(el('workspace-recorded-context').hidden,false);
-assert(el('results-state').textContent.includes('Saved January result shown without calculation'));
+assert.equal(el('results-state').textContent,'','The builder shows no line for a dated result');
 el('schedule-period').value='0';el('schedule-period').handlers.change();assert(el('schedule-stock-body').innerHTML.includes('SAVED_ONLY'));
 assert(el('schedule-attribution').innerHTML.includes('Top 10 contributors'));
 el('schedule-download-holdings').handlers.click();assert(savedCsv.includes('SAVED_ONLY'));assert(savedCsv.includes('"period_start"'));
@@ -161,7 +165,7 @@ assert.equal(steps().at(-1).kind,'rank','Opening a result leaves the draft order
 run('StrategyDraft.reset()');el('auto-run').checked=true;run('settingsChanged(false)');
 console.log('Passed: a saved January result opens independently of its draft with its exact stored stocks, returns and CSV in the dated view without calculation.');
 
-// Custom schedules use explicit dates and period results.
+// A dated test starts from Add to queue only. Its stored result opens with its periods, stocks and downloads.
 (async()=>{
  const selected={holdings:bookHoldings.map(h=>({...h,entry:'2015-03-16',exit:'2015-06-15'}))};
  const period={entry:'2015-03-16',exit:'2015-06-15',names:3,holdings:selected.holdings.map(h=>({...h,contribution_pp:h.return_value/3*100})),portfolio:(.5+.25-.1)/3,spy:.02};
@@ -175,144 +179,77 @@ console.log('Passed: a saved January result opens independently of its draft wit
    return {strategy:{...input.intent,format:'strategy-capture',steps,variables:null,builtins:[]}};
  };`);
  const tick=()=>new Promise(resolve=>setImmediate(resolve));
- const completed=result=>({ok:true,json:async()=>({state:'complete',result})});
- let request,resolveResponse,requests=0,fakeNow=0;
- ctx.Date=class extends Date{static now(){return fakeNow}};
- ctx.location={protocol:'http:'};ctx.fetch=(url,options)=>{requests++;const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};return new Promise(resolve=>resolveResponse=resolve);};
- const preDisabled=el('already-disabled');preDisabled.disabled=true;
- el('strategy-form').querySelectorAll=()=>[el('trade-start'),el('rebalance-months'),el('stock-pool'),preDisabled];
+ let calls=0;ctx.location={protocol:'http:'};ctx.fetch=()=>{calls++;throw Error('The builder must not request a calculation');};
  el('trade-start').value='2015-03-15';el('trade-end').value='2015-06-15';el('rebalance-months').value='3';
  run("screeningMode='backtest';setModeVisibility()");
- assert.equal(el('custom-view').hidden,false);
- el('auto-run').checked=false;
  const capFilter=addStep('filter',{kind:'builtin',id:'filter:market_cap',label:'Market cap ($ million)'});stepEvent('input',capFilter,'value','0');
- const pending=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();
- assert.equal(el('schedule-progress').hidden,false);assert.equal(el('run-screen').disabled,true);
- assert.equal(el('run-screen').textContent,'Backtesting…');assert.equal(el('trade-start').disabled,false);
- assert.equal(el('stop-backtest').hidden,false);
- assert.equal(el('custom-view').attributes['aria-busy'],'true');
- fakeNow=65000;for(const tick of timers.values())tick();assert.equal(el('schedule-elapsed').textContent,'1:05');
- await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert.equal(requests,1,'Do not submit duplicate backtests');
- resolveResponse(completed(fixture));await pending;
- assert.equal(el('schedule-progress').hidden,true);assert.equal(el('run-screen').disabled,false);
- assert.equal(el('trade-start').disabled,false);assert.equal(preDisabled.disabled,true);
- assert.equal(el('custom-view').attributes['aria-busy'],'false');assert.equal(timers.size,0);
- assert(el('schedule-message').textContent.includes('Backtest complete'));
- const sentFilter=request.body.strategy.steps.find(step=>step.source.id==='filter:market_cap');
- assert.equal(sentFilter.storage_comparison_value,0);assert.equal(sentFilter.submitted_threshold.unit,'usd_million','A built-in unit comes from the catalog');assert(!('filters' in request.body));
- assert(request.url.startsWith('/api/backtest-runs/'));assert.equal(request.mode,'custom');assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,3);assert(!('first' in request.body));
+ // In Historical backtest mode a form submit, such as Enter in a step field, starts nothing. A changed
+ // setting starts nothing with Auto-run ticked.
+ const latestBefore=run('ResultArtifacts.forView(LATEST_VIEW)');
+ el('auto-run').checked=true;el('strategy-form').handlers.submit({preventDefault(){}});stepEvent('change',rankId(),'rank_to','40');stepEvent('change',rankId(),'rank_to','50');await tick();
+ assert.equal(calls,0);assert.equal(el('run-screen').disabled,false);assert.equal(el('screen-error').textContent,'');assert.equal(el('results-state').textContent,'');
+ assert.strictEqual(run('ResultArtifacts.forView(LATEST_VIEW)'),latestBefore);
+ const fixedSettings=JSON.parse(JSON.stringify(await run('StrategyDraft.prepareSubmission()')));
+ // The submission that Add to queue sends: explicit dates, the interval and one captured chain.
+ const sentFilter=fixedSettings.strategy.steps.find(step=>step.source.id==='filter:market_cap');
+ assert.equal(sentFilter.storage_comparison_value,0);assert.equal(sentFilter.submitted_threshold.unit,'usd_million','A built-in unit comes from the catalog');assert(!('filters' in fixedSettings));
+ assert.equal(fixedSettings.mode,'custom');assert.equal(fixedSettings.start,'2015-03-15');assert.equal(fixedSettings.months,3);assert(!('first' in fixedSettings));
+ // A stored fixed result, as the queue keeps it with the catalog and the notes of its submission. It opens
+ // without calculation and leaves the draft alone.
+ const stored=(settings,result)=>{ctx.storedSettings=settings;ctx.storedResult=result;return JSON.parse(run('JSON.stringify(ResultArtifacts.create(storedSettings,storedResult,sourceCatalog(),scheduledPresentation(storedSettings)))'));};
+ const savedFixed=stored(fixedSettings,fixture);ctx.savedFixed=savedFixed;
+ el('trade-start').value='2001-01-01';stepEvent('input',rankId(),'rank_to','2');
+ run('restoreSavedBacktest(savedFixed)');
+ assert.equal(el('trade-start').value,'2001-01-01');assert.equal(steps().at(-1).rank_to,2);assert.equal(el('custom-view').hidden,false);
  assert.equal(reviewWindow(),'2015-03-16 → 2015-06-15 · Fixed schedule');assert(el('schedule-chart').innerHTML.includes('<rect'));
  const fixedHeadline=['Strategy CAGR 10.00%','SPY CAGR 5.00%','Difference vs SPY +5.00 pp','Growth of $1 $1.22'];assert.deepEqual(headline(),fixedHeadline);
  // The coverage line of a fixed result is one of its recorded notes.
  assert.equal(el('schedule-coverage').parentNode,el('workspace-recorded-context'));assert(el('schedule-coverage').textContent.includes('Fixture coverage'));assert.equal(el('workspace-recorded-context').hidden,false);
  assert(el('schedule-stock-body').innerHTML.includes(selected.holdings[0].symbol));
  el('schedule-download-holdings').handlers.click();assert(savedCsv.includes('period_start'));assert(savedCsv.includes('2015-03-16'));
- // A running request retains its submitted settings while controls remain editable.
- let finishEdited;ctx.fetch=()=>new Promise(resolve=>finishEdited=resolve);
- const edited=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();
- stepEvent('change',rankId(),'rank_to','25');
- assert.equal(el('run-screen').disabled,true);assert.equal(el('trade-start').disabled,false);
- finishEdited(completed(fixture));await edited;
- assert(el('results-state').textContent.includes('do not match'));
- stepEvent('change',rankId(),'rank_to','50');assert.equal(el('results-state').textContent,'');
- // Stop is explicit. A browser abort must never be the cancellation signal.
- let finishStopped,stopSignal,stopUrl;ctx.fetch=(url,options)=>{
-   if(url.endsWith('/stop')){stopUrl=url;return Promise.resolve({ok:true,json:async()=>({state:'cancelled'})});}
-   stopSignal=options.signal;return new Promise(resolve=>finishStopped=resolve);
- };
- const stopped=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();
- el('stop-backtest').handlers.click();assert(!stopSignal.aborted);
- assert.equal(el('run-screen').disabled,true);assert.equal(el('stop-backtest').disabled,true);
- finishStopped({ok:true,json:async()=>({state:'running'})});await stopped;
- assert(stopUrl.endsWith('/stop'));assert.equal(el('run-screen').disabled,false);assert.equal(el('stop-backtest').hidden,true);
- assert(el('schedule-message').textContent.includes('stopped'));assert.equal(timers.size,0);
- assert(!reviewWindow().includes('1999-01-01'));assert.deepEqual(headline(),fixedHeadline);
- const savedFixed=JSON.parse(run('JSON.stringify(currentArtifact())'));ctx.savedFixed=savedFixed;
- el('trade-start').value='2001-01-01';stepEvent('input',rankId(),'rank_to','2');
- ctx.fetch=()=>{throw Error('Restoring must not request a calculation')};
- run('restoreSavedBacktest(savedFixed)');
- assert.equal(el('trade-start').value,'2001-01-01');assert.equal(steps().at(-1).rank_to,2);
- assert.equal(reviewWindow(),fixture.start+' → '+fixture.end+' · Fixed schedule');assert.deepEqual(headline(),fixedHeadline);
  assert(el('workspace-opened-note').textContent.includes('no calculation'));
- // Reopening restores submitted settings and retrieves the server result by GET.
- let resumedMethod;ctx.fetch=async(_url,options)=>{resumedMethod=options.method;return completed(fixture)};
- el('trade-start').value='2000-01-01';stepEvent('input',rankId(),'rank_to','2');
- // The preceding explicit Stop cleared its run ID. Start a completed run first.
- await run('ScheduleView.run(savedFixed.settings)');
- const serverRun=run('BacktestRuns.pending()');
- el('trade-start').value='2001-01-01';stepEvent('input',rankId(),'rank_to','3');
- await run('ScheduleView.resume()');
- assert.equal(resumedMethod,'GET');assert.equal(el('trade-start').value,serverRun.options.start);
- assert.equal(steps().at(-1).rank_to,serverRun.options.strategy.steps.at(-1).rank_to);assert.equal(run('ScheduleView.isRunning()'),false);
- const previous=reviewWindow()+headline();
- ctx.fetch=async()=>({ok:false,status:400,json:async()=>({error:'Invalid schedule dates'})});
- await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('Invalid schedule'));assert.equal(reviewWindow()+headline(),previous);
- assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);
- assert(el('schedule-message').textContent.includes('Backtest failed'));
- ctx.fetch=async()=>({ok:false,status:404,json:async()=>({error:'Unknown endpoint.'})});
- await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('older server'));
- assert(el('screen-error').textContent.includes('new browser tab'));assert.equal(el('run-screen').disabled,false);
- let connections=0;ctx.fetch=async()=>{if(connections++===0)throw run("new TypeError('Failed to fetch')");return completed(fixture);};
- const reconnecting=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await new Promise(resolve=>setImmediate(resolve));
- assert.equal(el('run-screen').disabled,true);assert(el('schedule-progress-detail').textContent.includes('Reconnecting'));
- await reconnecting;assert.equal(connections,2);assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);
- let finishOld;ctx.fetch=()=>new Promise(resolve=>finishOld=resolve);
- const old=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();run("switchMode('latest')");
- assert.equal(run('ScheduleView.isRunning()'),true,'Switching view must keep the backend run');
- finishOld(completed(fixture));await old;
- assert.equal(el('latest-view').hidden,false);assert.equal(el('screen-error').textContent,'');assert.equal(timers.size,0);
- run("screeningMode='backtest';setModeVisibility()");
- ctx.location={protocol:'file:'};await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('website/serve.py'));
- // Random independent rebalances use the same server jobs and expose progress.
- ctx.location={protocol:'http:'};ctx.TextDecoder=TextDecoder;
+ // A stored result is a record: changed draft settings do not mark it, and the builder shows no line for it.
+ stepEvent('change',rankId(),'rank_to','25');assert.equal(el('results-state').textContent,'');assert.equal(el('custom-view').attributes?.['data-results-stale'],undefined);
+ assert.deepEqual(headline(),fixedHeadline);assert.equal(calls,0);
+ // Random independent rebalances: the submission holds the trial count and, with Repeat ticked, the date set.
  el('date-testing').value='random';el('random-trials').value='3';el('random-seed').value='123';el('repeat-random').checked=true;el('repeat-random').handlers.change();el('rebalance-months').value='24';
+ const randomSettings=JSON.parse(JSON.stringify(await run('StrategyDraft.prepareSubmission()')));
+ assert.equal(randomSettings.mode,'random');assert.equal(randomSettings.trials,3);assert.equal(randomSettings.seed,123);assert.equal(randomSettings.months,24);
  const stat={n:3,mean:.1,median:.1,p10:.1,p25:.1,p75:.1,p90:.1,min:.1,max:.1,stddev:0};
  const batch={kind:'random_dates',completed:3,valid:3,incomplete:0,beat_spy:2,unique_schedules:3,note:'Independent dates in each block.',configuration:{start:'2015-03-15',end:'2015-06-15',months:24,seed:123,requested:3,options:{metric:'ev_ebitda',rank_to:50}},distributions:Object.fromEntries(['cagr','spy_cagr','excess_cagr','total_return','growth'].map(k=>[k,stat])),trials:[1,2,3].map(trial=>({trial,start:'2015-03-16',first_trade:'2015-03-16',end:'2015-06-15',dates:['2015-03-16'],periods:1,cagr:.1,spy_cagr:.05,excess_cagr:.05,empty_periods:0,short_periods:0}))};
- batch.trial_results=[fixture,fixture,fixture];
- let deliverFinish,notifyProgress;
- const progressReady=new Promise(resolve=>notifyProgress=resolve);
- ctx.fetch=async(url,options)=>{
-   if(options.method==='GET')return new Promise(resolve=>{deliverFinish=resolve;notifyProgress()});
-   const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};
-   return {ok:true,json:async()=>({state:'running',configuration:batch.configuration,progress:{type:'preparation',completed:1,total:3,trial:2,workers:4,calculated_books:40,total_new_books:90}})};
- };
- const randomRun=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await progressReady;
- assert(request.url.startsWith('/api/backtest-runs/'));assert.equal(request.mode,'random');assert.equal(request.body.trials,3);assert.equal(request.body.seed,123);assert.equal(request.body.months,24);
- assert.equal(el('trial-progress').value,1);assert.equal(el('trial-progress').max,3);assert(el('schedule-progress-detail').textContent.includes('1/3'));
- assert(el('schedule-progress-detail').textContent.includes('40/90'));assert(el('schedule-progress-detail').textContent.includes('4 workers'));
- deliverFinish(completed(batch));
- await randomRun;
+ const savedSummary=stored(randomSettings,batch);ctx.savedSummary=savedSummary;
+ const savedRandom=stored(randomSettings,{...batch,trial_results:[fixture,fixture,fixture]});ctx.savedRandom=savedRandom;
+ run('restoreSavedBacktest(savedRandom)');
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,true);assert.equal(el('robustness-mean').textContent,'10.00%');
- assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);assert(el('schedule-message').textContent.includes('3 trials'));
- ctx.fetch=async(url,options)=>{const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};return completed(fixture)};
- const beforeInspect=request;assert.equal(el('workspace-review').dataset.section,'overview');assert.equal(el('workspace-opened-note').textContent,'');
- el('robustness-trial').value='1';await el('robustness-inspect').handlers.click();assert.equal(request,beforeInspect,'Stored trial inspection must not call the service');
- assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);
+ assert.equal(el('workspace-review').dataset.section,'overview');
+ el('robustness-trial').value='1';await el('robustness-inspect').handlers.click();assert.equal(calls,0,'Stored trial inspection must not call the service');
+ assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);assert.equal(el('schedule-trial-missing').hidden,true);
  // The chosen trial opens in Returns under its own title.
  assert.equal(el('workspace-review').dataset.section,'returns');assert.equal(el('schedule-trial-title').textContent,'Trial 2 of 3');
  assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');assert.equal(el('schedule-cagr').textContent,'10.00%');
  assert.equal(el('schedule-coverage').parentNode,el('schedule-trial'));assert.equal(headline()[0],'Mean strategy CAGR 10.00%');
- const savedRandom=JSON.parse(run('JSON.stringify(currentArtifact())'));ctx.savedRandom=savedRandom;
+ // Tune copies the trial count and the recorded date set with Repeat ticked, so a new test can use the same dates.
  const beforeRandomCopy=run('currentArtifact()');
- el('random-seed').value='999';el('random-trials').value='1';el('auto-run').checked=true;
+ el('random-seed').value='999';el('random-trials').value='1';el('repeat-random').checked=false;
  run('copySavedBacktestSettings(savedRandom)');
  assert.equal(el('random-seed').value,'123');assert.equal(el('random-trials').value,'3');
- assert.equal(el('repeat-random').checked,true);assert.equal(el('auto-run').checked,false);
+ assert.equal(el('repeat-random').checked,true);assert.equal(el('auto-run').checked,true);
  assert.strictEqual(run('currentArtifact()'),beforeRandomCopy);
  el('random-seed').value='999';el('random-trials').value='1';
  run('restoreSavedBacktest(savedRandom)');
  assert.equal(el('random-seed').value,'999');assert.equal(el('random-trials').value,'1');assert.equal(el('repeat-random').checked,true);
- assert(el('results-state').textContent.includes('do not match'));
+ assert.equal(el('results-state').textContent,'');
  assert.equal(el('schedule-results').hidden,true);await el('robustness-inspect').handlers.click();
- assert.equal(request,beforeInspect);assert.equal(el('schedule-results').hidden,false);
+ assert.equal(calls,0);assert.equal(el('schedule-results').hidden,false);
+ // An older random-date result stored its summary only. A note shows in place of the trial; nothing is calculated.
+ run('restoreSavedBacktest(savedSummary)');assert.equal(el('schedule-trial-missing').hidden,true);
+ await el('robustness-inspect').handlers.click();
+ assert.equal(el('workspace-review').dataset.section,'returns');assert.equal(el('schedule-trial-missing').hidden,false);assert.equal(el('schedule-results').hidden,true);
+ run('restoreSavedBacktest(savedRandom)');assert.equal(el('schedule-trial-missing').hidden,true);assert.equal(calls,0);
 
  el('repeat-random').checked=false;el('repeat-random').handlers.change();assert.equal(el('random-seed').disabled,true);
- ctx.fetch=async(url,options)=>{const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};return completed(batch)};
- el('trade-start').value='2010-01-01';el('rebalance-months').value='1';el('random-trials').value='10';
- await el('robustness-replay').handlers.click();assert.equal(request.mode,'random');assert.equal(request.body.seed,123);assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,24);assert.equal(request.body.trials,3);assert.equal(request.body.strategy.steps.at(-1).rank_to,50);assert.equal(request.body.strategy.universe.pool,'legacy','A flat replay keeps its recorded pool');
- await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(!('seed' in request.body),'Fresh random mode must not send a fixed seed');
- console.log('Passed: configurable random trial count/seed, two-year requests, streamed progress, distributions and exact-date trial inspection.');
- console.log('Passed: custom dates/frequency, local-service request, period chart, stocks, attribution, CSV, spinner/timer, duplicate prevention, network failure, mode switching and file-preview instructions.');
+ assert(!('seed' in await run('StrategyDraft.prepareSubmission()')),'Fresh random mode must not send a fixed seed');
+ console.log('Passed: no run from a form submit or a changed setting in Historical backtest mode; submissions with dates, frequency, trial count and date set; stored fixed and random results with chart, stocks, attribution, CSV and stored-trial inspection; the note of a summary-only random result.');
 
  // One form-owner boundary protects a held edit from every restoration source.
  const waitingId='a'.repeat(32),completedId='b'.repeat(32);
@@ -348,12 +285,6 @@ console.log('Passed: a saved January result opens independently of its draft wit
  await el('saved-list').handlers.click({target:{dataset:{copy:'library-result'}}});
  assert(el('saved-status').textContent.includes('Save or cancel'));
  assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(el('queue-name').value,'Edit this test');
- const realPending=run('BacktestRuns.pending'),realRecover=run('BacktestRuns.recover');
- ctx.manualRun={mode:'custom',options:savedFixed.settings};
- run('BacktestRuns.pending=()=>manualRun;BacktestRuns.recover=async()=>manualRun');
- await run('ScheduleView.resume()');assert(el('screen-error').textContent.includes('Save or cancel'));
- assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(run('ScheduleView.isRunning()'),false);
- ctx.realPending=realPending;ctx.realRecover=realRecover;run('BacktestRuns.pending=realPending;BacktestRuns.recover=realRecover');
  await run('BacktestQueue.add()');assert.equal(queueRows[0].options.strategy.steps.at(-1).rank_to,7);assert.equal(run('BacktestQueue.isEditing()'),false);
  await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});assert.equal(steps().at(-1).rank_to,7);assert.equal(run('ResultArtifacts.forView("custom").kind'),'custom');
  await run('BacktestQueue.action("edit",waitingId)');stepEvent('input',rankId(),'rank_to','9');
@@ -364,8 +295,8 @@ console.log('Passed: a saved January result opens independently of its draft wit
  queueRows.push({id:waitingId,name:'Rejected hold',state:'queued',revision:1,position:3,mode:'custom',options:savedFixed.settings});
  rejectHold=true;await run('BacktestQueue.refresh()');await run('BacktestQueue.action("edit",waitingId)');
  assert.equal(run('BacktestQueue.isEditing()'),false);assert.doesNotThrow(()=>run('restoreSavedBacktest(savedFixed)'));
- // An immediate run from an unchanged held legacy draft captures a chain.
- // Saving the held row must still submit its exact legacy selection and seed.
+ // Saving an unchanged held legacy row submits its exact legacy selection, seed and plan. A form submit
+ // during the held edit starts nothing: this transport refuses every address outside the queue.
  rejectHold=false;el('date-testing').value='random';el('random-trials').value='3';el('repeat-random').checked=false;
  const legacyOptions={market:'us',rank_from:1,rank_to:9,pool:'cached',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:[],selection_order:'filter_first',
    ...JSON.parse(run('JSON.stringify(CalendarSettings.read())')),engine:'original',trials:3};
@@ -374,11 +305,8 @@ console.log('Passed: a saved January result opens independently of its draft wit
  const originalLegacy=structuredClone({options:legacyRow.options,seed:legacyRow.seed,plan:legacyRow.plan});
  queueRows.push(legacyRow);ctx.legacyHeldId=legacyRow.id;
  await run('BacktestQueue.refresh()');await run('BacktestQueue.action("edit",legacyHeldId)');
- const queueTransport=ctx.fetch;let immediateRequest;
- ctx.fetch=async(url,options)=>{assert(url.startsWith('/api/backtest-runs/'));immediateRequest=JSON.parse(options.body);return completed(batch);};
  el('strategy-form').handlers.submit({preventDefault(){}});await tick();
- assert.equal(immediateRequest.options.strategy.steps.at(-1).rank_to,9);assert.equal(immediateRequest.mode,'random');
- ctx.fetch=queueTransport;await run('BacktestQueue.add()');
+ await run('BacktestQueue.add()');
  assert.equal(run('BacktestQueue.isEditing()'),false);assert(!legacyRow.options.strategy);
  assert.deepEqual({options:legacyRow.options,seed:legacyRow.seed,plan:legacyRow.plan},originalLegacy);
  el('date-testing').value='single';
@@ -386,16 +314,17 @@ console.log('Passed: a saved January result opens independently of its draft wit
  // the button of the open result. A held edit loads its record name (above); a refused copy keeps it.
  for(const tune of [()=>run('BacktestQueue.action("copy",completedId)'),()=>el('saved-list').handlers.click({target:{dataset:{copy:'library-result'}}}),async()=>el('workspace-edit-copy').handlers.click()]){
    el('queue-name').value='Typed for other settings';el('auto-run').checked=true;stepEvent('input',rankId(),'rank_to','4321');await tune();
-   assert.equal(el('queue-name').value,'');assert.equal(el('auto-run').checked,false);assert.notEqual(String(steps().findLast(row=>row.kind==='rank').rank_to),'4321','The copy restored the recorded strategy');
+   assert.equal(el('queue-name').value,'');assert.equal(el('auto-run').checked,true);assert.notEqual(String(steps().findLast(row=>row.kind==='rank').rank_to),'4321','The copy restored the recorded strategy');
  }
  el('date-testing').value='single';
  queueRows=[];await run('BacktestQueue.refresh()');
- console.log('Passed: held draft ownership across queue open/copy, saved-library opening and manual recovery; save/cancel/delete and failed admission release the form; every copy into the builder empties the name box.');
+ console.log('Passed: held draft ownership across queue open/copy and saved-library opening; save/cancel/delete and failed admission release the form; every copy into the builder empties the name box.');
 
- // The visible queue action opens setup without launching an immediate test.
+ // Latest stock picks shows no queue controls, and the queue owner submits no latest screen. In Historical
+ // backtest mode Add to queue submits the chosen settings.
  let submissions=0;
  ctx.fetch=async(url,options={})=>{
-   assert.equal(url,'/api/backtest-queue','Queue setup must never submit an immediate calculation');
+   assert.equal(url,'/api/backtest-queue','The queue controls must never submit an immediate calculation');
    if(options.method==='POST'){
      submissions++;
      const body=JSON.parse(options.body);
@@ -404,14 +333,9 @@ console.log('Passed: a saved January result opens independently of its draft wit
    }
    return {ok:true,json:async()=>({limit:100,paused:true,records:queueRows})};
  };
- for(const entry of ['latest']){
-   run(`switchMode('${entry}')`);
-   el('auto-run').checked=true;
-   await el('queue-add').handlers.click();
-   assert.equal(run('currentSettings().mode'),'custom');assert.equal(el('auto-run').checked,false);
-   assert.equal(storage.get('backtest-auto-run'),'false');assert.equal(submissions,0);
-   assert(el('queue-add-status').textContent.includes('No test has started'));
- }
+ run("switchMode('latest')");assert.deepEqual(modeControls(),['run-screen','auto-run-controls']);
+ await run('BacktestQueue.add()');assert.equal(submissions,0);assert(el('queue-add-status').textContent.includes('Choose Historical backtest'));
+ el('mode-backtest').handlers.click();assert.deepEqual(modeControls(),['queue-controls']);assert.equal(run('currentSettings().mode'),'custom');
  const queuedRank=rankId();stepEvent('input',queuedRank,'rank_to','12');for(let i=steps().length;i>1;i--)stepButton('up',queuedRank);
  assert.equal(stepIds()[0],queuedRank);assert.equal(submissions,0);
  await el('queue-add').handlers.click();assert.equal(submissions,1);
@@ -419,7 +343,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(queueRows[0].options.strategy.steps[0].kind,'rank','Rank first is the first step');assert(!('rank_to' in queueRows[0].options));
  assert.equal(el('queue-add').textContent,'Add to queue');
  queueRows=[];await run('BacktestQueue.refresh()');
- console.log('Passed: Add to queue opens manual setup from latest without calculation, then submits the chosen settings to the queue.');
+ console.log('Passed: no queue controls and no queue submission in latest mode; Add to queue submits the chosen settings in Historical backtest mode.');
 
 run("StrategyDraft.reset();switchMode('latest')");
 el('add-filter').handlers.click();
@@ -443,12 +367,18 @@ assert.equal(run('StrategyDraft.flat().filters.length'),0);
 // captured chain; auto-run stays offline-only. The offline result stays shown.
 const extraRank=addStep('rank',{kind:'builtin',id:'metric:ev_ebitda:multiple',label:'EV / EBITDA multiple'});
 assert.equal(el('run-screen').disabled,false);assert.equal(el('auto-run').disabled,true);
-const offlineLatest=run('ResultArtifacts.forView(LATEST_VIEW)'),queueFetch=ctx.fetch;let latestRequest;
-ctx.fetch=async(url,options)=>{latestRequest={url,...JSON.parse(options.body)};return {ok:false,status:400,json:async()=>({error:'Fixture refusal'})};};
-await run('applyRange()');await tick();await tick();
+const offlineLatest=run('ResultArtifacts.forView(LATEST_VIEW)'),queueFetch=ctx.fetch;let latestRequest,finishScreen,screens=0;
+ctx.fetch=(url,options)=>{screens++;latestRequest={url,...JSON.parse(options.body)};return new Promise(resolve=>finishScreen=resolve);};
+run('applyRange()');await tick();await tick();
+// While the service screens, the button waits. A second request starts nothing more.
+assert.equal(el('run-screen').disabled,true);assert.equal(el('run-screen').textContent,'Screening…');
+run('applyRange()');el('strategy-form').handlers.submit({preventDefault(){}});await tick();assert.equal(screens,1);
+finishScreen({ok:false,status:400,json:async()=>({error:'Fixture refusal'})});await tick();await tick();
 assert(latestRequest.url.startsWith('/api/backtest-runs/'));assert.equal(latestRequest.mode,'latest');assert(!('start' in latestRequest.options));
 assert.equal(latestRequest.options.strategy.format,'strategy-capture');assert.equal(latestRequest.options.strategy.steps.at(-1).source.id,'metric:ev_ebitda:multiple');
-assert.equal(run('ResultArtifacts.forView(LATEST_VIEW)'),offlineLatest);assert(el('screen-error').textContent.includes('Fixture refusal'));assert.equal(el('run-screen').disabled,false);
+assert.equal(run('ResultArtifacts.forView(LATEST_VIEW)'),offlineLatest);assert(el('screen-error').textContent.includes('Fixture refusal'));assert.equal(el('run-screen').disabled,false);assert.equal(el('run-screen').textContent,'Screen latest');
+// Opened as a file, the page says how to start the service and sends nothing.
+ctx.location={protocol:'file:'};run('applyRange()');await tick();await tick();assert.equal(screens,1);assert(el('screen-error').textContent.includes('website/serve.py'));assert.equal(el('run-screen').disabled,false);ctx.location={protocol:'http:'};
 ctx.fetch=queueFetch;
 stepButton('remove',extraRank);assert.equal(el('auto-run').disabled,false);
 run('applyRange()');assert.notEqual(run('ResultArtifacts.forView(LATEST_VIEW)'),offlineLatest,'A flat chain screens offline again');assert.equal(el('latest-view').hidden,false);

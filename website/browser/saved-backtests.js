@@ -1,11 +1,12 @@
 /* The library stores complete results on the local service, never browser quota.
+   A queue test is saved there when it finishes; this page saves nothing itself.
    Its records are the Saved backtests rows of Runs. Details of a row shows the
    settings of that test in place. The panel above the rows compares the ticked
    rows. Both read one description per saved id that the user ticked or opened. */
 const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let current=()=>null,isRunning=()=>false,openRecord=()=>{},copySettings=()=>{};
+  let openRecord=()=>{},copySettings=()=>{};
   let queueRefresh=false;
   // Descriptions reuse stored-artifact descriptions and keep their rows only. They
   // own no artifact, evidence reader, form or main-result lifetime. viewed holds
@@ -16,21 +17,12 @@ const SavedBacktests=(()=>{
   let loading=false,refocus=null,allOpen=false;
   const headings={name:'Name',cagr:'CAGR',saved:'Saved'},directions={name:1,cagr:-1,saved:-1};
   let records=[],limit=100,sorting={key:'saved',direction:-1},renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
-  // Save reports beside its button in Result review. Every list action reports above the Saved backtests rows.
-  const say=id=>(text,error=false)=>{node(id).textContent=text;node(id).className=error?'backtest-failed':'hint';};
-  const message=say('saved-status'),saveMessage=say('saved-message');
+  // Every list action reports above the Saved backtests rows.
+  function message(text,error=false){node('saved-status').textContent=text;node('saved-status').className=error?'backtest-failed':'hint';}
   const when=value=>new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  function defaultName(snapshot){
-    if(snapshot.kind==='january')return 'January '+snapshot.settings.first+'–'+snapshot.settings.last;
-    return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+(snapshot.settings.calendar?.start??snapshot.settings.start)+' → '+(snapshot.settings.calendar?.end??snapshot.settings.end);
-  }
-  function complete(snapshot){return snapshot && snapshot.kind!=='latest' && ([3,4].includes(snapshot.version) || snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
   function update(){
-    const snapshot=current();
-    node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=limit;
     node('saved-count').textContent=records.length+' / '+limit;
     for(const [key,label] of Object.entries(headings))node('saved-sort-'+key).textContent=label+(sorting.key!==key?'':sorting.direction>0?' ↑':' ↓');
-    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest in Runs & saved to make room.':'Saves the original completed result and its submitted settings. Exploration summaries and pending settings are not included.';
   }
   // List order uses stored summary values only. Names sort with their numbers in
   // number order. A missing CAGR stays last in both directions. Equal values show
@@ -45,19 +37,22 @@ const SavedBacktests=(()=>{
       return (knownA?(a.cagr-b.cagr)*direction:0)||tie(a,b);
     });
   }
-  // The Details of a row: one line with the market, the test type, the window and
-  // the interval, then every other setting in plain wording, the headline, the
-  // saved ID and the exact recorded text in a closed disclosure. Before the read
-  // it says so. After a failed read it gives the reason and Retry.
+  // The Details of a row is a quick look at the parameters of a test: one line with
+  // the market, the test type, the window and the interval, then the stock pool and
+  // the steps (or the earlier bounds and conditions that hold a value) in plain
+  // wording, the headline and the saved ID. A closed disclosure lists every recorded
+  // row with its exact text: it adds the recorded facts and the settings that hold
+  // only their documented default. Before the read the Details says so. After a
+  // failed read it gives the reason and Retry.
   function settings(record,exactOpen){
     const id=escape(record.id),description=descriptions.get(record.id),line=text=>'<p>'+escape(text)+'</p>';
     if(failures.has(record.id))return '<p class="backtest-failed" role="status">'+escape(failures.get(record.id))+' <button type="button" id="saved-do-retry-'+id+'" data-retry="'+id+'">Retry</button></p>';
     if(!description)return '<p role="status">Reading the saved settings…</p>';
     const shown=key=>description.parameters.find(row=>row.key===key)?.display,first=['mode','market','currency','start','end','interval','first','last','trials'];
-    const rows=description.parameters.filter(row=>!first.includes(row.key)),exact=rows.filter(row=>row.exact);
+    const rows=description.parameters.filter(row=>!first.includes(row.key)&&!row.recorded&&!row.quiet);
     return line([shown('market'),shown('currency'),shown('mode')+(shown('trials')?' · '+shown('trials')+' trials':''),shown('first')?shown('first')+'–'+shown('last'):shown('start')&&shown('start')+' → '+shown('end'),shown('interval')&&'every '+shown('interval')].filter(Boolean).join(' · '))+
       rows.map(row=>line(row.label+': '+row.display)).join('')+line(description.headline.map(row=>row.label+' '+row.display).join(' · '))+'<p class="saved-id">Saved ID: '+id+'</p>'+
-      (exact.length?'<details data-exact="'+id+'"'+(exactOpen?' open':'')+'><summary id="saved-exact-'+id+'">Exact recorded values</summary>'+exact.map(row=>line(row.label+': '+row.exact)).join('')+'</details>':'');
+      '<details data-exact="'+id+'"'+(exactOpen?' open':'')+'><summary id="saved-exact-'+id+'">Exact recorded values</summary>'+description.parameters.map(row=>line(row.label+': '+(row.exact??row.display))).join('')+'</details>';
   }
   // One line per test in the columns that the In progress rows use. The name opens
   // the result. Details opens the settings and the other actions below the row.
@@ -155,32 +150,17 @@ const SavedBacktests=(()=>{
     if(!Array.isArray(value.records))throw Error('The saved-list response is invalid.');
     if(number===refreshNumber&&revision===mutation){records=value.records;if(Number.isInteger(value.limit)&&value.limit>0)limit=value.limit;render();}
   }
-  async function perform(action,report=message){
+  async function perform(action){
     if(busy)return;
     const ticket=++feedback;busy=true;render();
-    try{await action(ticket);}catch(error){report(error.message||'Could not reach the local service. Your saved records were kept.',true);}
+    try{await action(ticket);}catch(error){message(error.message||'Could not reach the local service. Your saved records were kept.',true);}
     finally{busy=false;render();if(queueRefresh)changed();}
   }
   // Reconciliation cannot turn an acknowledged mutation into a failed mutation.
   // Ignore stale reads and feedback if a newer library action has started.
-  async function reconcile(success,ticket,report=message){
+  async function reconcile(success,ticket){
     try{await refresh();}
-    catch(_){if(ticket===feedback)report(success+' The saved list could not be refreshed. Select Refresh in Runs & saved to try again.');}
-  }
-  async function save(){
-    const snapshot=current();
-    if(!complete(snapshot)||isRunning())return;
-    const name=node('saved-name').value.trim()||defaultName(snapshot);
-    // Serialize before awaiting: a new run or changed settings cannot change this save.
-    // A saved January result is saved again as its stored record.
-    const body=JSON.stringify([3,4].includes(snapshot.version)?{name,reader:snapshot.evidence.id}:{name,snapshot:snapshot.record??snapshot});
-    await perform(async ticket=>{
-      saveMessage('Saving complete backtest results…');
-      const record=await request('',{method:'POST',headers:{'Content-Type':'application/json'},body});
-      mutation++;records=[record,...records.filter(item=>item.id!==record.id)];render();node('saved-name').value='';
-      const success='Saved “'+record.name+'”. Its complete results are under Saved backtests in Runs & saved.';saveMessage(success);
-      void reconcile(success,ticket,saveMessage);
-    },saveMessage);
+    catch(_){if(ticket===feedback)message(success+' The saved list could not be refreshed. Select Refresh in Runs & saved to try again.');}
   }
   async function open(id){
     const number=++operation,isCurrent=ResultArtifacts.opening();
@@ -194,7 +174,7 @@ const SavedBacktests=(()=>{
     await perform(async()=>{
       message('Loading saved settings…');
       const used=await ResultArtifacts.use({kind:'saved',id},artifact=>copySettings(artifact));
-      if(used.consumed)message('Copied settings from “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'”. Adjust the strategy controls, then select Run backtest or Add to queue. Auto-run is off.');
+      if(used.consumed)message('Copied settings from “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'”. Adjust the strategy controls, then select Add to queue.');
     });
   }
   async function remove(id){
@@ -225,8 +205,7 @@ const SavedBacktests=(()=>{
     queueRefresh=false;void perform(refresh);
   }
   function init(access){
-    current=access.current;isRunning=access.isRunning;openRecord=access.open;copySettings=access.copy;
-    node('save-backtest').addEventListener('click',save);
+    openRecord=access.open;copySettings=access.copy;
     // The one Refresh of Runs also reads the Saved backtests rows again.
     node('queue-refresh').addEventListener('click',()=>available?perform(async()=>{await refresh();message('Saved backtests refreshed.');}):undefined);
     node('saved-head').addEventListener('click',event=>{
@@ -275,5 +254,5 @@ const SavedBacktests=(()=>{
     else message('Saved backtests use the local website service opened by backtest-web.cmd.');
     update();
   }
-  return {init,update,changed};
+  return {init,changed};
 })();

@@ -1,7 +1,7 @@
 # Acquired result readers
 
-The [submission contract](#dated-submissions-and-replay) defines new requests,
-recorded replay and legacy compatibility. The application artifact and evidence
+The [submission contract](#dated-submissions) defines new requests and legacy
+compatibility. The application artifact and evidence
 codec versions are separate from the version-3 durable container. Stored formats
 keep their recorded meaning.
 
@@ -54,8 +54,8 @@ scans, retaining compact trial boundaries between them, never full holdings.
 `website/browser/result-explorer.js` owns the controls. Date labels come from
 period pages for fixed tests and original trial metadata for random tests.
 Edits cancel pending requests; replacement and selection checks discard late
-replies. Reset restores the original summary. Holding details, downloads,
-comparisons, replay and saving use the immutable original artifact. Exploration
+replies. Reset restores the original summary. Holding details, downloads and
+comparisons use the immutable original artifact. Exploration
 creates no saved format or durable preference.
 
 ## Workspaces
@@ -75,7 +75,7 @@ sits with the recorded notes, or below the headline when a headline value is
 Unavailable; for random dates it stays with the inspected trial. A review block
 lists its tabs in `data-review-panel`; a `random-` or `fixed-` name limits the
 block to that kind of result.
-The bottom status bar consumes existing direct-run and queue state. Its dialog
+The bottom status bar consumes queue state. Its dialog
 borrows the mounted queue panel, including the same controls and polling owner,
 and returns it to the top of Runs & saved.
 
@@ -266,9 +266,11 @@ and contributions show 2 decimals. Downloads and the calculation evidence keep
 the recorded precision. A row without step evidence, such as
 capture/1 and every older result, says the trail is not recorded.
 
-## Dated submissions and replay
+## Dated submissions
 
-Every new dated browser submission captures one chain and uses bounded evidence.
+Every dated test starts from **Add to queue**; the page sends no dated request
+to the direct run route, which the server keeps. Every new dated browser
+submission captures one chain and uses bounded evidence.
 `StrategyDraft` in `website/browser/range.js` owns the ordered draft. Step IDs
 exist only in the browser. Capture finishes before request identity allocation.
 One restore path reads flat settings, capture/1 and capture/2. Flat and capture/1
@@ -285,18 +287,15 @@ Legacy SQL treats a null minimum cap, EV or yield as an empty selection. The
 builder restores such a minimum as a Filter without a value, so submission asks
 for one. Captures use null to omit a bound; that meaning and their bytes stay.
 
-`StrategyDraft.captureBuiltins(options)` applies the same conversion to a
-detached flat request for replay and calculated trial inspection. A legacy replay
-converts a detached copy of the recorded plan's selection only. Dates, nominal
-blocks, seed, samples and the shared window stay exact. A captured replay keeps
-its original capture and plan. Stored results and request records are never
-rewritten. Opening and stored trial inspection never calculate.
+Stored results and request records are never rewritten. Opening and trial
+inspection never calculate: a random-date result that stored its summary only
+shows a note in place of the trial.
 
 Existing waiting and held queue rows retain their request format and execution.
-Saving an unchanged held edit keeps its original selection in any format, even
-after Run backtest captured the same draft. An unchanged selection or name-only
-edit keeps the recorded seed and plan. A changed edit, a copy and an immediate
-run capture a chain. An unchanged capture/2 is resubmitted as recorded.
+Saving an unchanged held edit keeps its original selection in any format. An
+unchanged selection or name-only edit keeps the recorded seed and plan. A
+changed edit and a copy capture a chain. An unchanged capture/2 is resubmitted
+as recorded.
 
 The offline latest screen runs only the shape that flat options express exactly:
 Filters it supports and one highest EV/EBITDA-yield Rank, first or last. Auto-run
@@ -331,7 +330,7 @@ the published reader until replacement or page exit. In-flight IDs participate i
 page-exit cleanup. Network release remains best effort.
 
 One immutable artifact owns completed metadata. Mutable forms remain separate.
-Library opening, queue opening and recovery restore through `StrategyDraft`.
+Tune and a held queue edit restore through `StrategyDraft`.
 A held draft refuses replacement and releases an unaccepted acquisition. Opening
 tickets, artifact identities and selection revisions fence late responses.
 

@@ -30,7 +30,7 @@ market data.
 - **Random-date robustness trials.** Run 1–100 seeded trials (24 by default).
   Each trial picks one random trading day in every rebalance period. The
   result shows the spread of returns against SPY, not one lucky start date.
-- **Saved library and queue.** Queue tests to run overnight. Edit, hold,
+- **Saved library and queue.** Every dated test runs from a queue. Edit, hold,
   reorder or pause waiting tests. Completed results move to a library of up to
   100 saved backtests. You can rename them, sort them and compare up to eight
   side by side. Opening a saved result never recalculates it.

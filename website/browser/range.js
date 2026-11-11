@@ -64,25 +64,24 @@ function scheduledPresentation(settings){
     rangeNote:'Custom schedule: trade dates and interval determine holding periods. '+StockScreener.selectionDescription(settings)+' Results and CSV exports below use this schedule.',
     periodLabel:CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
 }
+// The line under the builder speaks for the latest picks only. A dated result is a
+// stored record: no draft setting makes it stale. Picks that match the settings
+// need no line.
 function updateResultsState(){
-  const view=viewKey(),saved=currentArtifact(),state=document.getElementById('results-state');
+  const latest=screeningMode==='latest',saved=ResultArtifacts.forView('latest'),state=document.getElementById('results-state');
   let matches=false;try{matches=ResultArtifacts.matches(saved,currentSettings());}catch(_){}
-  const stale=!!saved&&!matches;
-  state.className='screen-message'+(stale||!saved?' warning':'');
-  // A saved January result opens without calculation; no current setting reproduces it.
-  // Results that match the settings need no line.
-  const lines=[saved?.kind==='january'?'Saved January result shown without calculation. January backtests were removed. To compare, run a custom schedule every 12 months from 1 January.':stale?'Settings changed — displayed results do not match the current settings. Select '+(view==='latest'?'Screen latest':'Run backtest')+' to update them. Downloads still use the displayed results.':!saved?'No results for these settings yet. Select '+(view==='latest'?'Screen latest.':'Run backtest.'):''];
-  if(ScheduleView.isRunning())lines.push('A backtest is running with the settings submitted at its start.');
-  state.textContent=lines.filter(Boolean).join(' ');
-  for(const id of ['latest-view','custom-view'])document.getElementById(id).setAttribute('data-results-stale',String(stale));
-  SavedBacktests.update();
+  const stale=latest&&!!saved&&!matches,missing=latest&&!saved;
+  state.className='screen-message'+(stale||missing?' warning':'');
+  state.textContent=stale?'Settings changed — displayed results do not match the current settings. Select Screen latest to update them. Downloads still use the displayed results.':missing?'No results for these settings yet. Select Screen latest.':'';
+  document.getElementById('latest-view').setAttribute('data-results-stale',String(stale));
 }
-// Auto-run covers the offline shape only; other chains wait for an explicit run.
+// Auto-run belongs to Latest stock picks and covers the offline shape only; other
+// chains wait for Screen latest. A changed setting never starts a dated test.
 function settingsChanged(run=true){
   updateResultsState();
   StrategyDraft.touch();
   StrategyDraft.render();
-  if(run && StrategyDraft.flat() && StrategyDraft.complete() && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
+  if(run && screeningMode==='latest' && StrategyDraft.flat() && StrategyDraft.complete() && document.getElementById('auto-run').checked)applyRange();
 }
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -180,7 +179,9 @@ function setModeVisibility(){
   document.getElementById('latest-view').hidden=!latest;
   document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
-  if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
+  // Latest stock picks has Screen latest and Auto-run. Historical backtest has the test name and Add to queue.
+  for(const id of ['run-screen','auto-run-controls'])document.getElementById(id).hidden=!latest;
+  document.getElementById('queue-controls').hidden=latest;
   const artifact=currentArtifact(),scalar=document.getElementById('scalar-evidence-view');
   applyPresentation(artifact?.presentation);renderSteps();
   // A server latest panel in the builder belongs to latest mode only.
@@ -189,7 +190,7 @@ function setModeVisibility(){
   StrategyDraft.render();
 }
 // Only the offline latest screen recalculates on a mode switch; a dated
-// backtest starts from Run backtest or a changed setting.
+// test starts from Add to queue.
 function switchMode(mode){
   screeningMode=mode;setModeVisibility();settingsChanged(mode==='latest');
 }
@@ -226,13 +227,13 @@ function latestPresentation(r){
   const rangeNote=`Latest picks · ${r.asof} · ${StockScreener.selectionDescription(o)} No holding returns or future performance are used in this list.`;
   return {coverage,notice:{text,severity},rangeNote,periodLabel:r.asof};
 }
+// Screen latest. The offline screen runs the shape flat options express; every other chain runs on the service.
 function applyRange(){
   if(document.getElementById('run-screen').disabled)return;
   updateResultsState();
-  // The offline screen runs the shape flat options express; every other latest chain runs on the service.
-  if(screeningMode==='latest'&&StrategyDraft.flat()){applyLatest();return;}
+  if(StrategyDraft.flat()){applyLatest();return;}
   document.getElementById('run-screen').disabled=true;
-  void StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings)).catch(error=>{document.getElementById('screen-error').textContent=error.message;}).finally(()=>{if(!ScheduleView.isRunning())document.getElementById('run-screen').disabled=false;});
+  void StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings)).catch(error=>{document.getElementById('screen-error').textContent=error.message;}).finally(()=>{document.getElementById('run-screen').disabled=false;});
 }
 function downloadLatest(){
   const artifact=ResultArtifacts.forView('latest');if(artifact?.version===4){ResultArtifacts.reader(artifact).download('screen');return;}
@@ -254,12 +255,10 @@ function copySavedBacktestSettings(snapshot){
   const artifact=ResultArtifacts.decode(snapshot);
   if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
   restoreBacktestSettings(artifact.settings,artifact.catalog,artifact.result.configuration?.seed);
-  autoRun.checked=false;
-  try{localStorage.setItem('backtest-auto-run','false');}catch(_){}
   updateResultsState();
   Workspaces.show('builder');
   document.getElementById('strategy-form').scrollIntoView?.({behavior:'smooth',block:'start'});
-  document.getElementById('run-screen').focus?.({preventScroll:true});
+  document.getElementById('queue-add').focus?.({preventScroll:true});
 }
 // The form owns one ordered draft: Universe (market and pool controls), then
 // Rank and Filter steps. Step IDs exist only in the browser. Restoration
@@ -369,8 +368,8 @@ const StrategyDraft=(()=>{
   function selection(){
     const offline=viewKey()==='latest'&&flat();
     if(offline)return offline;
-    // A run captures a copied flat or capture/1 strategy as a chain; until
-    // then the copy shows its recorded selection.
+    // A submission captures a copied flat or capture/1 strategy as a chain;
+    // until then the copy shows its recorded selection.
     if(captured?.content===content())return {strategy:copy(captured.strategy)};
     if(unchanged())return copy(restored.selection);
     return {strategy:placeholder()};
@@ -427,15 +426,6 @@ const StrategyDraft=(()=>{
     }
     return {format:'strategy-intent',version:2,universe:draft.universe,steps:chain};
   }
-  async function captureBuiltins(options){
-    // Convert a detached flat request, never the form or an accepted record.
-    // Capture finishes before the caller allocates a run or queue identity.
-    options=copy(options);
-    if(options.strategy)return options;
-    const converted=fromSettings(options);
-    const prepared=await VariableWorkspace.request('/capture',{intent:await intentFor({universe:{pool:converted.pool},steps:converted.steps})});
-    return {...Object.fromEntries(Object.entries(options).filter(([key])=>!flatKeys.has(key))),strategy:prepared.strategy};
-  }
   // An unchanged chain capture is resubmitted as recorded. Saving an unchanged
   // held queue edit keeps its original selection in any format; every other
   // submission captures a chain.
@@ -479,7 +469,7 @@ const StrategyDraft=(()=>{
     const last=steps.findLast(step=>step.kind==='rank'),offline=flat();
     document.getElementById('strategy-heading').textContent=last?(last.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(last.source):'Add a Rank step';
     document.getElementById('auto-run').disabled=!offline;
-    document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this chain. Select '+(screeningMode==='latest'?'Screen latest':'Run backtest')+' to calculate.';
+    document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this chain. Select Screen latest to calculate.';
     document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
     // Random-date and custom-interval inputs show only while their choice is on,
     // and the dates block only in backtest mode. A hidden input with a range is
@@ -590,18 +580,20 @@ const StrategyDraft=(()=>{
     return {title:'Step '+(at+1)+' · '+(steps[at].kind==='rank'?'Rank':'Filter'),use:'Update step '+(at+1)};
   }
   return {restore,beginQueuedEdit,catalog,fields,read:()=>({revision,changed,detached:copy(detached)}),source:role=>copy(steps.find(item=>item.id===role)?.source??null),describe,
-    patch,edit,commitRange,move,remove,reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,captureBuiltins,touch,render};
+    patch,edit,commitRange,move,remove,reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,touch,render};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
-ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:!StrategyDraft.flat()}),Workspaces.runStatus);
+ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:!StrategyDraft.flat()}));
 VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value,market:selectedMarket});
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
 document.getElementById('mode-backtest').addEventListener('click',()=>switchMode('backtest'));
 document.getElementById('download-latest').addEventListener('click',e=>{e.preventDefault();downloadLatest();});
-document.getElementById('strategy-form').addEventListener('submit',e=>{e.preventDefault();applyRange();});
+// The form submits for Screen latest only. In Historical backtest mode a submit, such as Enter in a
+// step field, starts nothing: a dated test starts from Add to queue.
+document.getElementById('strategy-form').addEventListener('submit',e=>{e.preventDefault();if(screeningMode==='latest')applyRange();});
 document.getElementById('reset-strategy').addEventListener('click',()=>{StrategyDraft.reset();settingsChanged();});
 applyRange();
 
@@ -646,16 +638,10 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
   if(id==='stock-market'){selectMarket(selectedMarket());document.getElementById('stock-pool').value='cached';renderSteps();}
   settingsChanged();
 });
-document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
-SavedBacktests.init({current:()=>ResultArtifacts.forView('custom'),isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest,copy:copySavedBacktestSettings});
-BacktestQueue.init({changed:Workspaces.queueStatus,libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
-  prepare:()=>{Workspaces.show('builder');autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
-  configure:()=>{
-    screeningMode='backtest';
-    setModeVisibility();settingsChanged(false);
-    document.getElementById('schedule-controls').scrollIntoView?.({behavior:'smooth',block:'center'});
-  },
+SavedBacktests.init({open:restoreSavedBacktest,copy:copySavedBacktestSettings});
+BacktestQueue.init({changed:Workspaces.queueStatus,libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
+  showBuilder:()=>Workspaces.show('builder'),
   metricLabel:id=>sourceCatalog().metrics[id]?.label||id,filterLabel:id=>sourceCatalog().filters[id]?.label||id});
 Workspaces.init();
 ScheduleView.resume();

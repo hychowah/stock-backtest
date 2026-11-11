@@ -166,6 +166,10 @@ const BacktestComparison=(()=>{
       performance.push(entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('growth','Growth of $1',r.growth,Number.isFinite(r.growth)?rounded(r.growth)+'×':'Unavailable'));
     }
     parameters.push(fact('observed_start','Recorded observation start',observationWindow.start),fact('observed_end','Recorded observation end',observationWindow.end));
+    // A quiet row holds only its documented default or no bound: the Original engine, filtering before
+    // ranking, no extra condition, fresh random dates, no limit, a zero minimum. A short list of settings
+    // leaves these rows to the full list.
+    for(const row of parameters)if(row.key==='engine'&&row.value==='original'||row.key==='selection_order'&&row.value==='filter_first'||row.key==='filters'&&!row.value.length||row.key==='seed_policy'&&row.value.fresh||/^(bound\.)?(min_|max_|sector$|exchange$)/.test(row.key)&&(row.value===null||row.value===0))row.quiet=true;
     return {kind,parameters,performance,headline,requestedWindow,observationWindow,notices:kind==='random'?['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.']:[]};
   }
   // Inputs are compact descriptions, not stored artifacts, one cell of text per

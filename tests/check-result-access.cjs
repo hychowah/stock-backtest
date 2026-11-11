@@ -4,16 +4,15 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const nodes=new Map(),acquired=[],released=[],events={};let lost=false,malformed=false,wrong=false,wait=null,resume=null,refuse=false,afterPublish=false;
 let inline=false,responseBytes=null;
 const saved='a'.repeat(32),queued='b'.repeat(32),runId='c'.repeat(32);
-const settings={mode:'custom',start:'2015-01-02',end:'2015-05-01',months:1,rank_to:5};
+const settings={mode:'custom',start:'2015-01-02',end:'2015-05-01',months:1,rank_to:5},screen={mode:'latest',strategy:{}};
 const artifact={version:3,kind:'custom',settings,result:{periods:[],cagr:.1},catalog:{metrics:{},filters:{}},presentation:{}};
 const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textContent:'',hidden:false,handlers:{},querySelectorAll:()=>[],setAttribute(){},addEventListener(k,f){this.handlers[k]=f;}});return nodes.get(id);};
 const response=(value,status=200)=>({ok:status<400,status,headers:{get:()=>responseBytes},json:async()=>structuredClone(value)});
 const context=vm.createContext({console,Date,Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,
  document:{getElementById:node},location:{protocol:'http:'},addEventListener:(event,fn)=>events[event]=fn,
  setInterval:()=>1,clearInterval(){},updateResultsState(){},viewKey:()=> 'custom',sourceCatalog:()=>artifact.catalog,scheduledPresentation:()=>artifact.presentation,
- StrategyDraft:{captureBuiltins:async options=>({...options,strategy:{}})},
- EngineControls:{label:()=> 'Original',fields:()=>({}),requireCalendar(){}},CalendarSettings:{read:()=>settings,decode:()=>settings,label:()=> 'Annual'},
- BacktestRuns:{create:()=>({id:runId,mode:'custom',options:settings,submitted:Date.now()}),follow:async()=>({state:'complete',evidence:{manifest:{periods:1}}})},
+ EngineControls:{label:()=> 'Original',fields:()=>({})},CalendarSettings:{read:()=>settings,decode:()=>settings,label:()=> 'Annual'},
+ BacktestRuns:{create:options=>({id:runId,mode:'latest',options,submitted:Date.now()}),follow:async()=>({state:'complete',evidence:{manifest:{periods:0}}})},
  async fetch(url,options={}){
   const id=url.split('/')[3],method=options.method||'GET';
   if(url.includes('/reader')){
@@ -34,11 +33,11 @@ const exec=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>set
 context.open=artifact=>{if(refuse)throw Error('Save or cancel queued edit');exec('ResultArtifacts.publish')(artifact);if(afterPublish)throw Error('Presentation failed');};
 context.publishResult=context.open;
 (async()=>{
- exec('SavedBacktests.init({current:()=>null,isRunning:()=>false,open})');
+ exec('SavedBacktests.init({open})');
  exec("BacktestQueue.init({open,libraryChanged(){},metricLabel:()=> 'Original',filterLabel:String})");await tick();
  const savedOpen=()=>node('saved-list').handlers.click({target:{dataset:{open:saved}}});
  const queueOpen=()=>exec(`BacktestQueue.action('open','${queued}')`);
- const freshOpen=()=>exec('ScheduleView.run({})');
+ context.screen=screen;const freshOpen=()=>exec('ScheduleView.runPrepared(screen)');
  for(const consumer of [savedOpen,queueOpen,freshOpen]){
   lost=true;await consumer();lost=false;
   assert.equal(released.at(-1),acquired.at(-1));

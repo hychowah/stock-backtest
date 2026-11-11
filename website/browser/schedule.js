@@ -1,8 +1,9 @@
-/* Custom dated books use the local prepared daily cache. Rendering consumes
-   dated periods; it never assumes one rebalance per calendar year. */
+/* Presents a dated result: custom dated books from the local prepared daily cache.
+   Rendering consumes dated periods; it never assumes one rebalance per calendar
+   year. Every dated test runs from the queue. This owner starts one kind of work:
+   a latest screen for a chain that the page cannot screen offline. */
 const ScheduleView=(()=>{
-  let requestNumber=0,running=false,preparing=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null,inspectedSector=undefined,statusChanged=()=>{};
-  const hasResults=()=>!!ResultArtifacts.forView('custom');
+  let inspectedTrial=null,inspectedSector=undefined;
   function displayedResult(){
     const artifact=ResultArtifacts.forView('custom');
     return artifact?.kind==='random'?artifact.result.trial_results?.[inspectedTrial]:artifact?.result;
@@ -10,37 +11,8 @@ const ScheduleView=(()=>{
   const node=id=>document.getElementById(id);
   const format=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  function elapsed(){
-    const seconds=Math.max(0,Math.floor((Date.now()-startedAt)/1000));
-    return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');
-  }
-  function startBusy(){
-    running=true;startedAt=Date.now();
-    const button=node('run-screen');
-    button.disabled=true;
-    node('stop-backtest').hidden=false;
-    button.textContent='Backtesting…';
-    node('custom-view').setAttribute('aria-busy','true');
-    node('schedule-progress').hidden=false;
-    node('schedule-message').className='';
-    node('schedule-message').textContent='Backtest runs on the server. You can lock your phone or close this page. Reopen this address to retrieve the result.'+(hasResults()?' Previous results remain below until it finishes.':'');
-    const tick=()=>{node('schedule-elapsed').textContent=elapsed();statusChanged({running:true,detail:node('schedule-progress-detail').textContent,elapsed:elapsed()});};
-    tick();timer=setInterval(tick,1000);
-    updateResultsState();
-  }
-  function stopBusy(){
-    if(timer!==null){clearInterval(timer);timer=null;}
-    if(running){
-      node('run-screen').disabled=false;
-      node('run-screen').textContent=viewKey()==='latest'?'Screen latest':'Run backtest';
-    }
-    running=false;activeRun=null;statusChanged({running:false,detail:node('schedule-message').textContent,elapsed:elapsed()});
-    node('stop-backtest').hidden=true;
-    node('stop-backtest').disabled=false;
-    node('schedule-progress').hidden=true;
-    node('custom-view').setAttribute('aria-busy','false');
-    updateResultsState();
-  }
+  // The Screen latest button waits while the local service screens or looks for the last screen.
+  function busy(on){node('run-screen').disabled=on;node('run-screen').textContent=on?'Screening…':'Screen latest';}
   function csv(kind){
     if(EvidenceResults.download(kind))return;
     const artifact=ResultArtifacts.forView('custom');
@@ -89,131 +61,76 @@ const ScheduleView=(()=>{
     if(ResultArtifacts.forView('custom').kind!=='random')ResultExplorer.show(ResultArtifacts.forView('custom'),1,
       {summary:result,periods:result.periods.length,short,empty});
   }
-  async function run(filters,override=null,replay=null){
-    if(running||preparing)return;
-    if(typeof location==='undefined' || location.protocol==='file:'){
-      node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
-    }
-    preparing=true;
-    try{
-    const random=!!replay || (!override && node('date-testing').value==='random');
-    const {engine:replayEngine,...recorded}=replay||{};
-    const plan=JSON.parse(JSON.stringify(recorded));
-    let body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,engine:replayEngine??'original'}:
-      override?{...filters,...override,...EngineControls.fields()}:{...filters,...CalendarSettings.read(),...EngineControls.fields()};
-    if(!replay&&random){
-      body.trials=+node('random-trials').value;
-      if(node('repeat-random').checked)body.seed=+node('random-seed').value;
-    }
-    EngineControls.requireCalendar(body);
-    body=await StrategyDraft.captureBuiltins(body);
-    if(replay&&!plan.options.strategy)plan.options={strategy:body.strategy,...(Object.hasOwn(plan.options,'market')?{market:plan.options.market}:{})};
-    preparing=false;
-    await follow(BacktestRuns.create(random?'random':'custom',body,replay?plan:null));
-    }catch(error){node('screen-error').textContent=error.message;}
-    finally{preparing=false;}
-  }
+  // Screen latest for a chain outside the offline shape.
   async function runPrepared(settings){
-    if(running||preparing)return;
-    if(typeof location==='undefined'||location.protocol==='file:'){node('screen-error').textContent='Backtests use the local service. Run python3 website/serve.py, then open its local website.';return;}
+    if(typeof location==='undefined'||location.protocol==='file:'){node('screen-error').textContent='This latest screen uses the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;}
     const {mode,...options}=JSON.parse(JSON.stringify(settings));
-    if(['custom','random'].includes(mode))EngineControls.requireCalendar(options);
-    await follow(BacktestRuns.create(mode,options));
+    await follow(BacktestRuns.create(options));
   }
+  // The result stays wanted until another result opens. Then this page stops asking.
   async function follow(run){
-    if(running)return;
-    const number=++requestNumber,body=run.options,random=run.mode==='random',isCurrent=ResultArtifacts.opening();
-    activeRun=run;
+    const isCurrent=ResultArtifacts.opening();
     node('screen-error').textContent='';
-    node('schedule-progress-detail').textContent=run.mode==='latest'?'Screening the latest cached close with the submitted strategy.':CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
-    node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
-    startBusy();
-    startedAt=run.submitted;
+    busy(true);
     try{
-      let rememberedSeed=null;
       const state=await BacktestRuns.follow(run,state=>{
-        if(state.state==='reconnecting'){
-          node('schedule-progress-detail').textContent='Connection lost. Reconnecting to the server run. You can reopen this address later.';return;
-        }
-        if(state.configuration && state.configuration.seed!==rememberedSeed){
-          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration,run.options.engine);
-        }
-        if(state.state==='stopping'){
-          node('schedule-progress-detail').textContent='Stopping on the server. Waiting for workers and cache cleanup.';return;
-        }
-        const event=state.progress;
-        if(event && (event.type==='progress'||event.type==='preparation')){
-          node('trial-progress').value=event.completed;node('trial-progress').max=event.total;
-          const books=event.total_new_books>0?' · preparing books '+event.calculated_books+'/'+event.total_new_books+' with '+event.workers+' worker'+(event.workers===1?'':'s'):'';
-          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · '+CalendarSettings.label(body)+'.';
-        }
-      },{current:()=>number===requestNumber});
-      if(number!==requestNumber || !state)return;
-      if(state.state==='cancelled'){
-        node('schedule-message').textContent='Backtest stopped.'+(hasResults()?' Previous results remain displayed.':' Select Run backtest when ready.');
-        return;
-      }
+        node('screen-error').textContent=state.state==='reconnecting'?'Connection lost. Reconnecting to the local service…':'';
+      },{current:isCurrent});
+      if(!state)return;
       if(state.state==='failed')throw Object.assign(Error(state.error),{code:state.code,path:state.path,errors:state.errors});
-      if(!isCurrent())return;
-      let next=state.result;
-      if(state.evidence){
-        const used=await ResultArtifacts.use({kind:'run',id:run.id},artifact=>{next=artifact.result;publishResult(artifact);},{current:isCurrent,display:{catalog:sourceCatalog(),presentation:scheduledPresentation({mode:run.mode,...body}),captured_at:new Date().toISOString()}});
-        if(!used.consumed)return;
-      }else completeResult({mode:run.mode,...body},next);
-      if(random){
-        node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
-      }else if(run.mode==='latest'){node('schedule-message').textContent='Latest screen complete · '+next.names+' selected stocks.';}else{
-        node('schedule-message').textContent='Backtest complete · '+(state.evidence?.manifest.periods??next.periods.length)+' holding periods · '+elapsed()+' elapsed.';
-      }
-      node('schedule-message').className='backtest-complete';
-    }catch(error){if(number===requestNumber){
-      node('screen-error').textContent=error.message+(hasResults()?' The previous results remain displayed.':' Try running the backtest again.');
-      node('schedule-message').textContent='Backtest failed after '+elapsed()+'.';
-      node('schedule-message').className='backtest-failed';
-    }}finally{if(number===requestNumber)stopBusy();}
+      await ResultArtifacts.use({kind:'run',id:run.id},artifact=>publishResult(artifact),{current:isCurrent,display:{catalog:sourceCatalog(),presentation:scheduledPresentation({mode:run.mode,...run.options}),captured_at:new Date().toISOString()}});
+    }catch(error){node('screen-error').textContent=error.message+' The previous result remains displayed.';}
+    finally{busy(false);}
   }
-  function init(readContext,onStatus=()=>{}){
-    statusChanged=onStatus;
+  function init(readContext){
     CalendarSettings.init();void EngineControls.init(readContext);
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    // A stored trial opens in Returns, where its period returns and stocks show.
-    RobustnessView.init((trial,configuration,stored,index)=>{
-      if(!stored&&![3,4].includes(ResultArtifacts.forView('custom')?.version))return run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)});
+    // A trial opens in Returns, where its period returns and stocks show.
+    RobustnessView.init(index=>{
       inspect(index);Workspaces.reviewSection('returns');
       // The tab change hides the button that had focus; the trial title takes it.
       node('schedule-trial-title').focus();
-    },configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    },()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
     EvidenceResults.init();
     ResultExplorer.init();
   }
+  // After a reload, show again the newest latest screen that this browser sent to the service.
   async function resume(){
-    if(typeof location==='undefined'||location.protocol==='file:')return;
-    if(running||!BacktestRuns.pending())return;
-    startBusy();
-    node('stop-backtest').hidden=true;
-    node('schedule-progress-detail').textContent='Checking saved runs on the server…';
+    if(typeof location==='undefined'||location.protocol==='file:'||!BacktestRuns.pending())return;
+    busy(true);
     let run;
-    try{run=await BacktestRuns.recover(()=>{node('schedule-progress-detail').textContent='Reconnecting to check saved runs…';});}
-    finally{stopBusy();}
-    if(!run){node('screen-error').textContent='No previous run is available. It may have stopped, failed or expired. Run the backtest again.';return;}
-    try{restoreBacktestSettings({mode:run.mode,...run.options});}
-    catch(error){node('screen-error').textContent=error.message;return;}
+    try{run=await BacktestRuns.recover();}
+    finally{busy(false);}
+    if(!run)return;
+    restoreBacktestSettings({mode:run.mode,...run.options});
     return follow(run);
   }
   // The per-trial block of a random-date result names its trial; the headline shows all trials.
-  function trialTitle(artifact){if(artifact?.kind==='random')node('schedule-trial-title').textContent='Trial '+(inspectedTrial+1)+' of '+artifact.result.trials.length;}
-  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');trialTitle(artifact);if([3,4].includes(artifact?.version))EvidenceResults.show(artifact,index+1);else render();}
+  // An older random-date result can hold its summary only. Then a trial has no stocks and no period
+  // returns: a note says so and how to get them. Nothing is calculated to show them.
+  function trial(artifact){
+    node('schedule-trial-title').textContent='Trial '+(inspectedTrial+1)+' of '+artifact.result.trials.length;
+    const stored=[3,4].includes(artifact.version)||!!artifact.result.trial_results?.[inspectedTrial];
+    node('schedule-trial-missing').hidden=stored;
+    if(!stored)node('schedule-results').hidden=true;
+    return stored;
+  }
+  function inspect(index){
+    inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');
+    if(!trial(artifact))return;
+    if([3,4].includes(artifact.version))EvidenceResults.show(artifact,index+1);else render();
+  }
   function inspectOriginal(number,period,sector){
-    if(number===undefined&&inspectedTrial!==null){node('schedule-results').hidden=false;return;}
+    const artifact=ResultArtifacts.forView('custom');if(!artifact)return;
+    if(number===undefined&&inspectedTrial!==null){node('schedule-results').hidden=!node('schedule-trial-missing').hidden;return;}
     number??=1;period??=1;
     inspectedTrial=number-1;inspectedSector=sector;
-    const artifact=ResultArtifacts.forView('custom');if(!artifact)return;
-    trialTitle(artifact);
+    if(artifact.kind==='random'&&!trial(artifact))return;
     if([3,4].includes(artifact.version))EvidenceResults.show(artifact,number,{period,sector});
     else{render();node('schedule-period').value=String(period-1);stocks();}
   }
@@ -221,21 +138,15 @@ const ScheduleView=(()=>{
     node('custom-view').hidden=false;
     ResultExplorer.clear();
     EvidenceResults.showProducer(artifact);
-    inspectedTrial=null;inspectedSector=undefined;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
+    inspectedTrial=null;inspectedSector=undefined;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;node('schedule-trial-missing').hidden=true;
     if(artifact.kind==='random'){
-      RobustnessView.render(artifact.result,artifact.settings.engine);node('schedule-results').hidden=true;
+      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
       ResultExplorer.show(artifact,'all',{summary:artifact.result,periods:artifact.result.trials[0]?.periods??0});
     }else{
       if([3,4].includes(artifact.version))EvidenceResults.show(artifact,1);else render();node('robustness-results').hidden=true;
     }
-    // The status line speaks only for a run or a failed read; an opened result needs none.
+    // The status line speaks only for a failed read or a refused copy; an opened result needs none.
     node('schedule-message').textContent='';node('schedule-message').className='';
   }
-  function cancel(){
-    if(!running||!activeRun)return;
-    BacktestRuns.stop(activeRun);
-    node('stop-backtest').disabled=true;
-    node('schedule-message').textContent='Stop requested. The server will confirm after worker and cache cleanup. If disconnected, this request will retry when the page reconnects.';
-  }
-  return {run,runPrepared,init,resume,cancel,show,inspectOriginal,isRunning:()=>running||preparing};
+  return {runPrepared,init,resume,show,inspectOriginal};
 })();

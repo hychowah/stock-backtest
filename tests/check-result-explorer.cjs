@@ -108,7 +108,7 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  assert(node('robustness-trials').innerHTML.includes('2010-01-02'));
  assert(input('window').textContent.includes('ranks 20–30'));
  node('robustness-measure').value='cagr';
- run('RobustnessView.init(()=>{},()=>{})');
+ run('RobustnessView.init(()=>{})');
  node('robustness-measure').handlers.change();assert(node('robustness-chart').innerHTML.includes('mean 42.00%'));
  const allCount=applied().length;input('reset').handlers.click();
  assert.equal(node('robustness-mean').textContent,'15.00%');assert.equal(applied().length,allCount);
@@ -168,7 +168,7 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  assert(requests.every(row=>row.url==='/api/backtest-exploration'||row.url.includes('/reader')));
  const html=fs.readFileSync(path.join(__dirname,'../website/browser/template.html'),'utf8');
  assert(html.indexOf('id="result-explorer"')>html.indexOf('</form>'));
- assert(html.includes('Save original backtest')&&html.includes('Download original holdings'));
+ assert(html.includes('Download original holdings'));
  // Explore follows the main chart and the tables of both kinds of result.
  for(const id of ['robustness-chart','robustness-trials','schedule-chart','schedule-rows'])assert(html.indexOf('id="result-explorer"')>html.indexOf('id="'+id+'"'),id);
  // The builder shows controls first: no page heading, and at most three help

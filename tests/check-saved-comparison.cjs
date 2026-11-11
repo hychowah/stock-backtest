@@ -37,7 +37,7 @@ const refresh=()=>node('queue-refresh').handlers.click();
 const open=(id,opened=true)=>node('saved-list').handlers.toggle({target:{dataset:{menu:id},open:opened}});
 const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-menu="'+id+'"');return start<0?'':html.slice(start,html.indexOf('</li>',start));};
 (async()=>{
- run('SavedBacktests.init({current:()=>null,isRunning:()=>false,open:()=>{throw Error("No restoration")}})');await settle();
+ run('SavedBacktests.init({open:()=>{throw Error("No restoration")}})');await settle();
  // No row is read before a tick or an open Details.
  assert(node('saved-comparison').hidden);assert.deepEqual(requests.map(request=>request.url),['/api/backtests']);
  records[0].snapshot.settings.filters=[{field:'fcf',op:'gt',value:-2}];
@@ -45,8 +45,8 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  records[0].snapshot.settings.future_setting='<img src=x onerror=bad>';
  assert.equal(node('saved-list').captures.toggle,true,'Native toggle needs capture on the list');
  assert(text(row(ids[0])).includes('Reading the saved settings…'));assert(text(row(ids[0])).includes('Tune'),'The actions do not wait for the read');
- // Details reads that test one time, without a tick, and shows its settings in the row: one line with the market,
- // the test type, the window and the interval, then the other settings, the headline, the saved ID and the actions.
+ // Details reads that test one time, without a tick, and shows its parameters in the row: one line with the market,
+ // the test type, the window and the interval, then the settings that hold a value, the headline, the saved ID and the actions.
  await open(ids[0]);
  assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2]),acquired.length],[1,0,0,0]);assert(node('saved-comparison').hidden,'Details ticks nothing');
  let [plain,exact]=row(ids[0]).split('Exact recorded values');
@@ -54,7 +54,9 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  for(const part of parts)assert(text(plain).includes(part),'Missing '+part);
  assert.deepEqual(parts.map(part=>text(plain).indexOf(part)),parts.map(part=>text(plain).indexOf(part)).sort((a,b)=>a-b),'The parts keep this order');
  assert(text(exact).indexOf('Tune')>text(exact).indexOf('Minimum market cap (USD): 100000000'),'The actions follow the settings');
- assert(!text(plain).includes('100000000')&&!text(exact).includes('Last rank'),'Only the settings with exact text are listed again, in the closed disclosure');
+ // A recorded fact and a default-only setting show in the closed list only. That list has every recorded row.
+ for(const quiet of ['Requested engine: Original','Recorded producer: Original'])assert(!text(plain).includes(quiet)&&text(exact).includes(quiet),quiet);
+ assert(!text(plain).includes('100000000')&&text(exact).includes('Last rank: 25'));
  assert(row(ids[0]).includes('&lt;Original &amp; cash flow&gt;'));assert(row(ids[0]).includes('&lt;img src=x onerror=bad&gt;'));assert(!row(ids[0]).includes('<img src=x'));
  // A second open, a list that is drawn again, a sort and a rename show the same text and read nothing.
  const first=row(ids[0]);await open(ids[0],false);await open(ids[0]);await refresh();await open(ids[0]);
@@ -162,5 +164,5 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  assert.equal(ninth.checked,false);assert(node('saved-status').textContent.includes('Untick a test first'));assert.equal(requests.length,beforeNinth);assert(text(panel()).startsWith('8 tests ticked'));
  await tick(records[0].id,false);ninth.checked=true;await node('saved-list').handlers.change({target:ninth});assert.equal(ninth.checked,true);assert(text(panel()).startsWith('8 tests ticked'));
  assert.deepEqual(released,acquired);assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
- console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and exact text in a closed disclosure, a failed open read retried only by Retry, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
+ console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, a failed open read retried only by Retry, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
 })().catch(error=>{console.error(error);process.exitCode=1});

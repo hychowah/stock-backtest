@@ -13,12 +13,6 @@ const EngineControls=(()=>{
   const fields=()=>({engine:selected()});
   const runnable=(engine=selected())=>(engines??[{id:'original'}]).some(e=>e.id===engine);
   const calendarSupported=(engine=selected())=>(engines??[]).some(e=>e.id===engine&&e.calendar===1);
-  // An engine this server does not run is left for the server to refuse.
-  function requireCalendar(options){
-    const engine=options.engine??selected();
-    if(options.calendar&&runnable(engine)&&!calendarSupported(engine))
-      throw Error(label(engine)+' does not support custom week/month calendars on this server. Reload the updated website.');
-  }
   function sync(){
     const intent=context(),dated=['custom','random'].includes(intent.mode),engine=selected();
     const boundary=document.getElementById('engine-controls');
@@ -40,6 +34,6 @@ const EngineControls=(()=>{
       sync();
     }catch(_){}
   }
-  return {fields,selected,label,runnable,calendarSupported,requireCalendar,sync,init};
+  return {fields,selected,label,runnable,calendarSupported,sync,init};
 })();
 if(typeof module!=='undefined')module.exports=EngineControls;

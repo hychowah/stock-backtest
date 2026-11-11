@@ -3,7 +3,7 @@ const nodes=new Map();
 function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn},scrollIntoView(){}});return nodes.get(id)}
 const CalendarSettings=require('../website/browser/calendar-settings.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
-let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,preparations=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false,libraryChanges=0;
+let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,builderShown=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false,libraryChanges=0;
 const editReceipts=new Map();
 let settings={selection_order:'rank_first',mode:'custom',start:'2015-01-01',end:'2016-12-30',months:3,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,filters:[{field:'market_cap',op:'gt',value:100}]};
 const snapshot={version:2,kind:'custom',settings:copy(settings),catalog:{metrics:{},filters:{}},presentation:{},result:{periods:[]}};
@@ -65,14 +65,14 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/engine-c
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-comparison.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
-context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),prepareSubmission:async()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
+context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),prepareSubmission:async()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),showBuilder:()=>builderShown++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
 (async()=>{
   call('BacktestQueue.init(config)');await settle();assert(!node('queue-add').disabled);
   // The line beside the name box takes no space until Add, Tune or a held edit has something to say.
   assert.equal(node('queue-builder-status').hidden,true);assert.equal(node('queue-status').textContent,'Queue ready. Tests and results are saved on the server.');
   node('queue-name').value='<First & strategy>';await call('BacktestQueue.add()');
-  // Add reports beside the name box in Build strategy, with the reason why Auto-run waits. The Runs line keeps its text.
-  assert(node('queue-add-status').textContent.startsWith('Test added to the queue.'));assert(node('queue-edit-note').textContent.startsWith('Auto-run is suspended'));
+  // Add reports below the name box in Build strategy. The Runs line keeps its text.
+  assert(node('queue-add-status').textContent.startsWith('Test added to the queue.'));assert.equal(node('queue-edit-note').textContent,'');
   assert.equal(node('queue-builder-status').hidden,false);assert.equal(node('queue-status').textContent,'Queue ready. Tests and results are saved on the server.');
   // The name box sits in the strategy form: typing a name is not a settings change. Enter does what a click on
   // the enabled Add button does. Enter that ends an input-method composition is left to the composition.
@@ -86,11 +86,10 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   await enter();assert.deepEqual([records.length,prevented],[2,2]);
   assert.equal(records.length,2);assert.equal(records[0].options.rank_to,50);assert.equal(records[1].options.rank_to,25);
   assert.equal(records[0].options.selection_order,'rank_first');assert.equal(records[1].options.selection_order,'filter_first');
-  assert.equal(preparations,2,'Queue additions keep parameter setup manual between fast cached tests');
   assert(node('queue-list').innerHTML.includes('&lt;First &amp; strategy&gt;'));assert(!node('queue-list').innerHTML.includes('<First & strategy>'));
-  assert.equal(call('BacktestQueue.isManaging()'),true,'Queue construction must suspend automatic immediate runs');
   const first=records[0].id,second=records[1].id;context.first=first;context.second=second;
-  await call('BacktestQueue.action("edit",first)');assert.equal(loaded.rank_to,50);assert.equal(call('BacktestQueue.isEditing()'),true);
+  // A held edit opens the builder with the settings of the test.
+  await call('BacktestQueue.action("edit",first)');assert.equal(loaded.rank_to,50);assert.equal(call('BacktestQueue.isEditing()'),true);assert.equal(builderShown,1);
   settings.rank_to=10;assert.equal(records[0].options.rank_to,50,'Form edits do not mutate submitted settings');
   // The draft decides the saved format: a held save asks it to keep an
   // unchanged original selection. Here the draft returns the flat settings.
@@ -203,7 +202,7 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   // Full and failed publication remain complete, with clear retry labels.
   records=[{id:'c'.repeat(32),name:'Waiting for slot',mode:'custom',options:copy(settings),state:'complete',position:1,revision:1,cagr:.1,transfer:{state:'pending',error:'full'}}];
   await call('BacktestQueue.refresh()');
-  assert(node('queue-list').innerHTML.includes('Completed — waiting for saved slot'));
+  assert(node('queue-list').innerHTML.includes('Completed — waiting for saved slot'));assert(node('queue-list').innerHTML.includes('Delete a saved backtest to make room.'));
   assert(node('queue-list').innerHTML.includes('Open result'));
   records[0].transfer.error='retry';await call('BacktestQueue.refresh()');
   assert(node('queue-list').innerHTML.includes('Saving failed. Results are kept here'));
