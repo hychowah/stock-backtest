@@ -1,7 +1,7 @@
 /* Runs: In progress and Saved backtests are two row groups with one column layout, so
    they read as one table. A row is one line; a long name takes two lines at most
-   and shows in full as a tooltip. The other actions of a row wait in its row
-   control, which opens below the row inside the page flow: no scroll box clips it.
+   and shows in full as a tooltip. Details at the end of a row opens the settings
+   and the other actions below the row, inside the page flow: no scroll box clips it.
    The base rules give the narrow layout, which the queue tray also uses: the name,
    then the other values below it. */
 .run-counts{font:14px system-ui,sans-serif;color:#617172}
@@ -12,7 +12,7 @@
 #saved-heading+.hint{display:inline}
 #queue-list,#saved-list{list-style:none;margin:0;padding:0}
 .run-empty{padding:12px 0;border-top:1px solid #e2e7df;font-size:13px;color:#617172}
-.run-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;min-height:48px;padding:4px 48px 4px 0;border-top:1px solid #e2e7df;font-size:13px;color:#536762}
+.run-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;min-height:48px;padding:4px calc(11ch + 4px) 4px 0;border-top:1px solid #e2e7df;font-size:13px;color:#536762}
 .run-row>input[type=checkbox]{flex:none;width:20px;height:20px;min-height:0;margin:0;padding:0;accent-color:#20775e}
 .run-name{flex:1 1 calc(100% - 32px);min-width:0;font-size:14px;font-weight:600;line-height:1.25;color:#192b31}
 .run-name>span,.saved-comparison thead th>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;pointer-events:none}
@@ -41,18 +41,23 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .run-head button:hover{text-decoration:underline}
 .run-head>span.run-cagr{color:inherit}
 .run-head::before{content:'Sort'}
-/* The row control: a compact button at the end of the row line. */
+/* The row control: a Details button at the end of the row line. Its width is in
+   ch of the row font, like its column, so a wider font cannot cut the label. */
 .run-menu{flex:1 1 100%;min-width:0;font-size:13px}
-.run-menu>summary{position:absolute;top:2px;right:0;display:grid;place-items:center;width:44px;height:44px;list-style:none;border:1px solid transparent;border-radius:6px;font-size:20px;line-height:1;color:#536762;cursor:pointer}
+.run-menu>summary{position:absolute;top:6px;right:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;width:11ch;height:36px;min-height:0;list-style:none;border:1px solid #ccd5d0;border-radius:6px;background:#fff;font-size:13px;line-height:1;color:#192b31;white-space:nowrap;cursor:pointer}
 .run-menu>summary::-webkit-details-marker{display:none}
+.run-menu>summary::before{content:'▸';font-size:10px;color:#536762}
+.run-menu[open]>summary::before{content:'▾'}
 .run-menu>summary:hover,.run-menu[open]>summary{background:#edf2e5;border-color:#dce5d1}
 .run-menu>summary:focus-visible{outline:2px solid #20775e;outline-offset:-2px}
 .run-menu[open]{padding:6px 0 12px}
 .run-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.run-menu p{margin:8px 0 0;overflow-wrap:anywhere}
+.run-menu p{margin:5px 0 0;overflow-wrap:anywhere}
 .run-menu details{margin-top:4px}
 .run-menu details>summary,.saved-comparison summary{width:fit-content;min-height:32px;padding:7px 0;cursor:pointer;color:#536762}
 .run-menu details>p{margin-top:4px}
+.run-menu>:not(summary)+.run-actions{margin-top:10px}
+.run-menu p>button{margin-left:8px;min-height:32px;padding:4px 12px}
 .saved-rename{flex:1 1 260px;font-size:12px}
 .saved-rename input{display:block;width:100%;margin-top:4px}
 .saved-id{font:11px ui-monospace,monospace;color:#617172;overflow-wrap:anywhere}
@@ -62,16 +67,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .comparison-bar{display:flex;align-items:center;gap:12px;min-height:32px;margin-bottom:4px;color:#192b31}
 .comparison-bar>span{flex:1;font-size:12px;color:#617172}
 .comparison-bar>button{min-height:32px;padding:4px 12px}
-.saved-comparison h4{margin:0 0 8px;font-size:14px;color:#192b31}
-.saved-comparison h4>small{margin-left:12px;font-weight:400}
 .comparison-notice{font-size:12px;line-height:1.5;color:#78561b}
-.comparison-headline,.comparison-settings{display:grid;gap:6px 18px;margin:0}
-.comparison-headline{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin-bottom:8px}
-.comparison-settings{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));padding-top:8px;border-top:1px solid #dfe5d8}
-.saved-comparison details>.comparison-settings{padding:0 0 4px;border-top:0}
-.saved-comparison dt{font-size:11px;color:#617172}
-.saved-comparison dd{margin:1px 0 0;color:#192b31;overflow-wrap:anywhere}
-.comparison-headline dd{font-size:18px;font-weight:500;color:#244f43}
 .comparison-scroll{max-width:100%;overflow-x:auto}
 .saved-comparison table{width:100%;table-layout:fixed;font-size:13px}
 .saved-comparison thead td{width:170px}
@@ -89,7 +85,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 @media(min-width:1300px){
   /* The value columns are in ch, so a wider font cannot cut a date or a time. The
      heading row keeps the row font size on its box, so both resolve ch alike. */
-  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,3fr) minmax(0,1fr) 15ch 22ch 7ch 15ch 44px;grid-template-rows:minmax(48px,auto);gap:0 8px;padding:0}
+  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,3fr) minmax(0,1fr) 15ch 22ch 7ch 15ch 11ch;grid-template-rows:minmax(48px,auto);gap:0 8px;padding:0}
   #workspace-runs .run-head{grid-template-rows:auto;font-size:13px}
   #workspace-runs .run-head>*{font-size:11px}
   #workspace-runs li>.run-type,#workspace-runs li>.run-window,#workspace-runs li>.run-time{font-size:12px}

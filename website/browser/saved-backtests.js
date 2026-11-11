@@ -1,16 +1,19 @@
 /* The library stores complete results on the local service, never browser quota.
-   Its records are the Saved backtests rows of Runs. The panel above the rows is derived
-   from the ticked rows and one description per ticked saved id. */
+   Its records are the Saved backtests rows of Runs. Details of a row shows the
+   settings of that test in place. The panel above the rows compares the ticked
+   rows. Both read one description per saved id that the user ticked or opened. */
 const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current=()=>null,isRunning=()=>false,openRecord=()=>{},copySettings=()=>{};
   let queueRefresh=false;
   // Descriptions reuse stored-artifact descriptions and keep their rows only. They
-  // own no artifact, evidence reader, form or main-result lifetime. An id that
-  // leaves the list leaves the ticks and the descriptions.
-  const ticked=new Set(),descriptions=new Map(),opened={};
-  let loading=false,refocus=null;
+  // own no artifact, evidence reader, form or main-result lifetime. viewed holds
+  // the rows whose open Details waits for its description. failures holds the
+  // reason of a failed read, shown in that row until Retry or a new tick. An id
+  // that leaves the list leaves all of them.
+  const ticked=new Set(),viewed=new Set(),descriptions=new Map(),failures=new Map();
+  let loading=false,refocus=null,allOpen=false;
   const headings={name:'Name',cagr:'CAGR',saved:'Saved'},directions={name:1,cagr:-1,saved:-1};
   let records=[],limit=100,sorting={key:'saved',direction:-1},renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
   // Save reports beside its button in Result review. Every list action reports above the Saved backtests rows.
@@ -42,13 +45,31 @@ const SavedBacktests=(()=>{
       return (knownA?(a.cagr-b.cagr)*direction:0)||tie(a,b);
     });
   }
+  // The Details of a row: one line with the market, the test type, the window and
+  // the interval, then every other setting in plain wording, the headline, the
+  // saved ID and the exact recorded text in a closed disclosure. Before the read
+  // it says so. After a failed read it gives the reason and Retry.
+  function settings(record,exactOpen){
+    const id=escape(record.id),description=descriptions.get(record.id),line=text=>'<p>'+escape(text)+'</p>';
+    if(failures.has(record.id))return '<p class="backtest-failed" role="status">'+escape(failures.get(record.id))+' <button type="button" id="saved-do-retry-'+id+'" data-retry="'+id+'">Retry</button></p>';
+    if(!description)return '<p role="status">Reading the saved settings…</p>';
+    const shown=key=>description.parameters.find(row=>row.key===key)?.display,first=['mode','market','currency','start','end','interval','first','last','trials'];
+    const rows=description.parameters.filter(row=>!first.includes(row.key)),exact=rows.filter(row=>row.exact);
+    return line([shown('market'),shown('currency'),shown('mode')+(shown('trials')?' · '+shown('trials')+' trials':''),shown('first')?shown('first')+'–'+shown('last'):shown('start')&&shown('start')+' → '+shown('end'),shown('interval')&&'every '+shown('interval')].filter(Boolean).join(' · '))+
+      rows.map(row=>line(row.label+': '+row.display)).join('')+line(description.headline.map(row=>row.label+' '+row.display).join(' · '))+'<p class="saved-id">Saved ID: '+id+'</p>'+
+      (exact.length?'<details data-exact="'+id+'"'+(exactOpen?' open':'')+'><summary id="saved-exact-'+id+'">Exact recorded values</summary>'+exact.map(row=>line(row.label+': '+row.exact)).join('')+'</details>':'');
+  }
   // One line per test in the columns that the In progress rows use. The name opens
-  // the result; the other actions wait in the row control. Every control has a
-  // stable id, so the focus returns to it when the list is drawn again.
+  // the result. Details opens the settings and the other actions below the row.
+  // Every control has a stable id, so the focus returns to it when the list is
+  // drawn again; an open Details and its open exact values stay open.
   function render(){
     const list=node('saved-list'),known=new Set(records.map(record=>record.id));
-    for(const kept of [ticked,descriptions])for(const id of [...kept.keys()])if(!known.has(id))kept.delete(id);
-    const open=new Set([...list.querySelectorAll('details[open]')].map(control=>control.dataset.menu)),focused=document.activeElement;
+    for(const kept of [ticked,viewed,descriptions,failures])for(const id of [...kept.keys()])if(!known.has(id))kept.delete(id);
+    const opened=name=>new Set([...list.querySelectorAll('details[open][data-'+name+']')].map(control=>control.dataset[name]));
+    const open=opened('menu'),exactOpen=opened('exact'),focused=document.activeElement;
+    // An open Details always gets its description, also when the list is drawn again before its toggle arrives.
+    for(const id of open)if(known.has(id)&&!descriptions.has(id)&&!failures.has(id))viewed.add(id);
     if(focused?.id)refocus={id:focused.id,start:focused.selectionStart,end:focused.selectionEnd};
     else if(focused&&focused!==document.body)refocus=null;
     list.innerHTML=ordered().map(record=>{
@@ -57,7 +78,7 @@ const SavedBacktests=(()=>{
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const button=(key,label)=>'<button type="button" id="saved-do-'+key+'-'+id+'" data-'+key+'="'+id+'">'+label+'</button>';
       const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this saved backtest?</span>'+button('confirm','Delete record')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
-      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">Saved</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Actions for '+name+'" title="Actions">⋯</summary><div class="run-actions">'+actions+'</div></details></li>';
+      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">Saved</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Details of '+name+'">Details</summary>'+settings(record,exactOpen.has(record.id))+'<div class="run-actions">'+actions+'</div></details></li>';
     }).join('')||'<li class="run-empty">No saved backtests yet.</li>';
     // Ticks stay usable while a list action runs.
     list.querySelectorAll('button,input:not([type=checkbox])').forEach(control=>control.disabled=busy);
@@ -67,60 +88,58 @@ const SavedBacktests=(()=>{
     if(!target)refocus=null;
     else if(!target.disabled){target.focus?.({preventScroll:true});if(refocus.start!==null&&refocus.start!==undefined)target.setSelectionRange?.(refocus.start,refocus.end);refocus=null;}
     update();
+    if(viewed.size)void load();
   }
   const menu=id=>node('saved-menu-'+id)?.focus?.({preventScroll:true});
-  // The panel shows the ticked tests whose descriptions are read. One test shows
-  // its headline, its saved ID and every setting in plain wording, with the exact
-  // recorded text in a closed disclosure. More tests show one column per test in
-  // list order: the requested settings that differ, then the headlines, then
-  // every measure and setting in a closed disclosure. Only setting rows carry the
-  // difference marker. While another description is read, the panel keeps what it
-  // shows and its top line says so. A redraw keeps the open disclosure and the
-  // sideways scroll.
+  // The panel compares the ticked tests whose descriptions are read: one column
+  // per test in list order, with the requested settings that differ, then the
+  // headlines, then every measure and setting in a closed disclosure. Only
+  // setting rows carry the difference marker. One tick shows the top line only.
+  // While another description is read, the panel keeps what it shows and its top
+  // line says so. A redraw keeps the open disclosure and the sideways scroll.
   function renderPanel(){
     const panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),ready=chosen.filter(record=>descriptions.has(record.id));
     const [disclosure]=panel.querySelectorAll('details'),scrolled=[...panel.querySelectorAll('.comparison-scroll')].map(box=>box.scrollLeft);
-    if(disclosure)opened[disclosure.dataset.kind]=disclosure.open;
+    if(disclosure)allOpen=disclosure.open;
     panel.hidden=!chosen.length;
     if(!chosen.length){panel.innerHTML='';return;}
-    const reading=chosen.length-ready.length,described=ready.map(record=>descriptions.get(record.id)),notes=notices=>notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('');
-    const fold=(kind,title,content)=>'<details data-kind="'+kind+'"'+(opened[kind]?' open':'')+'><summary>'+title+'</summary>'+content+'</details>';
+    const reading=chosen.length-ready.length;
     let body='';
-    if(ready.length===1){
-      const list=(name,rows,key='display')=>'<dl class="'+name+'">'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>',exact=described[0].parameters.filter(row=>row.exact);
-      body='<h4>'+escape(ready[0].name)+'<small class="saved-id">Saved ID: '+escape(ready[0].id)+'</small></h4>'+list('comparison-headline',described[0].headline)+notes(described[0].notices)+list('comparison-settings',described[0].parameters)+
-        (exact.length?fold('exact','Exact recorded values',list('comparison-settings',exact,'exact')):'');
-    }else if(ready.length){
+    if(ready.length>1){
       // Recorded facts, such as a fresh random date set, are not requested settings: they show in the full list only.
-      const compared=BacktestComparison.compare(described),differing=compared.parameters.filter(row=>row.different&&!row.recorded);
+      const compared=BacktestComparison.compare(ready.map(record=>descriptions.get(record.id))),differing=compared.parameters.filter(row=>row.different&&!row.recorded);
       const group=(title,rows,marked)=>'<tbody><tr class="comparison-group"><th scope="rowgroup" colspan="'+(ready.length+1)+'">'+title+'</th></tr>'+rows.map(row=>'<tr'+(marked&&row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(marked&&row.different?'<span class="comparison-difference">Different</span>':'')+'</th>'+row.cells.map(cell=>'<td>'+escape(cell)+'</td>').join('')+'</tr>').join('')+'</tbody>';
       // Each table keeps the same column widths; many ticked tests scroll sideways inside the panel.
       const table=(caption,groups)=>'<div class="comparison-scroll"><table style="min-width:'+(170+140*ready.length)+'px"><caption>'+caption+'</caption><thead><tr><td></td>'+ready.map(record=>'<th scope="col" title="'+escape(record.name)+'"><span>'+escape(record.name)+'</span></th>').join('')+'</tr></thead>'+groups+'</table></div>';
-      body=notes(compared.notices)+table('Comparison of '+ready.length+' ticked tests',group(differing.length?'Settings that differ':'Same settings',differing)+group('Headline',compared.headline))+
-        fold('all','All measures and settings',table('All measures and settings of the ticked tests',group('Measures',compared.performance)+group('Settings',[{label:'Saved ID',cells:ready.map(record=>record.id)},...compared.parameters],true)));
+      body=compared.notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('')+table('Comparison of '+ready.length+' ticked tests',group(differing.length?'Settings that differ':'Same settings',differing)+group('Headline',compared.headline))+
+        '<details'+(allOpen?' open':'')+'><summary>All measures and settings</summary>'+table('All measures and settings of the ticked tests',group('Measures',compared.performance)+group('Settings',[{label:'Saved ID',cells:ready.map(record=>record.id)},...compared.parameters],true))+'</details>';
     }
-    panel.innerHTML='<div class="comparison-bar"><strong>'+chosen.length+(chosen.length>1?' tests ticked':' test ticked')+'</strong><span role="status">'+(reading?'Reading '+(reading>1?reading+' stored results':'1 stored result')+'…':'')+'</span><button type="button" id="saved-clear" data-clear>Clear</button></div>'+body;
+    const note=chosen.length===1?'Tick another to compare.':reading?'Reading '+(reading>1?reading+' stored results':'1 stored result')+'…':'';
+    panel.innerHTML='<div class="comparison-bar"><strong>'+(chosen.length>1?chosen.length+' tests ticked':'1 test ticked.')+'</strong><span role="status">'+note+'</span><button type="button" id="saved-clear" data-clear>Clear</button></div>'+body;
     panel.querySelectorAll('.comparison-scroll').forEach((box,at)=>{box.scrollLeft=scrolled[at]||0;});
   }
-  // One loader reads the descriptions of the ticked rows, one at a time. A row
-  // that nobody ticked is never read. A failed read is not kept: the row loses
-  // its tick and the status line gives the reason. The temporary evidence reader
-  // closes when the description is read.
+  // One loader reads the description of each row that the user ticked or opened,
+  // one at a time and one time. A row that nobody ticked or opened is never read.
+  // A failed read is not kept: the Details of that row gives the reason with
+  // Retry, and a ticked row loses its tick with the reason in the status line.
+  // The temporary evidence reader closes when the description is read.
   async function load(){
     if(loading)return;
     loading=true;
     try{
-      for(let id;(id=[...ticked].find(id=>!descriptions.has(id)));){
+      for(let id;(id=[...ticked,...viewed].find(id=>!descriptions.has(id)&&!failures.has(id)));){
         try{
           const used=await ResultArtifacts.use({kind:'saved',id},artifact=>BacktestComparison.describe(artifact));
           if(!used.consumed)throw Error('Its stored result was not read.');
           if(records.some(record=>record.id===id))descriptions.set(id,used.value);else ticked.delete(id);
-          renderPanel();
         }catch(error){
-          const record=records.find(record=>record.id===id);
-          if(ticked.delete(id)&&record)message('Could not read “'+record.name+'”. '+(error.message||'Tick it again when the service is available.'),true);
-          render();
+          const record=records.find(record=>record.id===id),reason=error.message||'The local service did not answer.';
+          if(record)failures.set(id,'Could not read the saved settings. '+reason);
+          if(ticked.delete(id)&&record)message('Could not read “'+record.name+'”. '+reason,true);
         }
+        viewed.delete(id);
+        // An active rename keeps its input. Its row shows the new text when the rename ends.
+        if(renaming)renderPanel();else render();
       }
     }finally{loading=false;}
   }
@@ -214,13 +233,21 @@ const SavedBacktests=(()=>{
       const key=event.target.dataset.sort;if(!key)return;
       sorting={key,direction:sorting.key===key?-sorting.direction:directions[key]};render();
     });
-    // The panel compares 8 tests at most. Clear removes every tick.
+    // The panel compares 8 tests at most. Clear removes every tick. A new tick reads a failed row again.
     node('saved-list').addEventListener('change',event=>{
       const id=event.target.dataset.tick;if(!id)return;
       if(event.target.checked&&ticked.size>=8){event.target.checked=false;message('Untick a test first. The panel compares 8 tests at most.');return;}
-      if(event.target.checked)ticked.add(id);else ticked.delete(id);
+      if(event.target.checked){ticked.add(id);failures.delete(id);}else ticked.delete(id);
       renderPanel();return load();
     });
+    // Native toggle does not bubble: capture it on the list. Opening Details reads that row's
+    // description once. A list that is drawn again with an open Details starts no second read.
+    node('saved-list').addEventListener('toggle',event=>{
+      const id=event.target.dataset?.menu;if(!id)return;
+      if(!event.target.open){viewed.delete(id);return;}
+      if(descriptions.has(id)||failures.has(id)||!records.some(record=>record.id===id))return;
+      viewed.add(id);return load();
+    },true);
     node('saved-comparison').addEventListener('click',event=>{if('clear' in event.target.dataset){ticked.clear();render();}});
     node('saved-list').addEventListener('input',event=>{
       if(renaming&&renaming.id===event.target.dataset.renameInput)renaming.name=event.target.value;
@@ -233,6 +260,7 @@ const SavedBacktests=(()=>{
     node('saved-list').addEventListener('click',event=>{
       if(busy)return;
       const data=event.target.dataset;
+      if(data.retry){failures.delete(data.retry);viewed.add(data.retry);const reading=load();render();return reading;}
       if(data.saveName)return rename(data.saveName);
       if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
       if(data.cancelName){renaming=null;render();menu(data.cancelName);if(queueRefresh)changed();return;}

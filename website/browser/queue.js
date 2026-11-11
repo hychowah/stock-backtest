@@ -71,7 +71,7 @@ const BacktestQueue=(()=>{
     return [...[...market,'Ranks '+rank.rank_from+'–'+rank.rank_to,source,...interval,...steps].join(' · ')].slice(0,120).join('').trim();
   }
   const when=value=>value?new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-  // The first line of an open row control. A captured strategy lists its pool and steps below it.
+  // The first line of the open Details of a row. A captured strategy lists its pool and steps below it.
   function parameters(record){
     const o=record.options,dates=CalendarSettings.decode(o);
     return (markets[o.market??'us']||o.market)+` · USD · ${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${dates.start} → ${dates.end} · ${CalendarSettings.label(o)}`+
@@ -79,7 +79,7 @@ const BacktestQueue=(()=>{
   }
   // Rows are replaced and moved in place. The focused control is remembered first,
   // and gets the focus back when every row is in its final place. While the list
-  // is busy its buttons are disabled: the focus waits on the row control, then
+  // is busy its buttons are disabled: the focus waits on the Details button, then
   // returns to the same action.
   let refocus=null;
   function renderRows(rows){
@@ -99,7 +99,7 @@ const BacktestQueue=(()=>{
         const template=document.createElement('template');template.innerHTML=item.html;
         const next=template.content.firstElementChild;
         if(row){
-          // A replaced row keeps its open row control and its open Exact recorded values.
+          // A replaced row keeps its open Details and its open Exact recorded values.
           const open=[...row.querySelectorAll('details')].map(control=>control.open);
           next.querySelectorAll('details').forEach((control,at)=>{control.open=!!open[at];});row.replaceWith(next);
         }
@@ -146,14 +146,14 @@ const BacktestQueue=(()=>{
       // The note below the state: progress, a failure, or why a completed result is still here.
       const note=record.state==='complete'?(record.transfer?.error==='too_large'?'This inline backtest exceeds the 128 MiB save and open limit. The result stays in the queue.':record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry.':''):record.error||progress||blocked;
       const cagr=record.state!=='complete'?'':Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'—';
-      // The open row control lists every setting in plain wording. The exact recorded text waits in a closed disclosure.
+      // The open Details lists every setting in plain wording. The exact recorded text waits in a closed disclosure.
       const line=text=>'<p>'+escape(text)+'</p>',captured=o.strategy?BacktestComparison.scalarRows(o.strategy):[];
       const detail=o.strategy?captured.map(row=>line(row.label+': '+row.display)):[`Requested engine: ${EngineControls.label(o.engine??'original')}`,`Minimum market cap: $${(o.min_cap??100e6)/1e6} million`,`Maximum market cap: ${o.max_cap==null?'no limit':'$'+o.max_cap/1e6+' million'}`,`Minimum EV: $${(o.min_ev??50e6)/1e6} million`,`Minimum yield: ${(o.min_yield??0)*100}%`,`Maximum multiple: ${o.max_multiple??'no limit'}`,`Sector: ${o.sector||'all'}`,`Exchange: ${o.exchange||'all'}`,...(o.filters||[]).map(condition=>callbacks.filterLabel(condition.field)+' '+(condition.op==='lt'?'<':'>')+' '+condition.value)].map(line);
       if(record.mode==='random')detail.push(line('Random date set: '+(o.seed??record.configuration?.seed??'fresh seed stored on the server')));
       const exact=captured.filter(row=>row.exact).map(row=>line(row.label+': '+row.exact)).join('');
       const state=record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Saved backtests':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state);
-      // One line per test in the columns that the Saved backtests rows use. Other actions and the settings wait in the row control.
-      const html=`<li class="run-row" data-queue-id="${id}" data-state="${escape(record.state)}"><span class="run-name" title="${name}"><span>${name}</span></span><span class="run-status"><span class="queue-state">${state}</span><span class="queue-progress">${escape(note)}</span></span><span class="run-type">${record.mode==='random'?'Random · '+escape(o.trials??24)+' trials':'Fixed dates'}</span><span class="run-window">${escape(dates.start+' → '+dates.end)}</span><span class="run-cagr"${record.mode==='random'?' title="Mean trial CAGR"':''}>${cagr}</span><span class="run-time">${escape(when(record.created_at))}</span><details class="run-menu"><summary aria-label="Actions and settings of ${name}" title="Actions and settings">⋯</summary><div class="run-actions">${actions}</div>${line(parameters(record))}${detail.join('')}${exact&&'<details><summary>Exact recorded values</summary>'+exact+'</details>'}</details></li>`;
+      // One line per test in the columns that the Saved backtests rows use. Other actions and the settings wait in Details.
+      const html=`<li class="run-row" data-queue-id="${id}" data-state="${escape(record.state)}"><span class="run-name" title="${name}"><span>${name}</span></span><span class="run-status"><span class="queue-state">${state}</span><span class="queue-progress">${escape(note)}</span></span><span class="run-type">${record.mode==='random'?'Random · '+escape(o.trials??24)+' trials':'Fixed dates'}</span><span class="run-window">${escape(dates.start+' → '+dates.end)}</span><span class="run-cagr"${record.mode==='random'?' title="Mean trial CAGR"':''}>${cagr}</span><span class="run-time">${escape(when(record.created_at))}</span><details class="run-menu"><summary aria-label="Details of ${name}">Details</summary><div class="run-actions">${actions}</div>${line(parameters(record))}${detail.join('')}${exact&&'<details><summary>Exact recorded values</summary>'+exact+'</details>'}</details></li>`;
       return {id:record.id,html,progress:note,signature:JSON.stringify({record:{...record,progress:null},edges:waiting(record)?[index===0,index===waitingIds.length-1]:[],busy,deleting:pendingDelete===record.id})};
     });
     renderRows(rows);

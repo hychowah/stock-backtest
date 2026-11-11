@@ -33,25 +33,42 @@ const rows=html=>html.split('<tr').slice(1).map(row=>text('<tr'+row.split('</tr>
 const tick=(id,checked=true)=>node('saved-list').handlers.change({target:{dataset:{tick:id},checked}});
 const loads=id=>requests.filter(request=>request.url==='/api/backtests/'+id&&request.method==='GET').length;
 const refresh=()=>node('queue-refresh').handlers.click();
+// Details of a row: the toggle of its control, and the markup of that row.
+const open=(id,opened=true)=>node('saved-list').handlers.toggle({target:{dataset:{menu:id},open:opened}});
+const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-menu="'+id+'"');return start<0?'':html.slice(start,html.indexOf('</li>',start));};
 (async()=>{
  run('SavedBacktests.init({current:()=>null,isRunning:()=>false,open:()=>{throw Error("No restoration")}})');await settle();
- // No row is read before a tick. A tick stays usable while a list action runs.
+ // No row is read before a tick or an open Details.
  assert(node('saved-comparison').hidden);assert.deepEqual(requests.map(request=>request.url),['/api/backtests']);
  records[0].snapshot.settings.filters=[{field:'fcf',op:'gt',value:-2}];
  records[0].snapshot.catalog.filters={fcf:{label:'<Original & cash flow>'}};
  records[0].snapshot.settings.future_setting='<img src=x onerror=bad>';
+ assert.equal(node('saved-list').captures.toggle,true,'Native toggle needs capture on the list');
+ assert(text(row(ids[0])).includes('Reading the saved settings…'));assert(text(row(ids[0])).includes('Tune'),'The actions do not wait for the read');
+ // Details reads that test one time, without a tick, and shows its settings in the row: one line with the market,
+ // the test type, the window and the interval, then the other settings, the headline, the saved ID and the actions.
+ await open(ids[0]);
+ assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2]),acquired.length],[1,0,0,0]);assert(node('saved-comparison').hidden,'Details ticks nothing');
+ let [plain,exact]=row(ids[0]).split('Exact recorded values');
+ const parts=['US · USD · Fixed dates · 2015-01-01 → 2020-12-31 · every 12 month(s)','Last rank: 25','Minimum market cap (USD): $100M','Strategy CAGR 12.00% · SPY CAGR 8.00% · Difference vs SPY +4.00 pp · Growth of $1 $2.00','Saved ID: '+ids[0]];
+ for(const part of parts)assert(text(plain).includes(part),'Missing '+part);
+ assert.deepEqual(parts.map(part=>text(plain).indexOf(part)),parts.map(part=>text(plain).indexOf(part)).sort((a,b)=>a-b),'The parts keep this order');
+ assert(text(exact).indexOf('Tune')>text(exact).indexOf('Minimum market cap (USD): 100000000'),'The actions follow the settings');
+ assert(!text(plain).includes('100000000')&&!text(exact).includes('Last rank'),'Only the settings with exact text are listed again, in the closed disclosure');
+ assert(row(ids[0]).includes('&lt;Original &amp; cash flow&gt;'));assert(row(ids[0]).includes('&lt;img src=x onerror=bad&gt;'));assert(!row(ids[0]).includes('<img src=x'));
+ // A second open, a list that is drawn again, a sort and a rename show the same text and read nothing.
+ const first=row(ids[0]);await open(ids[0],false);await open(ids[0]);await refresh();await open(ids[0]);
+ node('saved-head').handlers.click({target:{dataset:{sort:'name'}}});node('saved-head').handlers.click({target:{dataset:{sort:'saved'}}});
+ assert.equal(row(ids[0]),first);assert.equal(loads(ids[0]),1);
+ // A tick of that row reads nothing more. One tick shows the top line only; a tick stays usable while a list action runs.
  holdList=true;const busy=refresh();await settle();assert(releaseList);
  await tick(ids[0]);releaseList();await busy;
- // One tick: the headline, the saved ID and every setting of that test in plain wording. The exact recorded text waits in a closed disclosure.
- assert(!node('saved-comparison').hidden);assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2]),acquired.length],[1,0,0,0]);
- for(const shown of ['Saved a','Saved ID: '+ids[0],'Strategy CAGR 12.00%','Difference vs SPY +4.00 pp','Last rank 25'])assert(text(panel()).includes(shown),'Missing '+shown);
- assert(panel().includes('&lt;Original &amp; cash flow&gt;'));assert(panel().includes('&lt;img src=x onerror=bad&gt;'));assert(!panel().includes('<img src=x'));
- let [plain,exact]=panel().split('<details');
- assert(text(plain).includes('Minimum market cap (USD) $100M')&&!text(plain).includes('100000000'));assert(text('<details'+exact).startsWith('Exact recorded values'));assert(!exact.startsWith(' open'));
- assert(text(exact).includes('Minimum market cap (USD) 100000000')&&!text(exact).includes('Last rank'),'Only the settings with exact text are listed again');
+ assert(!node('saved-comparison').hidden);assert.equal(text(panel()),'1 test ticked. Tick another to compare. Clear');assert(!panel().includes('<table'));
+ assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2]),acquired.length],[1,0,0,0]);
+ let top,all;
  // Two ticks: one column per test. The first rows are exactly the settings that differ, then the headlines.
  await tick(ids[2]);assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2])],[1,0,1]);
- let [top,all]=panel().split('<details');
+ [top,all]=panel().split('<details');
  assert.deepEqual(rows(top),['Saved a Saved c','Settings that differ','Last rank 25 50','Additional AND conditions <Original & cash flow> > -2 None','Setting: future_setting <img src=x onerror=bad> Not recorded',
   'Headline','Strategy CAGR 12.00% 20.00%','SPY CAGR 8.00% 8.00%','Difference vs SPY +4.00 pp +12.00 pp','Growth of $1 $2.00 $2.00']);
  // Every measure and setting waits in a closed disclosure. Only setting rows carry the difference marker.
@@ -100,10 +117,32 @@ const refresh=()=>node('queue-refresh').handlers.click();
  const goneId='e'.repeat(32);records.push(make(goneId,'custom',3));await refresh();
  holdAcquire=true;const gone=tick(goneId);await settle();
  records=records.filter(record=>record.id!==goneId&&record.id!==ids[2]);await refresh();
- assert.equal(text(panel()).split(' Saved ID')[0],'1 test ticked Clear Renamed <comparison>','One ticked test remains');
+ assert.equal(text(panel()),'1 test ticked. Tick another to compare. Clear','One ticked test remains');
  releaseAcquire();await gone;assert(!panel().includes('Saved e'));assert.deepEqual(released,acquired);
  records.push(make(ids[2]),make(goneId,'custom',3));await refresh();assert(!panel().includes('Saved c'),'A returned id has no tick');
  const beforeReturn=acquired.length;await tick(ids[2]);await tick(goneId);assert.equal(loads(ids[2]),2,'A deleted row left the descriptions');assert.equal(acquired.length,beforeReturn+1);assert.deepEqual(released,acquired);
+ // A failed read of an opened row is not kept. The row gives the reason and Retry; only Retry reads again.
+ const failedId='7'.repeat(32);records.push(make(failedId,'custom',3));await refresh();
+ const statusBefore=node('saved-status').textContent,panelBefore=panel();
+ rejectAcquire=true;const beforeFailed=acquired.length;await open(failedId);rejectAcquire=false;
+ assert.equal(acquired.length,beforeFailed+1);assert.deepEqual(released,acquired);
+ assert(text(row(failedId)).includes('Could not read the saved settings. Lost acquisition response'));assert(text(row(failedId)).includes('Retry'));assert(text(row(failedId)).includes('Rename'),'The actions stay');
+ assert.equal(node('saved-status').textContent,statusBefore,'No tick, so the status line keeps its text');assert.equal(panel(),panelBefore);
+ await open(failedId);await open(failedId,false);await open(failedId);await refresh();assert.equal(acquired.length,beforeFailed+1,'Only Retry reads again');
+ await node('saved-list').handlers.click({target:{dataset:{retry:failedId}}});
+ assert.equal(acquired.length,beforeFailed+2);assert.deepEqual(released,acquired);assert(text(row(failedId)).includes('Last rank: 50'));assert(!text(row(failedId)).includes('Retry'));
+ // A late reply for an opened row that was deleted during the read changes nothing and is not kept.
+ const lostId='8'.repeat(32);records.push(make(lostId,'custom',3));await refresh();
+ holdAcquire=true;const lost=open(lostId);await settle();const listBefore=()=>node('saved-list').innerHTML;
+ records=records.filter(record=>record.id!==lostId);await refresh();const afterDelete=listBefore();
+ releaseAcquire();await lost;assert.equal(listBefore(),afterDelete);assert.equal(row(lostId),'');assert.deepEqual(released,acquired);
+ records.push(make(lostId,'custom',3));await refresh();const beforeLost=acquired.length;await open(lostId);assert.equal(acquired.length,beforeLost+1,'The deleted row left no description');
+ // A description that arrives during a rename does not draw the list again, so the rename input stays. The row
+ // shows its settings when the rename ends.
+ const quietId='6'.repeat(32);records.push(make(quietId));await refresh();
+ node('saved-list').handlers.click({target:{dataset:{rename:ids[0]}}});const during=node('saved-list').innerHTML;
+ await open(quietId);assert.equal(loads(quietId),1);assert.equal(node('saved-list').innerHTML,during);
+ node('saved-list').handlers.click({target:{dataset:{cancelName:ids[0]}}});assert(text(row(quietId)).includes('Last rank: 50'));
  // A sort changes the column order with the row order. It reads nothing.
  const beforeSort=requests.length;node('saved-head').handlers.click({target:{dataset:{sort:'cagr'}}});
  assert.equal(rows(panel())[0],'Saved c Renamed <comparison> Saved e');assert.equal(requests.length,beforeSort);
@@ -123,5 +162,5 @@ const refresh=()=>node('queue-refresh').handlers.click();
  assert.equal(ninth.checked,false);assert(node('saved-status').textContent.includes('Untick a test first'));assert.equal(requests.length,beforeNinth);assert(text(panel()).startsWith('8 tests ticked'));
  await tick(records[0].id,false);ninth.checked=true;await node('saved-list').handlers.change({target:ninth});assert.equal(ninth.checked,true);assert(text(panel()).startsWith('8 tests ticked'));
  assert.deepEqual(released,acquired);assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
- console.log('Passed: no read before a tick, one read per ticked test by one serial loader, the one-test panel with exact text, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
+ console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and exact text in a closed disclosure, a failed open read retried only by Retry, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
 })().catch(error=>{console.error(error);process.exitCode=1});

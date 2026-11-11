@@ -387,15 +387,27 @@ server computer in `data/saved-backtests.sqlite`, outside the rebuildable caches
 The library is shared by browser sessions using that runtime. A saved HTML file
 needs the local service to use the library.
 
-Select **⋯** at the end of a row for its other actions. The row control opens
-below the row line. The lists have no scroll box of their own: the page
-scrolls, and the queue tray scrolls as one box, so an open control is not cut
-off. It stays open when the lists update. A saved row has **Tune**, **Rename** and **Delete**. An In
-progress row has **Edit settings**, **Move up**, **Move down**, **Release
-hold**, **Stop test**, **Open result**, **Tune** and **Delete**, as its state
-allows. It lists every recorded setting in plain wording; **Exact recorded
-values** below that list shows the exact recorded text and stays open while the
-list updates.
+Select **Details** at the end of a row to read the settings of that test in
+place and to find its other actions. Details opens below the row line. The
+lists have no scroll box of their own: the page scrolls, and the queue tray
+scrolls as one box, so open Details are not cut off. They stay open when the
+lists update.
+
+Details of a saved row show one line with the market, the test type, the
+window and the interval, then the other recorded settings, the headline, the
+saved ID (the stable UUID database ID), and **Tune**, **Rename** and
+**Delete**. A setting reads in plain wording, such as `Market cap ≥ $100M`.
+When that wording leaves out a recorded id, unit, canonical value or variable
+revision, a closed **Exact recorded values** below the settings shows the exact
+recorded text. Details reads the stored result of that test when you open it
+the first time and shows **Reading the saved settings…** until the text
+arrives; the actions work during the read. A failed read shows the reason in
+the row with **Retry**.
+
+Details of an In progress row show **Edit settings**, **Move up**, **Move
+down**, **Release hold**, **Stop test**, **Open result**, **Tune** and
+**Delete**, as its state allows, then every recorded setting in plain wording
+and the same closed **Exact recorded values**.
 Select **Rename**, edit the name, then **Save name** or **Cancel**. Renaming
 changes no settings or stored results.
 
@@ -417,16 +429,12 @@ when transfer recovery retries. Original queued submission receipts remain valid
 but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
-Tick saved backtests to read them without opening a result or changing the
+Tick saved backtests to compare them without opening a result or changing the
 form. A panel above the Saved backtests rows shows the ticked tests. You can tick 8
-tests at most; **Clear** in the panel removes every tick. One tick shows
-the headline of that test, its saved ID (the stable UUID database ID) and its
-recorded settings. A setting reads in plain wording, such as
-`Market cap ≥ $100M`. When that wording leaves out a recorded id, unit,
-canonical value or variable revision, **Exact recorded values** below the
-settings shows the exact recorded text. An open In progress row control and
-**Exact recorded values** under the settings of an open result show the same
-exact text.
+tests at most; **Clear** in the panel removes every tick. One tick shows only
+the top line of the panel, which tells you to tick another test.
+**Exact recorded values** under the settings of an open result shows the same
+exact text as Details.
 
 Two or more ticks show one column for each test, in list order. The first rows
 are the requested settings that differ, or **Same settings**. Recorded facts,
@@ -440,8 +448,9 @@ exact text. Tests of different types share the first three headline rows. A
 measure that a test does not have shows a dash. The main results and strategy
 settings stay unchanged.
 
-The page reads a stored result when you tick its row, one result at a time and
-each result one time. It reads nothing for a row without a tick. A failed read
+The page reads a stored result when you tick its row or open its Details, one
+result at a time and each result one time. It reads nothing for a row that you
+did not tick or open. A failed read of a ticked row
 removes the tick and shows the reason above the Saved backtests rows; tick the row
 again to retry. During a read the panel keeps the tests that it shows, and its
 top line names the read. Sorting, renaming and refreshing keep the ticks, the

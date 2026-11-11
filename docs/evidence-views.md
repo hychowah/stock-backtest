@@ -83,10 +83,12 @@ Runs & saved shows two row groups with one column layout. `queue.js` draws the I
 progress rows and keeps the queue state. `saved-backtests.js` draws the Saved
 backtests rows, their ticks, their sort order and the panel of the ticked tests. The two
 owners share the row styles and `BacktestComparison`, and call nothing new in
-each other. `saved-backtests.js` keeps one description for each ticked saved
-id. One loader reads them one at a time through `ResultArtifacts.use` and
+each other. `saved-backtests.js` keeps one description for each saved id that
+the user ticked or opened with Details. One loader reads them one at a time through `ResultArtifacts.use` and
 `describe`, so each temporary reader closes after its read. A failed read is
-not kept, and an id that leaves the list leaves the ticks and the descriptions.
+not kept: the row shows the reason with Retry. An id that leaves the list
+leaves the ticks and the descriptions. Details of a saved row prints the
+description of that row in place; the panel compares two or more ticked rows.
 `BacktestComparison.compare` takes a list of descriptions and returns one cell
 for each test in every row. A row whose values differ behind the same plain
 wording prints the exact text. A row of recorded facts (the recorded random
