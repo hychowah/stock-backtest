@@ -12,9 +12,36 @@ Research adds `company_markets`, `annual_metadata`, `foreign_reports`, `stock_na
 
 All displayed money, thresholds, holdings, returns and CAGR use USD. Foreign fiscal cap uses annual basic weighted-average shares and a native unadjusted fiscal close. The existing adjusted-price rescaling updates it to entry. Report amounts for every annual year use the context date’s FX. Holding prices use their own observation date’s FX. Daily date-only FX uses the previous completed fixing. SPY is always the S&P 500 total-return benchmark; Asian sessions use the previous completed US close within seven calendar days. Cash is USD at 0%. Reference yields remain US Treasury yields.
 
-US report availability retains its strict fiscal-plus-90-day rule. HK and JP use reliable publication dates where available; otherwise four and three calendar months. Period-end placeholders do not prove publication. The 800-day current-report limit remains. Missing inputs and conflicts stay unavailable. FMP source revisions, incomplete listing history, zero-heavy fields and dividend-adjustment limits remain disclosed.
+US report availability retains its strict fiscal-plus-90-day rule. HK and JP use reliable publication dates where available; otherwise four and three calendar months. Period-end placeholders do not prove publication. The 800-day current-report limit remains. Missing inputs and conflicts stay unavailable. FMP source revisions, incomplete listing history, zero-heavy fields and dividend-adjustment limits remain disclosed. See [Dividends](#dividends).
 
 New formulas use definition version 3, catalog `financial-parameters/4` and temporal policy `market-annual/1`. Catalogs /1–/3 preserve US meanings. Foreign execution requires explicit upgrade to /4. Upgrade rebinds immutable named measures to their /4 revisions. User-defined references retain their exact revisions; upgrade and save those definitions separately, then choose their new revisions. Existing captures, jobs, artifacts and durable records retain their bytes. The data-panel market selector scopes manual Update; scheduled maintenance refreshes inventories already present through its existing cycle.
+
+### Dividends
+
+The engine keeps no dividend cash. Every stock price is FMP's dividend-adjusted close, so a holding's return is `adjusted exit / adjusted entry − 1`. This is a total return: each dividend counts as reinvested in the same stock on its ex-date, before tax. Hong Kong and Tokyo prices are adjusted in the local currency, and each endpoint is converted to USD with its own date's FX. SPY and the trailing-return filters use the same kind of series.
+
+This method has four known limits. They are accepted as they are.
+
+- **Entry valuation is too high for dividend payers.** Fiscal market cap is rescaled to entry with the adjusted price ratio. That ratio includes the dividends paid between the two dates, so entry market cap and EV are too high by about that amount, and a high-dividend stock ranks slightly lower than it should.
+- **FMP omits some dividends.** The adjusted series then shows no payment, and that holding's return is too low.
+- **FMP records a few adjustments that are much too large.** That holding's return is too high.
+- **Returns are before tax.** No withholding tax and no delay between ex-date and payment are modeled.
+
+The sizes were measured for Hong Kong on the private bench copy of the runtime's raw cache (prices through 6 November 2026, source 3989437). The check ran outside the engine on stored book rows with the engine's price rules: the first session of each month from August 2001 to November 2025, the top 50 by EBITDA/EV with market cap of at least $100 million and EV of at least $50 million, held 12 months.
+
+| Item | Measured for these Hong Kong picks |
+|---|---|
+| Mean 12-month return | 15.8% in USD, of which dividends are 4.4 percentage points. For picks entered from 2018: 7.0%, of which 5.5 points. |
+| Entry market cap too high | Median 2.2%, mean 3.4%, one pick in ten above 7.9%. From 2018: median 3.4%, one in ten above 10.8%. |
+| Effect of that on picks | Rescaling with the unadjusted close in `raw/px-full/` changes about 6% of picks. The mean return moves from 15.8% to 16.2%, inside the spread between periods (standard deviation 2.6 points). |
+| Omitted dividends | In about 11% of pick-years the cash-flow statement shows dividends and the adjusted price shows none (for example Sinopec, fiscal 2017 and 2020). The yield implied by prices is 3.6% against 4.7% from statements. The gap is an upper bound: statement amounts can include payments to other holders. |
+| Oversized adjustments | 19 symbols show a one-year adjustment above 25% of the price (for example 3903.HK: 73% of the price on one day in 2018). With these holds at their price-only return, the mean falls from 15.8% to 15.1%. |
+| Tax | At most about 0.5 points a year if every pick had 10% withholding. This is arithmetic, not a measurement. |
+| Rounding of low adjusted prices | Negligible: 0.6% of picks can be wrong by more than 1%. |
+
+The two FMP errors have opposite directions, so the average Hong Kong return is probably correct to about one percentage point a year, while the return of one holding can be far wrong. These are observed values, not guarantees. US and Tokyo were not measured, and the US cache has no unadjusted prices.
+
+Three changes would reduce these limits and are not made: leave out series with oversized adjustments at preparation, as for broken price series; rescale Hong Kong and Tokyo entry market cap with the unadjusted ratio, which changes calculations; and compare dividends with a second source, which needs a download.
 
 ## Prepare once
 
