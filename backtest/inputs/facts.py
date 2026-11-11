@@ -14,6 +14,10 @@ stock, Treasury and SPY rows use resolve() below, which parses each file once.
   it is listed now.
 - fact_sources: the source file digest and disposition per company and
   endpoint; the empty symbol names the shared Treasury and SPY files.
+- valuation_sums: derived from the facts above as the last preparation stage
+  (store_valuations): per company and priced day with a yield, the running
+  sums of daily E/P, S/P and B/P and their day counts. Books read them for the
+  valuation averages (BookFacts.valuation).
 
 The research record (research.py) names the facts' version and content
 identity. A field is valid when its value is present; otherwise its reason
@@ -28,9 +32,8 @@ series with an isolated price spike keeps no close (stock()). Books
 (books.book) and admission (books.Screen) read the valid values through
 BookFacts. Every reader reads the facts through the 'research' schema that a
 daily connection attaches (daily.attach). The book store of the daily cache
-(backtest/inputs/book_store.py) holds the latest and dated books and the
-valuation sums that books read; the formula view (backtest/inputs/fact_view.py)
-reads the facts for formulas.
+(backtest/inputs/book_store.py) holds the latest and dated books; the formula
+view (backtest/inputs/fact_view.py) reads the facts for formulas.
 """
 from datetime import date, timedelta
 import hashlib
@@ -38,7 +41,7 @@ import json
 import math
 
 from backtest.financial import books, rules
-from backtest.inputs import book_store, cache_assets, financial_inputs, market
+from backtest.inputs import cache_assets, financial_inputs, market
 from backtest.variables import parameters
 
 MAX_HISTORY = 16384
@@ -89,7 +92,12 @@ CREATE TABLE foreign_reports(symbol TEXT, fiscal TEXT, known TEXT, currency TEXT
 CREATE TABLE stock_native(symbol TEXT, day TEXT, close, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
 CREATE TABLE local_sessions(market TEXT, day TEXT, PRIMARY KEY(market,day)) WITHOUT ROWID;
 CREATE TABLE fx_days(currency TEXT, day TEXT, usd, reason TEXT, PRIMARY KEY(currency,day)) WITHOUT ROWID;
+CREATE TABLE valuation_sums(symbol TEXT, day TEXT, earnings REAL, sales REAL, equity REAL,
+ earnings_days INTEGER, sales_days INTEGER, equity_days INTEGER, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
 '''
+# The valuation sums before a company's first row. A sum starts at +0.0 and
+# never becomes -0.0, so the REAL columns keep every sum exactly.
+_NO_SUMS = (0., 0., 0., 0, 0, 0)
 
 
 def encoded(value):
@@ -297,6 +305,52 @@ def store_foreign_reports(db, checkpoint):
     return reconcile(db,'foreign_reports',('symbol','fiscal'),rows())
 
 
+def store_valuations(db, changes, checkpoint):
+    """Fold the valuation sums of this build's facts: the last preparation stage.
+
+    db attaches the build's facts as 'research'. changes None (a cold build)
+    folds every company. Otherwise each company refolds once from its earliest
+    cutoff over every market (books.affected_entries), with the port of its
+    current market, so a market move keeps its new rows.
+    """
+    ports=[BookFacts(db,code) for code in market.MARKETS]
+    owners={symbol:port for port in ports for symbol in port.companies()}
+    if changes is None:
+        cutoffs=dict.fromkeys(owners)
+    else:
+        cutoffs={}
+        for port in ports:
+            for symbol,day in books.affected_entries(changes,port).items():
+                if symbol not in cutoffs or day<cutoffs[symbol]:cutoffs[symbol]=day
+    for number,(symbol,cutoff) in enumerate(sorted(cutoffs.items()),1):
+        checkpoint()
+        refold(db,symbol,owners.get(symbol),cutoff)
+        if number%500==0 or number==len(cutoffs):
+            print(f'Valuation sums for {number}/{len(cutoffs)} companies',flush=True)
+
+
+def refold(db, symbol, port, cutoff):
+    """Replace one company's valuation sums from cutoff (ISO day) on: the one writer of valuation_sums.
+
+    port is the facts port of the company's current market; None (no current
+    market) deletes all its rows. A cutoff of None, or on or before
+    rules.FIRST_DAY, refolds the whole company. The sums continue from the last
+    row before the cutoff, or from zeros, and add books.valuation_days in day
+    order, so a refold equals a cold fold bit for bit.
+    """
+    start=None if port is None or cutoff is None or date.fromisoformat(cutoff)<=rules.FIRST_DAY else date.fromisoformat(cutoff)
+    total=list(_NO_SUMS if start is None else port.valuation(symbol,start-timedelta(days=1)))
+    db.execute('DELETE FROM research.valuation_sums WHERE symbol=? AND day>=?',(symbol,'' if start is None else str(start)))
+    if port is None or symbol not in port.reported():return
+    rows=[]
+    for day,yields in books.valuation_days(symbol,port,start):
+        for k,value in enumerate(yields):
+            if value is not None:
+                total[k]+=value;total[3+k]+=1
+        rows.append((symbol,str(day),*total))
+    db.executemany('INSERT INTO research.valuation_sums VALUES(?,?,?,?,?,?,?,?)',rows)
+
+
 def store_stock(db, symbol, resolution):
     """Reconcile one price history and return its changed old/new fact rows."""
     _source(db, symbol, resolution['source'])
@@ -467,7 +521,7 @@ class BookFacts:
         return dict(fiscal=fiscal,known=known,market_cap=market_cap,enterprise=enterprise,ebitda=earnings,**{'yield':earnings/enterprise},currency=currency,quote_currency=quote,fx_date=str(report_fx[0]),quote_fx_date=str(quote_fx[0]),availability_basis=basis)
 
     def reported(self):
-        """The companies with a saved report in this market: the ones the valuation fold reads."""
+        """The companies with a saved report in this market: the ones refold folds."""
         return self.reports()[0].keys() if self.market=='us' else self._native().keys()
 
     def report_at(self,symbol,day):
@@ -514,12 +568,10 @@ class BookFacts:
             f'SELECT day,adjusted FROM research.stock_days WHERE symbol=? AND day>=? AND adjusted IS NOT NULL{session} ORDER BY day',args)]
 
     def valuation(self,symbol,day):
-        """One company's running valuation sums at its last row on or before day, or zeros (book_store.valuation).
-
-        The daily cache is an input to books: daily.prepare keeps valuation_sums
-        current for the attached research before it builds any book.
-        """
-        return book_store.valuation(self.db,symbol,day)
+        """(earnings, sales, equity, earnings_days, sales_days, equity_days): one company's valuation sums at its last row on or before day, or zeros."""
+        row=self.db.execute('SELECT earnings,sales,equity,earnings_days,sales_days,equity_days FROM research.valuation_sums '
+                            'WHERE symbol=? AND day<=? ORDER BY day DESC LIMIT 1',(symbol,str(day))).fetchone()
+        return _NO_SUMS if row is None else tuple(row)
 
     def usd_price(self,symbol,day,forward=False,slack=None):
         price=self.price(symbol,day,forward,slack)

@@ -36,13 +36,6 @@ def companies(db):
     return [row[0] for row in db.execute('SELECT DISTINCT symbol FROM statements ORDER BY symbol')]
 
 
-def fold(db):
-    """Write every company's valuation sums into db's book store, as a cold daily preparation does."""
-    port = facts.BookFacts(db)
-    for symbol in port.reported():
-        book_store.store_valuations(db, symbol, None, books.valuation_days(symbol, port, None, (0., 0., 0., 0, 0, 0)))
-
-
 def configure(inputs):
     """Twenty companies 2013-2016 with every latest denial, bad rows and more annual endpoints."""
     history(20, 2013, 2016)(inputs)
@@ -85,12 +78,9 @@ class BookTests(unittest.TestCase):
         cls.inputs = PreparedInputs(configure=configure)
         cls.research = sqlite3.connect(cls.inputs.source)
         cls.research.row_factory = sqlite3.Row
-        # The facts readers read the research schema that a daily connection attaches;
-        # books also read the valuation sums of the book store.
+        # The facts readers read the research schema that a daily connection attaches.
         cls.attached = sqlite3.connect(':memory:', uri=True)
         daily.attach(cls.attached, cls.inputs.source)
-        cls.attached.executescript(book_store.SCHEMA)
-        fold(cls.attached)
         cls.daily = sqlite3.connect(cls.inputs.path)
         cls.daily.row_factory = sqlite3.Row
 
@@ -204,7 +194,7 @@ class BookTests(unittest.TestCase):
                              [('2015-01-02',0),('2015-01-02',1)])
             self.assertEqual(db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],3)
             self.assertEqual({row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")},
-                             {*book_store.TABLES,'valuation_sums'})
+                             {'books','book_pools','book_rows'})
 
     def test_compact_lanes_keep_missing_values_and_real_zero_semantics(self):
         with closing(sqlite3.connect(':memory:')) as db:
@@ -307,7 +297,7 @@ def expected(day, legacy=False):
 
 
 class ValuationTests(unittest.TestCase):
-    """The daily-average valuation multiples of a book row, through daily preparation and books.book."""
+    """The daily-average valuation multiples of a book row, through research preparation and books.book."""
     @classmethod
     def setUpClass(cls):
         cls.inputs = PreparedInputs(configure=valuation_history)

@@ -203,7 +203,7 @@ and CSV exports show the chosen signal. For a broader comparison, use all stocks
 with cached prices: the original candidate set retains its single-year pre-screen.
 See `../docs/research-workflow.md` for calculation and extension details.
 
-Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-year averages**: 1 ÷ the mean daily yield (net income, revenue or equity ÷ market cap) over the trailing years. **P/E vs its 3-year average** and the other relatives divide the current multiple by its average: below 1 means cheaper than usual. A stock without a full window of history, or whose mean yield is not positive, has no average.
+Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-year averages**: 1 ÷ the mean daily yield (net income, revenue or equity ÷ market cap) over the trailing years. **P/E vs its 3-year average** and the other relatives divide the current multiple by its average: below 1 means cheaper than usual. A stock has no average when it has no daily yield on or before the start of the window, or when its mean yield is not positive.
 
 ## Custom trade dates and frequency
 

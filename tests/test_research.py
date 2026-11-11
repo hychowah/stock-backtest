@@ -139,11 +139,11 @@ class ResearchTests(unittest.TestCase):
         prices=[(date(2017,2,28),50),(date(2019,2,28),80),(date(2020,2,28),100),(date(2020,3,2),1000)]
         lookup=lambda day,forward,slack:before(prices,day,slack)
         observation=dict(market_cap=100e6,enterprise_value=200e6,ebitda_yield=.1)
-        values=r.metrics.filter_values(observation,{},date(2020,2,29),lookup)
+        values=r.metrics.filter_values(observation,{},date(2020,2,29),lookup,sums=lambda day:(0.,0.,0.,0,0,0))
         self.assertEqual(values['return_1y'],25)
         self.assertEqual(values['return_3y'],100)
         self.assertEqual(values['market_cap'],100)
-        values=r.metrics.filter_values(observation,{},date(2019,2,28),lookup)
+        values=r.metrics.filter_values(observation,{},date(2019,2,28),lookup,sums=lambda day:(0.,0.,0.,0,0,0))
         self.assertNotIn('return_1y',values)
         self.assertNotIn('return_3y',values)
 

@@ -71,8 +71,8 @@ class MarketInputsTests(unittest.TestCase):
             if isinstance(value,dict):return {key:exact(item) for key,item in value.items()}
             if isinstance(value,(list,tuple)):return tuple(exact(item) for item in value)
             return value
-        def snapshot(path,store):
-            """The research tables and identity, and every sheet computed again over its prepared cache."""
+        def snapshot(path):
+            """The research tables (the valuation sums among them) and identity, and every sheet computed again."""
             with closing(sqlite3.connect(path)) as db:
                 tables={}
                 for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
@@ -81,7 +81,8 @@ class MarketInputsTests(unittest.TestCase):
                     order='rowid' if name=='statements' else ','.join(keys)
                     tables[name]=exact(db.execute(f'SELECT * FROM {name} ORDER BY {order}').fetchall())
                 identity=json.loads(db.execute("SELECT value FROM metadata WHERE key='identity'").fetchone()[0])
-            with closing(daily.connect(store,path)) as db:
+            with closing(sqlite3.connect(':memory:')) as db:
+                daily.attach(db,path)
                 sheets=[books.book(day,pool,facts.BookFacts(db,code),latest=latest)
                         for code in ('us','hk','jp') for day in facts.sessions(db,code)
                         for pool in (('legacy','cached') if code=='us' else ('cached',)) for latest in (False,True)]
@@ -99,9 +100,12 @@ class MarketInputsTests(unittest.TestCase):
                 columns=[row[1] for row in cache.execute('PRAGMA table_info(book_rows)')][1:]
                 rows=cache.execute('SELECT b.market,b.entry,b.latest,'+','.join('r.'+name for name in columns)+
                                    ' FROM books b JOIN book_rows r USING(book) ORDER BY b.market,b.entry,b.latest,r.pool,r.symbol').fetchall()
-                return exact([list(map(tuple,part)) for part in (headers,pools,rows,sums(cache))])
-        def sums(db):
-            return db.execute('SELECT * FROM valuation_sums ORDER BY symbol,day').fetchall()
+                return exact([list(map(tuple,part)) for part in (headers,pools,rows)])
+        def sums(path,symbols):
+            """The days of each company's stored valuation sums, for the companies that have any."""
+            with closing(sqlite3.connect(path)) as reader:
+                return {symbol:[row[0] for row in found] for symbol in symbols
+                        if (found:=reader.execute('SELECT day FROM valuation_sums WHERE symbol=? ORDER BY day',(symbol,)).fetchall())}
         with redirect_stdout(io.StringIO()),prepared_markets() as (db,raw,source,store):
             # Three equal-yield US names let removal and source order change ranks.
             universe=raw/'universe.json';metrics=raw/'metrics.jsonl'
@@ -128,8 +132,8 @@ class MarketInputsTests(unittest.TestCase):
                 self.assertEqual(set(change['prices'].values()),{'2015-08-04'})
                 self.assertEqual(change['companies'],{})
             cold=source.with_name('cold.sqlite');cold_store=store.with_name('cold-daily.sqlite');research.prepare(cold)
+            self.assertEqual(snapshot(source),snapshot(cold))
             self.assertEqual(cache_snapshot(store,source),cache_snapshot(cold_store,cold))
-            self.assertEqual(snapshot(source,store),snapshot(cold,cold_store))
             cold.unlink();cold_store.unlink()
 
             edit(raw/'px/0001.HK.json',lambda payload:[row.update(adjClose=row['adjClose']*1.1) for row in payload['div']])
@@ -159,8 +163,13 @@ class MarketInputsTests(unittest.TestCase):
             with patch.object(facts,'store_market',side_effect=RuntimeError('interrupted fixture')):
                 with self.assertRaisesRegex(RuntimeError,'interrupted fixture'):research.prepare(source)
             self.assertEqual(source.read_bytes(),before)
+            # The valuation fold is the last stage of the same transaction.
+            with patch.object(facts,'refold',side_effect=RuntimeError('interrupted fold')):
+                with self.assertRaisesRegex(RuntimeError,'interrupted fold'):research.prepare(source)
+            self.assertEqual(source.read_bytes(),before)
             research.prepare(source)
             research.prepare(cold)
+            self.assertEqual(snapshot(source),snapshot(cold))
             with closing(sqlite3.connect(source)) as reader:
                 pending=reader.execute("SELECT value FROM metadata WHERE key='changes'").fetchone()[0]
                 change=json.loads(pending)
@@ -175,11 +184,7 @@ class MarketInputsTests(unittest.TestCase):
                 daily.prepare(store,source,progress=interrupt,repair=book_batch.repair)
             self.assertEqual(daily.binding(db),previous)
             with self.assertRaisesRegex(ValueError,'changed'):daily.connect(store,source)
-            # The sums committed before the sheet repair; the retry repeats their tails exactly.
-            with closing(sqlite3.connect(store)) as reader:interrupted=exact(sums(reader))
             self.assertEqual(cache_snapshot(store,source),cache_snapshot(cold_store,cold))
-            with closing(sqlite3.connect(store)) as reader:self.assertEqual(exact(sums(reader)),interrupted)
-            self.assertEqual(snapshot(source,store),snapshot(cold,cold_store))
             research.prepare(source,force=True)
             with closing(sqlite3.connect(source)) as reader:
                 self.assertEqual(reader.execute("SELECT value FROM metadata WHERE key='changes'").fetchone()[0],pending)
@@ -195,9 +200,7 @@ class MarketInputsTests(unittest.TestCase):
             metrics.write_text(''.join(json.dumps(row)+'\n' for row in records))
             edit(market.universe_path(raw,'jp'),lambda rows:rows.__setitem__(slice(None),[row for row in rows if row['symbol']!='2000.T']))
             edit(income,lambda payload:[row.update(netIncome=3e6) for row in payload['rows'] if row['date']=='2015-03-31'])
-            with closing(sqlite3.connect(store)) as reader:
-                before={symbol:[row[1] for row in found] for symbol in ('0001.HK','1000.T','2000.T')
-                        if (found:=reader.execute('SELECT * FROM valuation_sums WHERE symbol=? ORDER BY day',(symbol,)).fetchall())}
+            before=sums(source,('0001.HK','1000.T','2000.T'))
             self.assertEqual(set(before),{'0001.HK','1000.T','2000.T'})
             self.assertEqual(before['1000.T'],['2015-07-01','2015-07-20','2015-08-04'])
             research.prepare(source)
@@ -206,15 +209,15 @@ class MarketInputsTests(unittest.TestCase):
                 change=json.loads(reader.execute("SELECT value FROM metadata WHERE key='changes'").fetchone()[0])
                 self.assertEqual(change['companies'],{'0001.HK':['hk','us'],'2000.T':['jp',None]})
                 self.assertEqual(change['annual']['1000.T'],'2015-07-31')
-            self.assertEqual(cache_snapshot(store,source),cache_snapshot(cold_store,cold))
-            incremental,rebuilt=snapshot(source,store),snapshot(cold,cold_store)
-            # Research keeps the moved company's native closes, which US books never read.
+            incremental,rebuilt=snapshot(source),snapshot(cold)
+            # Research keeps the moved company's native closes, which US books never read;
+            # the valuation sums equal the cold build.
+            self.assertIn('valuation_sums',incremental[0])
             self.assertLessEqual({name for name,rows in incremental[0].items() if rows!=rebuilt[0][name]},{'stock_native'})
             self.assertEqual(incremental[1:],rebuilt[1:])
-            with closing(sqlite3.connect(store)) as reader:
-                after={symbol:[row[1] for row in found] for symbol in ('0001.HK','1000.T','2000.T')
-                       if (found:=reader.execute('SELECT * FROM valuation_sums WHERE symbol=? ORDER BY day',(symbol,)).fetchall())}
-            self.assertEqual(after,{'0001.HK':['2015-07-01','2015-07-20','2015-08-04'],'1000.T':before['1000.T']})
+            self.assertEqual(cache_snapshot(store,source),cache_snapshot(cold_store,cold))
+            self.assertEqual(sums(source,('0001.HK','1000.T','2000.T')),
+                             {'0001.HK':['2015-07-01','2015-07-20','2015-08-04'],'1000.T':before['1000.T']})
 
     def test_market_paths_admission_and_calendar_month_lags(self):
         self.assertTrue(market.common_stock('0001.HK','Example',market='hk'))

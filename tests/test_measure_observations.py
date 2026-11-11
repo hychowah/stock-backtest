@@ -127,7 +127,8 @@ class OwnerExtractionTests(unittest.TestCase):
         obs = dict(fiscal='2018-12-31', market_cap=200., enterprise_value=250., ebitda_yield=30./250., ev_ebitda=250./30.)
         history = [dict(row, fiscal=str(row['fiscal']), known=str(row['known'])) for row in reports]
         pairs = metrics.evaluate(obs, history)
-        expected = metrics.filter_values(obs, pairs, day, lambda when, forward, slack: (when, 10. if when < day else 20.), financials, 2.)
+        expected = metrics.filter_values(obs, pairs, day, lambda when, forward, slack: (when, 10. if when < day else 20.), financials, 2.,
+                                          sums=lambda when: (0., 0., 0., 0, 0, 0))
         self.assertEqual(owner['evidence']['metrics'], {key:list(value) for key,value in pairs.items()})
         self.assertEqual(owner['evidence']['filters'], expected)
         self.assertEqual(bridge.lane(owner, 'pe')['value'], 20.)

@@ -45,6 +45,10 @@ class BookBatchTests(unittest.TestCase):
             self.db.research.execute('INSERT OR IGNORE INTO statements VALUES(?,?,?,?,?,?,?)',('A',f'{year}-06-30',f'{year}-09-28',100e6,150e6,30e6,.2))
             self.db.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('B',f'{year}-06-30',f'{year}-09-28',100e6,150e6,35e6,.23))
             self.db.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('C',f'{year}-06-30',f'{year}-09-28',50e6,75e6,20e6,20/75))
+        # Stored valuation sums, so every book also reads the valuation averages.
+        self.db.research.executemany('INSERT INTO valuation_sums VALUES(?,?,?,?,?,?,?,?)',[
+            (symbol,day,earnings*scale,sales*scale,equity*scale,days,days,days) for symbol,scale in (('A',1.),('B',.5),('C',.25))
+            for day,earnings,sales,equity,days in (('2011-01-03',.5,2.,1.,100),('2014-12-31',3.,14.,5.,400),('2016-01-04',-1.,20.,6.,650))])
         self.db.commit()
 
     def file_copy(self):
@@ -97,7 +101,7 @@ class BookBatchTests(unittest.TestCase):
 
     def test_spawn_matches_serial_holdings_both_pools_and_metrics(self):
         db,path=self.file_copy()
-        tables=('companies','statements','stock_days','market_days','fact_sources')
+        tables=('companies','statements','stock_days','market_days','fact_sources','valuation_sums')
         sources=lambda:{table:[tuple(row) for row in self.db.execute('SELECT * FROM research.'+table)] for table in tables}
         before=sources()
         for pool in ('legacy','cached'):
@@ -118,6 +122,7 @@ class BookBatchTests(unittest.TestCase):
         with b.calculations(db,jobs,1,lambda:None,symbols=symbols) as results:serial=list(results)
         with b.calculations(db,jobs,2,lambda:None,symbols=symbols) as results:parallel=list(results)
         self.assertEqual(serial,parallel)
+        self.assertIn(('A','ps_avg_3y',1/(12./300)),parallel[0]['filters'])
         self.assertTrue(all(book['candidates']>1 for book in parallel))
         self.assertEqual({row[0] for book in parallel for row in book['rows']},{'A'})
         reader=b.open_reader(path,self.research,None)

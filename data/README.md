@@ -8,7 +8,7 @@ python3 scripts/research.py prepare
 
 Compatible preparation updates changed typed rows in one transaction. [The research workflow](../docs/research-workflow.md#prepare-once) states the current research schema and daily cache versions. Cold, schema or fact-code builds use a temporary file and atomic replacement. Failure keeps the previous committed data. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
 
-The database contains company metadata and listing, cleaned annual financial observations with availability dates, and typed facts for custom variables and books. It holds no book: the latest and dated books live in the book store of `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
+The database contains company metadata and listing, cleaned annual financial observations with availability dates, and typed facts for custom variables and books. Its last preparation stage derives `valuation_sums` from these facts: each company's running sums of daily E/P, S/P and B/P and their day counts, one row per priced day with a yield. Books read them for the valuation averages. It holds no book: the latest and dated books live in the book store of `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
 The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Preparation never downloads missing prices. The unified Update data operation adds newly discovered or newly eligible companies; see the [data workflow](../docs/research-workflow.md#data-control-panel). Run `python3 scripts/research.py status` to inspect annual coverage.
 
@@ -22,9 +22,6 @@ with report dates, actual entry/price, valuation and catalog-mapped metric/filte
 columns. NULL means unavailable. REAL owner values retain existing rounding and
 zero normalization. Typed research facts and formula outputs still preserve
 signed zero. There are no separate metric/filter tables or stored holding exits.
-`valuation_sums` holds each company's running sums of daily E/P, S/P and B/P
-and their day counts, one row per priced day with a yield. Books read them for
-the valuation averages, so preparation brings them up to date before any book.
 
 A daily connection attaches research read-only. Latest requires listed companies
 and an exact-session price. Historical sheets allow four days of entry slack;

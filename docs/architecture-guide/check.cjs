@@ -159,7 +159,7 @@ assert(html.includes('id="scalar-execution"') && html.includes('Scalar execution
 
 
 
-assert(html.includes('Daily cache version 14') && html.includes('Books read these sums, so the daily cache is an input to books.') && html.includes('Headers identify market, entry and latest/historical policy') && html.includes('There are no metric/filter tables or stored exit fields.') && html.includes('Before either ranking order or formula evaluation') && html.includes('Historical coverage adds no readiness state') && html.includes('Reader/formula edits keep them.'), 'Explain compact entry sheets, market identity, pre-ranking exit admission, invalidation and ordinary readiness');
+assert(html.includes('Daily cache version 13') && html.includes('<code>valuation_sums</code> is a derived research table.') && html.includes('Headers identify market, entry and latest/historical policy') && html.includes('There are no metric/filter tables or stored exit fields.') && html.includes('Before either ranking order or formula evaluation') && html.includes('Historical coverage adds no readiness state') && html.includes('Reader/formula edits keep them.'), 'Explain compact entry sheets, market identity, pre-ranking exit admission, invalidation and ordinary readiness');
 
 assert(html.includes('<code>sheets</code> stage runs after website output and before verification') && html.includes('One complete sheet commits at a time.') && html.includes('Plain startup, CLI preparation and runs keep on-demand behavior.') && html.includes('Latest-policy headers do not count; empty completions do.'), 'Explain update-only precomputation, missing-only continuation and bounded commits');
 

@@ -5,7 +5,8 @@ holds the latest and dated books, computed from these facts.
 
 Compatible preparation reconciles changed typed rows in one transaction.
 Cold, schema and fact-code builds use a temporary file and atomic replacement.
-Either path preserves the previous committed data on failure.
+Either path preserves the previous committed data on failure. Both fold the
+derived valuation sums last, in the same transaction (facts.store_valuations).
 
 The metadata table is the one research record: the schema version, the
 accepted raw-file signature (inputs) with each price file's stamps (prices),
@@ -147,9 +148,11 @@ def code_sources(role):
     Each identity binds only the files that hold its role's code, by content
     (sha256), so a rewrite with equal bytes keeps it.
     - 'facts', the research identity: the fact-row code that parses saved
-      files into research rows. research.prepare; facts.resolve, observe and
-      the store_* writers; books.statements; financial_inputs with its
-      parameter catalog; the parsing parts of cache_assets; market and rules.
+      files into research rows and folds the valuation sums. research.prepare;
+      facts.resolve, observe, the store_* writers, refold and the BookFacts
+      reads of the fold; books.statements, affected_entries and
+      valuation_days; financial_inputs with its parameter catalog; the parsing
+      parts of cache_assets; market and rules.
     - 'books', the book identity that the daily binding names: the code that
       computes and stores books. books.py, metrics.py, rules.py,
       facts.BookFacts and book_store (its schema, writer and readers).
@@ -284,10 +287,15 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
     temporary.unlink(missing_ok=True)
-    db=sqlite3.connect((temporary if cold else path).resolve().as_uri(),uri=True)
+    db=sqlite3.connect(':memory:',uri=True)
     db.row_factory=sqlite3.Row
     try:
-        if cold:db.executescript(SCHEMA+facts.SCHEMA)
+        if cold:
+            with closing(sqlite3.connect(temporary)) as fresh:fresh.executescript(SCHEMA+facts.SCHEMA)
+        # The build attaches its file as 'research', the schema that the facts
+        # port reads, so the valuation fold reads this transaction's facts.
+        # main stays empty, so unqualified table names resolve to research.
+        db.execute('ATTACH DATABASE ? AS research',((temporary if cold else path).resolve().as_uri(),))
         db.execute('BEGIN IMMEDIATE')
         changes=dict(base=None if cold else previous['content'],companies={},prices={},
                      annual={},reports={},statements=False,sessions={},treasury=None,fx={})
@@ -419,6 +427,8 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             last=db.execute('SELECT MAX(day) FROM local_sessions WHERE market=?',(market_id,)).fetchone()[0]
             if last is not None:latest_dates[market_id]=last
         diagnostics.lap('dated_facts')
+        facts.store_valuations(db,None if cold else changes,backtest_control.checkpoint)
+        diagnostics.lap('valuations')
         # fact_sources holds the digest of every price, annual, SPY and Treasury file read.
         digest=hashlib.sha256()
         for row in db.execute('SELECT symbol,endpoint,sha256,disposition FROM fact_sources ORDER BY symbol,endpoint'):

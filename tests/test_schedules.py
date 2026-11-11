@@ -594,7 +594,7 @@ class SheetGenerationTests(unittest.TestCase):
         self.assertEqual(self.backtest(),self.saved)
         with closing(daily.connect(self.path,self.source)) as db:
             self.assertEqual({row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")},
-                             {'metadata','valuation_sums',*book_store.TABLES})
+                             {'metadata',*book_store.TABLES})
 
     def test_locked_cache_is_preserved_and_foreign_files_rebuild(self):
         before=self.path.read_bytes()

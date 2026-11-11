@@ -56,14 +56,20 @@ keeps the previous committed data. A current database is kept: when the saved
 inputs and calculation code have not
 changed, preparation only checks source metadata. Queries skip the full
 per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
-`--force` reconciles a current database too. Preparation runs no second engine and
-publishes no report; the development check (`python3 scripts/check.py`) compares
-the book code with the independent reference on the real-data bench.
+`--force` reconciles a current database too. The last stage of either build
+folds the valuation sums (below) in the same transaction: a cold build folds
+every company; a compatible build refolds each affected company once, from its
+earliest sheet cutoff over all markets (`books.affected_entries`), with its
+current market. The sums add in day order from zero, so a refold that
+continues from the stored sums equals a cold build bit for bit. Preparation
+runs no second engine and publishes no report; the development check
+(`python3 scripts/check.py`) compares the book code with the independent
+reference on the real-data bench.
 
-Research schema 21 stores facts only, no book. It also retains income EBITDA
-for foreign-report derivation. The public parameter catalog is unchanged. This
-section owns the current research schema and daily cache versions; other
-documents link here.
+Research schema 21 stores facts and the valuation sums derived from them, no
+book. It also retains income EBITDA for foreign-report derivation. The public
+parameter catalog is unchanged. This section owns the current research schema
+and daily cache versions; other documents link here.
 
 
 - Each saved company with its name, exchange and sector (cached metadata, not
@@ -72,11 +78,15 @@ documents link here.
   value, inferred EBITDA, and EBITDA/EV for valid US reports (`statements`); foreign statement anchors use `foreign_reports`.
 - The typed facts below: the extra annual inputs and the 10-year Treasury
   yields are typed facts too (`annual_facts`, `market_days.year10`).
+- For each company and priced day with a yield, the running sums of daily
+  E/P, S/P and B/P and their day counts (`valuation_sums`, folded by
+  `facts.refold` from `books.valuation_days`). Books read them for the
+  valuation averages.
 - The one research record (`metadata`): the schema version, the accepted
   raw-file signature (`inputs`), each price file's size and time (`prices`),
   and the identity (below).
 
-The daily cache, `data/schedules.sqlite` (version 14), holds compact entry
+The daily cache, `data/schedules.sqlite` (version 13), holds compact entry
 sheets in `books`, `book_pools` and `book_rows`. The header names an entry
 session, its latest/historical policy and its candidate count. Pools share
 one handle. `book_pools` marks complete pools, including empty ones. One row
@@ -86,12 +96,6 @@ EBITDA, spreads, metric pairs and filter values. Catalog mappings in
 NULL means unavailable. Stored owner lanes retain REAL rounding and zero
 normalization; typed research facts and formula outputs preserve signed zero.
 The version-11 metric/filter tables and stored exit/return/status fields are gone.
-
-The daily cache also holds `valuation_sums`: for each company and priced day
-with a yield, the running sums of daily E/P, S/P and B/P and their day counts
-(`books.valuation_days`). Books read them for the valuation averages, so the
-daily cache is a book input: preparation makes the sums current for the
-attached research before it builds or repairs any book.
 
 `book_store` owns the schema, writer and row/lane readers. SQL selection reads
 its compact columns directly. A daily connection (`daily.connect`) attaches
@@ -202,9 +206,8 @@ machine had other load. A cold build took 176 s (research 172 s, daily 3 s).
 trials, 2013–2026, 1,344 periods, ranks 1–30, the cached pool, three built-in
 conditions and one custom variable) took 326.6 s with its 1,326 books
 computed and 62.7 s with them saved. These are observed timings, not
-guarantees. They predate daily cache version 14, which adds the valuation
-sums and their sheet lanes. See also `results/experiments/performance.json`
-for older measurements of a smaller January-only database.
+guarantees. They predate the valuation sums and their sheet lanes. See also
+`results/experiments/performance.json` for older measurements of a smaller January-only database.
 
 The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot supply a complete top-100 book. The wider pool also has incomplete price coverage of the universe. The engine reports insufficient matches instead of claiming 100 names in every period.
 
@@ -306,10 +309,7 @@ remain independent.
 Sheet repair. Research records each company's earliest changed price or report
 date, plus shared rate, FX and session changes. With matching book code and the
 saved research base, preparation recalculates only affected company rows in
-historical cached sheets. First, in one transaction, it refolds each affected
-company's valuation sums from the same cutoff, the earliest over all markets,
-with the company's current market. The sums add in day order from zero, so a
-refold that continues from the stored sums equals a cold build bit for bit. US statement changes refresh all US candidate counts
+historical cached sheets. US statement changes refresh all US candidate counts
 and ranks from statements alone. Affected legacy pools rebuild on demand.
 Removed sessions lose their sheets. Repairs commit per sheet; latest rebuilds
 and the new binding commits last. An interruption keeps the old binding, which

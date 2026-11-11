@@ -8,6 +8,8 @@ from datetime import date
 import statistics
 import math
 
+from backtest.financial import rules
+
 METRICS = {
     'ev_ebitda': dict(label='EV / EBITDA'),
     'ev_ebitda_3y': dict(label='EV / 3-year average EBITDA'),
@@ -130,21 +132,7 @@ def anniversary(day, years):
     return day.replace(year=year,day=min(day.day,monthrange(year,day.month)[1]))
 
 
-# The averaged multiples: (filter key, legacy annual field), in valuation-sum order.
-VALUATIONS = (('pe','netIncome'),('ps','revenue'),('pb','totalStockholdersEquity'))
-
-
-def valuation_yields(cap, values):
-    """Signed E/P, S/P and B/P of one priced day: report value / cap, or None when missing or not finite."""
-    result=[]
-    for _,field in VALUATIONS:
-        value=values.get(field)
-        found=None if value is None else value/cap
-        result.append(found if found is not None and math.isfinite(found) else None)
-    return result
-
-
-def filter_values(observation, pairs, day, lookup, financials=None, treasury10=None, sums=None):
+def filter_values(observation, pairs, day, lookup, financials=None, treasury10=None, *, sums):
     """Prepare threshold inputs at the screen date, never the future exit.
 
     Annual lookbacks use the same calendar day (anniversary).
@@ -152,8 +140,8 @@ def filter_values(observation, pairs, day, lookup, financials=None, treasury10=N
     lookup(day, forward, slack) returns (day, adjusted close) or None.
     Missing endpoints omit the value and exclude a stock only if filtered on it.
     treasury10 is the saved 10-year yield in percent; None omits its spread.
-    sums(day) gives the running valuation sums (books.valuation_days) at the
-    last priced day on or before day; None omits the averages. An average
+    sums(day) gives the stored running valuation sums (facts.valuation) at
+    the last priced day on or before day, or zeros. An average
     multiple is 1 / the mean daily yield over the priced days in
     (anniversary, day]; it needs a sum on or before the anniversary and a
     positive mean. A relative is the current multiple / its average.
@@ -170,18 +158,17 @@ def filter_values(observation, pairs, day, lookup, financials=None, treasury10=N
         values.update(financial_values(observation,financials))
         spread=operating_yield_spread(observation,financials,treasury10)
         if spread is not None:values['operating_yield_spread_3y']=spread
-    if sums is not None:
-        current=sums(day)
-        for years in (3,5):
-            before=sums(anniversary(day,years))
-            for k,(key,_) in enumerate(VALUATIONS):
-                count=current[3+k]-before[3+k]
-                if before[3+k]==0 or count==0:continue
-                mean=(current[k]-before[k])/count
-                if mean<=0 or not math.isfinite(1/mean):continue
-                values[f'{key}_avg_{years}y']=average=1/mean
-                if key in values and math.isfinite(relative:=values[key]/average):
-                    values[f'{key}_vs_avg_{years}y']=relative
+    current=sums(day)
+    for years in (3,5):
+        before=sums(anniversary(day,years))
+        for k,(key,_) in enumerate(rules.VALUATIONS):
+            count=current[3+k]-before[3+k]
+            if before[3+k]==0 or count==0:continue
+            mean=(current[k]-before[k])/count
+            if mean<=0 or not math.isfinite(1/mean):continue
+            values[f'{key}_avg_{years}y']=average=1/mean
+            if key in values and math.isfinite(relative:=values[key]/average):
+                values[f'{key}_vs_avg_{years}y']=relative
     return values
 
 

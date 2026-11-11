@@ -12,6 +12,9 @@ MIN_EV = 50_000_000
 BUFFER = 250
 LAG = timedelta(days=90)
 MAX_AGE = timedelta(days=800)
+# The averaged multiples: (filter key, legacy annual field), in the order of
+# the stored valuation sums (books.valuation_yields, metrics.filter_values).
+VALUATIONS = (('pe', 'netIncome'), ('ps', 'revenue'), ('pb', 'totalStockholdersEquity'))
 
 
 def parse_day(value: object) -> date | None:
