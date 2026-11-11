@@ -10,6 +10,7 @@ from backtest import calendar as schedule_calendar
 from backtest import calendar_requests
 from backtest import portfolio_results as portfolio_results
 
+from backtest.engines.original import curves
 from backtest.inputs import book_store, facts
 
 def prepare_period(db,entry,pool,book_facts):
@@ -28,7 +29,7 @@ def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None
     sessions=facts.sessions(db,options.get('market','us'))
     periods,_,marked,_,_=calendar_requests.periods(sessions,dict(start=start,end=end,months=months),
                                                    checkpoint=backtest_control.checkpoint)
-    return _backtest_periods(db,periods,final_mark=marked,months=months,book_selection=book_selection,emit_period=emit_period,**options)
+    return _backtest_periods(db,periods,sessions=sessions,final_mark=marked,months=months,book_selection=book_selection,emit_period=emit_period,**options)
 
 def backtest_calendar(db, *, book_selection=None, emit_period=None, **request):
     """Evaluate a version-1 calendar with the ordinary complete-book policy.
@@ -39,7 +40,7 @@ def backtest_calendar(db, *, book_selection=None, emit_period=None, **request):
     sessions=facts.sessions(db,request.get('market','us'))
     periods,first,marked,options,metadata=calendar_requests.periods(
         sessions,request,checkpoint=backtest_control.checkpoint)
-    return _backtest_periods(db,periods,final_mark=marked,common_start=first,frequency=metadata,book_selection=book_selection,emit_period=emit_period,**options)
+    return _backtest_periods(db,periods,sessions=sessions,final_mark=marked,common_start=first,frequency=metadata,book_selection=book_selection,emit_period=emit_period,**options)
 
 def dated_periods(dates,start,end,months,sessions):
     """Keep legacy month validation; explicit trades need no nominal schedule."""
@@ -52,11 +53,13 @@ def backtest_dates(db, *, dates, start, end, months=12, book_selection=None, emi
     sessions=facts.sessions(db,options.get('market','us'))
     first,final,periods=dated_periods(dates,start,end,months,sessions)
     # Explicit trades end on the final mark.
-    return _backtest_periods(db,periods,final_mark=True,months=months,common_start=first,book_selection=book_selection,emit_period=emit_period,**options)
+    return _backtest_periods(db,periods,sessions=sessions,final_mark=True,months=months,common_start=first,book_selection=book_selection,emit_period=emit_period,**options)
 
-def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None, frequency=None, book_selection=None, emit_period=None, **options):
+def _backtest_periods(db, periods, *, sessions, final_mark, months=None, common_start=None, frequency=None, book_selection=None, emit_period=None, **options):
     """Prepare missing books atomically and apply the shared SQL screener.
 
+    sessions are the market's saved sessions (facts.sessions): each period
+    carries its daily paths on them (curves.book).
     final_mark: the last period ends on a mark to date (portfolio_results).
     """
     backtest_control.checkpoint()
@@ -82,6 +85,7 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
             with diagnostics.stage('selection'):
                 stocks=(screening.select(db,book=book,exit_day=exit_day,**options) if book_selection is None
                         else book_selection.select(db,book,entry,exit_day))
+            starts=[]
             for stock in stocks:
                 backtest_control.checkpoint()
                 start=(rules.parse_day(stock['entry']),stock.pop('price'))
@@ -92,10 +96,13 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
                     raise ValueError('A selected sheet row has no valid exit: '+reason)
                 end,value,status=ending
                 stock.update(exit=str(end[0]),return_value=value,status=status)
+                starts.append(start)
             start_spy,end_spy=book_facts.spy(entry),book_facts.spy(exit_day)
             if start_spy is None or end_spy is None:raise ValueError('SPY comparison coverage is missing for this market window.')
             spy=financial_books.benchmark_return(start_spy,end_spy)
-            return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
+            with diagnostics.stage('curve'):
+                curve=curves.book(db,book_facts,sessions,entry,exit_day,[(stock['symbol'],start) for stock,start in zip(stocks,starts)],start_spy)
+            return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy,curve=curve)
         finally:
             if owned:db.rollback()
     with db:

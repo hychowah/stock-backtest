@@ -177,9 +177,12 @@ class ScalarTests(unittest.TestCase):
         class Writer:max_bytes=4*1024**2
         with self.fixture.view() as view:
             executor=x.Executor(self.fixture.capture(),view,lambda record:None)
-            scalar_runs.check_size(Writer(),executor,100)
+            scalar_runs.check_size(Writer(),executor,100,1000)
             with self.assertRaisesRegex(d.FormulaError,'about [0-9]+ MB of results'):
-                scalar_runs.check_size(Writer(),executor,10000)
+                scalar_runs.check_size(Writer(),executor,10000,0)
+            # The curve rows count: 60,000 days of at most 70 B exceed the 4 MiB bound.
+            with self.assertRaisesRegex(d.FormulaError,'about [0-9]+ MB of results'):
+                scalar_runs.check_size(Writer(),executor,1,60000)
     def test_random_runs_keep_formula_values_without_traces(self):
         expected,_=self.fixture.select(self.fixture.capture())
         records=[]

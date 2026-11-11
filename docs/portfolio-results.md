@@ -34,6 +34,11 @@ and finite fractional SPY total return. Missing required fields, changed book
 identities, duplicate symbols, unordered ranks and malformed values fail. Empty
 holdings are valid. Checkpoint and provider errors propagate unchanged.
 
+The provider can add `curve`, the daily paths of the book: `{days, portfolio,
+spy, exits}`. The evaluator checks them and gives the period its
+[daily curve](#daily-curve). A provider without paths gives periods without a
+curve.
+
 The evaluator opens no files or databases. It starts no workers and acquires no
 locks. Its caller retains source and financial ownership. The ordinary schedule
 adapter keeps missing-book preparation and evaluation inside its transaction.
@@ -85,7 +90,7 @@ bounds and versioned week/month interval remain separate from resolved result
 dates. Snapshot versions and financial contract version remain unchanged. See
 [calendar compatibility](schedule-calendar.md).
 
-Each period has exactly the existing fields:
+Each period has these fields:
 
 | Field | Type and meaning |
 |---|---|
@@ -95,6 +100,7 @@ Each period has exactly the existing fields:
 | `portfolio` | Arithmetic mean of selected fractional returns. Zero for an empty selection held in cash. |
 | `spy` | Fractional SPY total return for the same holding boundaries. |
 | `is_final_period` | Boolean. True only for the final period. |
+| `curve` | Present when the provider gave daily paths. Ordered `[day, portfolio, spy]` rows: see [Daily curve](#daily-curve). |
 
 Each holding retains every selected field. The internal SQL `year` period ID is
 removed. Existing fields are listed below; additional provider fields are copied
@@ -131,6 +137,42 @@ period or incomplete holdings still fails explicitly.
 Holding rows stay in SQL rank order. Attribution consumers retain their own
 existing signed-contribution order, with symbol ties. This module adds no
 second attribution calculator. Dated holdings gain no invented price fields.
+
+## Daily curve
+
+The Original engine gives each period a `curve`. It has one row for each market
+session after the period's entry day, through its exit day. A row is
+`[day, portfolio, spy]`:
+
+- `day` is the session date.
+- `portfolio` is the mean of the selected holdings' fractional returns from
+  their entry prices to that day, added in rank order. Weights do not reset
+  inside a period. An empty selection holds cash at 0.
+- `spy` is SPY's fractional return from the entry close to that day. Each day
+  reads the close that the period's SPY return reads.
+
+`backtest/engines/original/curves.py` reads the daily closes with these rules:
+
+- Before its own entry day, a holding's return is 0.
+- A day without a close keeps the last price. A stopped holding stays at its
+  last price until the rebalance, as its exit does.
+- From the day of a recorded bankruptcy in the book's window, the return is −1.
+- A foreign close counts on a local session only. Its USD value uses the
+  currency rate of its own day. A close without a rate keeps the last value.
+- A day without a SPY close keeps the last SPY value.
+
+The last row is the exit day. It holds the period's own `portfolio` and `spy`.
+The evaluator refuses paths whose last day differs from a holding's
+`return_value` or from the SPY return. Thus the curve compounds to the saved
+`growth` and `spy_growth`, and no existing field changes. The engine holds one
+holding's path at a time.
+
+`curves.py` is a reader. It binds no prepared-data identity, so an edit to it
+rebuilds no research record and drops no book. Results saved before this field
+have no curve. Explore does not recalculate a curve for a rank or period
+selection. `backtest/application/result_curves.py` reads the curves of
+evidence-backed results; see [asset curves](evidence-views.md#asset-curves). A
+legacy eager result keeps `curve` in its inline periods, and no route reads it.
 
 ## Completed random trials
 

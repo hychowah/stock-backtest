@@ -7,7 +7,7 @@ from backtest.runtime import diagnostics, backtest_control
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 from backtest.application import library as saved_backtests
-from backtest.application import durable_evidence, evidence_views, result_exports, result_exploration, result_sectors
+from backtest.application import durable_evidence, evidence_views, result_curves, result_exports, result_exploration, result_sectors
 
 EXPLORATION_REQUEST_BYTES=512*1024**2
 
@@ -52,11 +52,11 @@ def evidence_request(self,identifier,path):
             self.reply(200,access.acquire(identifier,request));return
         if self.command!='GET':raise ValueError('Unsupported evidence operation.')
         with access.read(identifier) as (metadata,reader):
-            if len(path)==2 and path[0]=='sectors':
+            if len(path)==2 and path[0] in ('sectors','curve'):
                 trial='all' if path[1]=='all' else int(path[1])
                 disconnected=self.disconnect_check()
                 with backtest_control.cancel_when(lambda:access.closing or disconnected()):
-                    value=result_sectors.evidence(reader,trial)
+                    value=(result_sectors if path[0]=='sectors' else result_curves).evidence(reader,trial)
                 self.json_reply(200,evidence_views.encode(dict(identity=identifier,**value)));return
             if len(path)==5 and path[0]=='sector-holdings':
                 sector=json.loads(unquote(path[4]))

@@ -2,7 +2,8 @@
 
 evaluate consumes contiguous (datetime.date entry, exit) pairs. select_period
 returns {entry: ISO date, exit: ISO date, holdings: ordered SQL row dictionaries,
-spy: fractional total return}. It owns book acquisition, not aggregation.
+spy: fractional total return}. It owns book acquisition, not aggregation. It
+can add curve, the daily paths that give the period its curve (_curve).
 
 Contract 1 remains the default. Explicit contract 2 admits scalar selected rows
 through the same reducer. See docs/portfolio-results.md for fields and units. The
@@ -112,6 +113,27 @@ def _holdings(book, entry, exit_day, contract=1):
     return stocks
 
 
+def _curve(paths, period):
+    """The period's curve from a provider's daily paths: [day, portfolio, SPY] rows of returns to date.
+
+    paths is {days, portfolio, spy, exits}: the ISO days after the entry
+    through the exit, the holdings' mean return and SPY's return to date on
+    each day, and each holding's return on the last day in rank order. The
+    last day is the period itself: exits must equal the holdings'
+    return_value and the last SPY value the period's SPY return. Its row
+    holds the period's own returns, so the curve compounds to the result.
+    """
+    days = paths['days']
+    if (not days or days[-1] != period['exit'] or len(paths['portfolio']) != len(days) or len(paths['spy']) != len(days)
+            or paths['spy'][-1] != period['spy'] or paths['exits'] != [stock['return_value'] for stock in period['holdings']]):
+        raise ValueError('Daily paths end on a different period return.')
+    rows = [list(row) for row in zip(days, paths['portfolio'], paths['spy'])]
+    rows[-1][1] = period['portfolio']
+    if any(not _finite(value) or value < -1 for row in rows for value in row[1:]):
+        raise ValueError('Daily paths hold an unavailable return.')
+    return rows
+
+
 def mean_return(values):
     """Mean of ordered holding returns, or zero for an empty cash selection.
 
@@ -185,6 +207,8 @@ def evaluate_into(periods, select_period, emit_period, *, common_start=None, che
             period = dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
                 names=len(stocks), portfolio=mean_return(h['return_value'] for h in stocks),
                 spy=book['spy'], is_final_period=final)
+            if 'curve' in book:
+                period['curve'] = _curve(book['curve'], period)
             portfolio, spy = period['portfolio'], period['spy']
             emit_period(period)
             # Retain only returns while reducing, never the previous book.

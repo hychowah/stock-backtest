@@ -131,6 +131,33 @@ class PortfolioTests(unittest.TestCase):
                 p.evaluate([(self.a,self.b)],lambda a,b:book)
         with self.assertRaises(ValueError):p.evaluate([(self.a,self.b)],lambda a,b:None)
 
+    def test_provider_daily_paths_give_the_period_curve(self):
+        middle='2020-01-15'
+        def book(rows,portfolio,exits):
+            return dict(entry=str(self.a),exit=str(self.b),holdings=rows,spy=.1,
+                        curve=dict(days=[middle,str(self.b)],portfolio=portfolio,spy=[.05,.1],exits=exits))
+        rows=[holding('A',1,.3),holding('B',2,-.1)]
+        # The provider's last mean can differ from the period's in the last digit; the row holds the period's.
+        good=book(rows,[.15,.1000000000000001],[.3,-.1])
+        period=p.evaluate([(self.a,self.b)],lambda a,b:deepcopy(good))['periods'][0]
+        self.assertEqual(period['curve'],[[middle,.15,.05],[str(self.b),period['portfolio'],.1]])
+        self.assertEqual(list(period)[-1],'curve')
+        # An empty selection holds cash at 0 on every day.
+        cash=p.evaluate([(self.a,self.b)],lambda a,b:book([],[0.,0.],[]))['periods'][0]
+        self.assertEqual(cash['curve'],[[middle,0.,.05],[str(self.b),0.,.1]])
+        # A provider without daily paths gives a period without a curve.
+        plain={key:value for key,value in good.items() if key!='curve'}
+        self.assertNotIn('curve',p.evaluate([(self.a,self.b)],lambda a,b:deepcopy(plain))['periods'][0])
+        # The last day must be the period: its exit day, each holding's return and the SPY return.
+        mutations=[lambda c:c.update(days=[middle,'2020-01-31']),lambda c:c.update(days=[],portfolio=[],spy=[]),
+            lambda c:c['portfolio'].pop(0),lambda c:c['spy'].pop(0),lambda c:c['exits'].pop(),
+            lambda c:c['exits'].__setitem__(0,.31),lambda c:c['spy'].__setitem__(1,.11),
+            lambda c:c['portfolio'].__setitem__(0,float('nan')),lambda c:c['spy'].__setitem__(0,float('inf'))]
+        for mutate in mutations:
+            changed=deepcopy(good);mutate(changed['curve'])
+            with self.subTest(curve=changed['curve']),self.assertRaisesRegex(ValueError,'Daily paths'):
+                p.evaluate([(self.a,self.b)],lambda a,b:changed)
+
     def test_checkpoint_and_provider_failures_propagate(self):
         provider=Mock()
         error=RuntimeError('fictional interruption')

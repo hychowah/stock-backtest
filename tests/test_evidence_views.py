@@ -302,6 +302,9 @@ process.stdout.write(JSON.stringify(out));});"""
         self.assertEqual(status,200);sector_detail=json.loads(body);sector_detail.pop('identity')
         status,_,body=request('POST','/api/backtest-sectors',dict(result=originals[0],selection=1))
         self.assertEqual(status,200);self.assertEqual(json.loads(body),sector_detail)
+        # A result saved without curves answers that none is available.
+        status,_,body=request('GET',base+'/curve/1')
+        self.assertEqual((status,json.loads(body)),(200,dict(identity='a'*32,available=False)))
         from urllib.parse import quote
         selected_sector=originals[0]['periods'][0]['holdings'][0]['sector'] or None
         sector_path=quote(json.dumps(selected_sector),safe='')
@@ -324,7 +327,8 @@ process.stdout.write(JSON.stringify(out));});"""
         writer=result_evidence.Writer(stream,trials=3,metadata=dict(mode='random',options=dict(rank_from=1,rank_to=50),configuration=summary['configuration']),max_bytes=16*1024**2)
         for number,trial in enumerate(batch['trial_results'],1):
             writer.start_trial(number)
-            for period in trial['periods']:writer.period(period)
+            # Each saved period carries a one-day curve: its exit day.
+            for period in trial['periods']:writer.period(dict(period,curve=[[period['exit'],period['portfolio'],period['spy']]]))
             writer.end_trial({key:value for key,value in trial.items() if key!='periods'})
         writer.finish(summary)
         meta=dict(metadata,kind='random',settings=dict(mode='random',rank_from=1,rank_to=50),result=summary)
@@ -335,6 +339,18 @@ process.stdout.write(JSON.stringify(out));});"""
         self.assertEqual(status,200);sector_batch=json.loads(body);sector_batch.pop('identity')
         status,_,body=request('POST','/api/backtest-sectors',dict(result=batch,selection='all'))
         self.assertEqual(status,200);self.assertEqual(json.loads(body),sector_batch)
+        status,_,body=request('GET',batch_base+'/curve/2')
+        self.assertEqual(status,200);curve=json.loads(body);second=batch['trial_results'][1]
+        self.assertEqual((curve['identity'],curve['available']),('b'*32,True))
+        self.assertEqual(curve['days'],[second['start'],second['first_trade']]+[period['exit'] for period in second['periods']])
+        self.assertEqual((curve['strategy'][-1],curve['spy'][-1]),(second['growth'],second['spy_growth']))
+        status,_,body=request('GET',batch_base+'/curve/all')
+        self.assertEqual(status,200);band=json.loads(body)
+        self.assertEqual((band['trials'],band['days'][0],band['days'][-1]),(3,'2000-01-01','2025-01-27'))
+        self.assertEqual(band['highest'][-1],max(trial['growth'] for trial in batch['trial_results']))
+        self.assertEqual(request('GET',batch_base+'/curve/4')[0],400)
+        status,_,body=request('GET',batch_base+'/page/periods/2/0')
+        self.assertEqual(status,200);self.assertTrue(all('curve' not in row['value'] for row in json.loads(body)['rows']))
         status,_,body=request('GET',batch_base+'/explore/all/11/15/20/30')
         self.assertEqual(status,200);bounded_batch=json.loads(body);bounded_batch.pop('identity');bounded_batch.pop('seconds')
         chosen_batch=dict(trial='all',period_from=11,period_to=15,rank_from=20,rank_to=30)

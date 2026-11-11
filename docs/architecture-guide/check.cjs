@@ -14,6 +14,7 @@ for (const match of html.matchAll(/\bhref="#([^"]+)"/g)) assert(ids.includes(mat
 for (const match of html.matchAll(/\baria-controls="([^"]+)"/g)) assert(ids.includes(match[1]), `Missing controlled panel ${match[1]}`);
 assert(!/<(?:link|img|script)\b[^>]*(?:src|href)=["']https?:/i.test(html), 'Guide must work without remote assets');
 assert(html.includes('Shared in-memory data was only a benchmark prototype. That prototype was later removed.') && html.includes('The requested-pool change is now in the source.'), 'Source and removed-prototype status must be clear');
+assert(html.includes('Each period of a new dated result also has a daily curve.') && html.includes('backtest/engines/original/curves.py') && html.includes('backtest/application/result_curves.py') && html.includes('The website does not draw the curve yet.'), 'Explain the saved daily curve, its reader and that no page draws it yet');
 assert(html.includes('Financial ratios use annual statement inputs.') && html.includes('Filters before a Rank narrow what it ranks.'), 'Explain annual ratio inputs and step filters');
 assert(html.includes('WSL source') && html.includes('Windows runtime') && html.includes('tools/deploy.py') && html.includes('deployment.pending.json'), 'Explain source deployment and interrupted publication');
 assert(html.includes('server/app.py') && html.includes('runtime_access.py') && html.includes('The tracked report is a frozen record.'), 'Explain native ownership and the frozen report');

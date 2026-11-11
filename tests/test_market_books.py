@@ -9,7 +9,7 @@ import json
 from types import SimpleNamespace
 import unittest
 from backtest import measure_observations
-from backtest.engines.original import schedules,robustness,book_batch
+from backtest.engines.original import schedules,robustness,book_batch,curves
 from backtest.inputs import book_store,daily,fact_view,facts,financial_inputs,market,research
 from backtest.financial import books, rules
 from test_market_inputs import prepared_markets
@@ -28,6 +28,30 @@ class MarketBooksTests(unittest.TestCase):
             self.assertAlmostEqual(holding['return_value'],.25)
             book=book_store.find(db,date(2015,7,1),'cached',market='jp')
             self.assertEqual([row['price'] for row in book_store.rows(db,book,'cached')],[10,10])
+
+    def test_foreign_curve_takes_each_close_days_rate_and_keeps_a_stopped_usd_value(self):
+        with prepared_markets() as (db,*_):
+            period=schedules.backtest(db,start='2015-07-01',end='2015-08-03',market='jp',pool='cached',min_cap=0,min_ev=0,rank_to=2)['periods'][0]
+            # Both stocks stop on 20 July: the yen's later moves do not change their USD cash.
+            self.assertEqual([row[0] for row in period['curve']],['2015-07-20','2015-07-30','2015-08-03'])
+            for row,spy in zip(period['curve'],(.10,.20,.30)):
+                self.assertAlmostEqual(row[1],.25);self.assertAlmostEqual(row[2],spy)
+            self.assertEqual(period['curve'][-1][1:],[period['portfolio'],period['spy']])
+
+    def test_foreign_paths_count_only_local_session_closes_that_have_a_rate(self):
+        rates={'2020-01-02':1.,'2020-01-06':.5,'2020-01-07':1.,'2020-01-10':2.}
+        port=SimpleNamespace(market='hk',quote_currency=lambda symbol:'HKD',spy=lambda day:100.+day.day,
+                             convert=lambda value,currency,day:value*rates[day] if day in rates else None)
+        sessions=[date(2020,1,day) for day in (2,6,8,9,10)]
+        with store.connection() as db:
+            for day,close in [('2020-01-02',10),('2020-01-06',12),('2020-01-07',99),('2020-01-09',15),('2020-01-10',18)]:
+                store.price(db,'0001.HK',day,close)
+            # 7 January is not a local session; 8 January has no close; 9 January has no rate.
+            paths=curves.book(db,port,sessions,date(2020,1,2),date(2020,1,10),[('0001.HK',(date(2020,1,2),10.))],102.)
+        self.assertEqual(paths['days'],['2020-01-06','2020-01-08','2020-01-09','2020-01-10'])
+        self.assertEqual(paths['portfolio'],[12*.5/10-1,12*.5/10-1,12*.5/10-1,18*2./10-1])
+        self.assertEqual(paths['exits'],[18*2./10-1])
+        self.assertEqual(paths['spy'],[value/102.-1 for value in (106.,108.,109.,110.)])
 
     def test_empty_foreign_selection_keeps_cash_and_full_benchmark_window(self):
         with prepared_markets() as (db,*_):

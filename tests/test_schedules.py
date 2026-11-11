@@ -7,7 +7,7 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import book_store, daily, facts, financial_inputs, research
-from backtest.engines.original import book_batch
+from backtest.engines.original import book_batch, curves
 from backtest.runtime import cache_access, diagnostics
 from backtest.financial import rules, books as financial_books, metrics
 from backtest import calendar as schedule_calendar, calendar_requests, portfolio_results
@@ -81,7 +81,7 @@ class CalendarTests(unittest.TestCase):
             with patch.object(research,'signature',return_value={'fixture':1}),closing(sqlite3.connect(':memory:',uri=True)) as probe:
                 research.forget_signature();self.addCleanup(research.forget_signature)
                 daily.attach(probe,source);before=daily.current(probe)
-                for module in (portfolio_results,schedule_calendar,s,daily):
+                for module in (portfolio_results,schedule_calendar,s,curves,daily):
                     copy=Path(folder)/Path(module.__file__).name;copy.write_text('# changed reader source')
                     with patch.object(module,'__file__',str(copy)):
                         self.assertEqual(daily.current(probe),before)
@@ -236,6 +236,66 @@ class BacktestTests(unittest.TestCase):
             second=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=2)
         self.assertAlmostEqual(second['growth'],1.75*.75)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],2)
+
+    def curve_fixture(self):
+        """Sessions inside both quarters; A has no close on 2 March."""
+        for day,spy in [('2015-02-02',105),('2015-03-02',90),('2015-05-01',115),('2015-06-01',118)]:
+            store.session(self.db,day,spy)
+        for symbol,day,price in [('A','2015-02-02',24),('B','2015-02-02',9),('B','2015-03-02',11),
+                                 ('A','2015-05-01',33),('A','2015-06-01',36),('B','2015-05-01',22),('B','2015-06-01',18)]:
+            store.price(self.db,symbol,day,price)
+
+    def curve(self,period,paths,spy):
+        """The expected curve rows: the holdings' mean return to date, added in rank order, then SPY.
+
+        The last row is the period itself.
+        """
+        rows=[]
+        for n,day in enumerate(sorted(spy)):
+            total=0.
+            for holding in period['holdings']:total+=paths[holding['symbol']][n]
+            rows.append([day,total/len(period['holdings']),spy[day]])
+        self.assertAlmostEqual(rows[-1][1],period['portfolio'],places=12)
+        rows[-1][1]=period['portfolio']
+        return rows
+
+    def test_each_period_carries_the_daily_curve_of_its_holdings_and_spy(self):
+        self.curve_fixture()
+        result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=2)
+        first,second=result['periods']
+        # A day without a close keeps the last price.
+        self.assertEqual(first['curve'],self.curve(first,dict(A=[24/20-1,24/20-1,30/20-1],B=[9/10-1,11/10-1,20/10-1]),
+            {'2015-02-02':105/100-1,'2015-03-02':90/100-1,'2015-04-01':110/100-1}))
+        self.assertEqual(second['curve'],self.curve(second,dict(A=[33/30-1,36/30-1,15/30-1],B=[22/20-1,18/20-1,20/20-1]),
+            {'2015-05-01':115/110-1,'2015-06-01':118/110-1,'2015-07-01':121/110-1}))
+        # The last day is the period's own return, so the curve compounds to the saved growth.
+        growth=spy=1.
+        for period in result['periods']:
+            self.assertEqual(period['curve'][-1],[period['exit'],period['portfolio'],period['spy']])
+            growth*=1+period['curve'][-1][1];spy*=1+period['curve'][-1][2]
+        self.assertEqual((growth,spy),(result['growth'],result['spy_growth']))
+
+    def test_curve_keeps_a_stopped_price_and_marks_a_bankruptcy_from_its_day(self):
+        self.curve_fixture()
+        self.db.research.execute("DELETE FROM stock_days WHERE symbol='B' AND day='2015-07-01'")
+        with patch.object(rules,'BANKRUPT',{('A',date(2015,5,15))}):
+            result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=2)
+        first,second=result['periods']
+        self.assertEqual({h['symbol']:h['status'] for h in second['holdings']},{'A':'Bankruptcy','B':'Last available price'})
+        self.assertEqual(second['curve'],self.curve(second,dict(A=[33/30-1,-1.,-1.],B=[22/20-1,18/20-1,18/20-1]),
+            {'2015-05-01':115/110-1,'2015-06-01':118/110-1,'2015-07-01':121/110-1}))
+        # The loss day is outside the first book's window.
+        self.assertEqual(first['curve'][-1],['2015-04-01',.75,110/100-1])
+
+    def test_curve_is_zero_before_a_holding_that_enters_late(self):
+        store.session(self.db,'2015-01-05',102);store.session(self.db,'2015-01-06',104)
+        self.db.research.execute("DELETE FROM stock_days WHERE symbol='B' AND day='2015-01-02'")
+        for symbol,day,price in [('A','2015-01-05',22),('B','2015-01-06',10),('A','2015-01-06',23)]:
+            store.price(self.db,symbol,day,price)
+        period=s.backtest(self.db,start='2015-01-01',end='2015-04-01',months=3,rank_to=2)['periods'][0]
+        self.assertEqual({h['symbol']:h['entry'] for h in period['holdings']},{'A':'2015-01-02','B':'2015-01-06'})
+        self.assertEqual(period['curve'],self.curve(period,dict(A=[22/20-1,23/20-1,30/20-1],B=[0.,0.,20/10-1]),
+            {'2015-01-05':102/100-1,'2015-01-06':104/100-1,'2015-04-01':110/100-1}))
 
     def test_cached_period_reads_share_one_transaction_and_release_before_next_period(self):
         options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1)

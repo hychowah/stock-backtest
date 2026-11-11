@@ -12,7 +12,7 @@ from backtest.application import scalar_execution, strategy_requests
 from backtest.inputs import facts
 from backtest.variables import definitions
 from backtest.runtime import diagnostics
-from backtest.engines.original import schedules, robustness, book_batch
+from backtest.engines.original import schedules, robustness, book_batch, curves
 
 
 class TrialSink:
@@ -27,13 +27,16 @@ class TrialSink:
         self.writer.period(period)
 
 
-def check_size(writer, executor, periods):
+def check_size(writer, executor, periods, days):
     """Refuse, before any work, a result that would exceed the writer's byte bound.
 
     The estimate is an upper bound from record sizes measured on the real cache
     (2026-11-05): about 8 KB per screen date, 3.2 KB per holding and, for each
     explained holding, 300 B plus 350 B per formula node and 600 B per observed
-    member. The writer's bound still applies during the run.
+    member. days is the number of curve rows: the sessions after each trial's
+    first trade, through its end (curves.days). A row is an ISO day and two
+    full-precision numbers, at most 70 B. The writer's bound still applies
+    during the run.
     """
     first, last = selection.rank_range(dict(strategy=executor.capture))
     ranks = last - first + 1
@@ -43,7 +46,7 @@ def check_size(writer, executor, periods):
         members = sum(node.get('count', 1) for node in nodes if node['op'] in ('parameter', 'annual'))
         trace = 300 + 350 * len(nodes) + 600 * members
     step_bytes = len(executor.capture['steps']) * 512 if executor.capture['version'] == 2 else 0
-    estimate = periods * (8 * 1024 + ranks * (3200 + trace + step_bytes))
+    estimate = periods * (8 * 1024 + ranks * (3200 + trace + step_bytes)) + days * 70
     if estimate > writer.max_bytes:
         raise definitions.FormulaError('WORK_LIMIT', '/execution',
             f'This test would store about {estimate / 1e6:.0f} MB of results, above the '
@@ -78,7 +81,9 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
             else:
                 strategy_requests.validate_recorded(options,planned)
                 planned = calendar_requests.validate_plan(sessions,planned,checkpoint=checkpoint)
-        check_size(writer, executor, sum(len(sample) for sample in planned['samples']))
+        end = date.fromisoformat(planned['window_end'])
+        check_size(writer, executor, sum(len(sample) for sample in planned['samples']),
+                   sum(len(curves.days(sessions, date.fromisoformat(sample[0]), end)) for sample in planned['samples']))
         if configuration:configuration(planned)
         summaries = []; execution = {}
         for number,result,stats in book_batch.evaluate_trials(db,planned,progress,book_selection=executor,trial_sink=sink):
@@ -96,9 +101,10 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
         return summary
     if mode != 'custom':raise ValueError('Unsupported scalar execution mode.')
     if 'months' in options and 'calendar' not in options and 'dates' not in options:
-        periods = calendar_requests.periods(facts.sessions(db,options.get('market','us')), {key: options[key] for key in ('start', 'end', 'months')},
+        sessions = facts.sessions(db,options.get('market','us'))
+        periods = calendar_requests.periods(sessions, {key: options[key] for key in ('start', 'end', 'months')},
                                             checkpoint=checkpoint)[0]
-        check_size(writer, executor, len(periods))
+        check_size(writer, executor, len(periods), len(curves.days(sessions, periods[0][0], periods[-1][1])))
     sink.start_trial(1)
     evaluator = schedules.backtest_calendar if 'calendar' in options else schedules.backtest_dates if 'dates' in options else schedules.backtest
     summary = evaluator(db,book_selection=executor,emit_period=sink.period,**options)

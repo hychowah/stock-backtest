@@ -53,8 +53,10 @@ def trial(reader,number):
 
 
 def periods(reader,number):
+    """One trial's period rows. A period's curve is read through result_curves, not in a page."""
     for record in records(reader,number):
-        if record['type']=='period':yield dict(number=record['number'],value=record['value'])
+        if record['type']=='period':
+            yield dict(number=record['number'],value={key:part for key,part in record['value'].items() if key!='curve'})
 
 
 def holdings(reader,number,period):

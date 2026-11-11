@@ -86,7 +86,7 @@ and required resource closure.
 |---|---|
 | `header` | `format_version=1`, `result_contract=1`, declared `trials`, and original `metadata`. Exactly one header starts the stream. |
 | `trial` | One-based contiguous trial `number`. |
-| `period` | One-based contiguous period `number` and `value` with every original period field except `holdings`. |
+| `period` | One-based contiguous period `number` and `value` with every original period field except `holdings`. This includes its [daily curve](portfolio-results.md#daily-curve) when the period has one. |
 | `holding` | `value` is one original complete holding dictionary, including provider extensions. Preserve rank order. |
 | `end_period` | All `names` holdings must precede this marker. Empty periods have zero holding records. |
 | `end_trial` | Complete `summary` without `periods`, plus its period count. The last period must have its original final-period flag. |
