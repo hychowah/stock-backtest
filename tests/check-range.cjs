@@ -382,8 +382,15 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(run('BacktestQueue.isEditing()'),false);assert(!legacyRow.options.strategy);
  assert.deepEqual({options:legacyRow.options,seed:legacyRow.seed,plan:legacyRow.plan},originalLegacy);
  el('date-testing').value='single';
+ // Every copy into the builder leaves the test-name box empty: Tune on a queued test, Tune on a finished test and
+ // the button of the open result. A held edit loads its record name (above); a refused copy keeps it.
+ for(const tune of [()=>run('BacktestQueue.action("copy",completedId)'),()=>el('saved-list').handlers.click({target:{dataset:{copy:'library-result'}}}),async()=>el('workspace-edit-copy').handlers.click()]){
+   el('queue-name').value='Typed for other settings';el('auto-run').checked=true;stepEvent('input',rankId(),'rank_to','4321');await tune();
+   assert.equal(el('queue-name').value,'');assert.equal(el('auto-run').checked,false);assert.notEqual(String(steps().findLast(row=>row.kind==='rank').rank_to),'4321','The copy restored the recorded strategy');
+ }
+ el('date-testing').value='single';
  queueRows=[];await run('BacktestQueue.refresh()');
- console.log('Passed: held draft ownership across queue open/copy, saved-library opening and manual recovery; save/cancel/delete and failed admission release the form.');
+ console.log('Passed: held draft ownership across queue open/copy, saved-library opening and manual recovery; save/cancel/delete and failed admission release the form; every copy into the builder empties the name box.');
 
  // The visible queue action opens setup without launching an immediate test.
  let submissions=0;
@@ -403,7 +410,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
    await el('queue-add').handlers.click();
    assert.equal(run('currentSettings().mode'),'custom');assert.equal(el('auto-run').checked,false);
    assert.equal(storage.get('backtest-auto-run'),'false');assert.equal(submissions,0);
-   assert(el('queue-status').textContent.includes('No test has started'));
+   assert(el('queue-add-status').textContent.includes('No test has started'));
  }
  const queuedRank=rankId();stepEvent('input',queuedRank,'rank_to','12');for(let i=steps().length;i>1;i--)stepButton('up',queuedRank);
  assert.equal(stepIds()[0],queuedRank);assert.equal(submissions,0);

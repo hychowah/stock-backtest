@@ -62,8 +62,8 @@ creates no saved format or durable preference.
 
 `website/browser/workspaces.js` changes workspace visibility without replacing
 the mounted strategy form. Opening a result publishes its artifact without
-restoring draft settings. Tune and Edit a copy retain the existing
-held-edit protection. Recorded parameter rows reuse `BacktestComparison.describe`.
+restoring draft settings. Tune and Tune this strategy retain the existing
+held-edit protection; the restore that they share empties the test-name box. Recorded parameter rows reuse `BacktestComparison.describe`.
 Desktop review shows them in a side column; phones have a Settings section.
 The same description supplies `headline`, the short answer that review prints
 below the title: `cagr`, `spy_cagr` and `difference` for every test type, then
@@ -89,8 +89,11 @@ id. One loader reads them one at a time through `ResultArtifacts.use` and
 not kept, and an id that leaves the list leaves the ticks and the descriptions.
 `BacktestComparison.compare` takes a list of descriptions and returns one cell
 for each test in every row. A row whose values differ behind the same plain
-wording prints the exact text. The panel is derived from the ticks and the
-descriptions each time it is drawn.
+wording prints the exact text. A row of recorded facts (the recorded random
+date set, observation window and producer) keeps a `recorded` mark, so the
+first block of the panel lists requested settings only. The panel is derived
+from the ticks and the descriptions each time it is drawn; during a read it
+shows the tests that are already read.
 
 ## Sector selections
 

@@ -99,7 +99,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  node('saved-list').handlers.click({target:{dataset:{delete:acknowledged.id}}});
  await node('saved-list').handlers.click({target:{dataset:{confirm:acknowledged.id}}});await settle();
  assert.equal(records.length,1);assert.equal(node('saved-count').textContent,'1 / 100');
- assert(node('saved-status').textContent.startsWith('Saved backtest deleted.'));assert(node('saved-status').textContent.includes('could not be refreshed'));
+ assert(node('saved-status').textContent.startsWith('Finished test deleted.'));assert(node('saved-status').textContent.includes('could not be refreshed'));
  // The one Refresh of Runs reads the Finished rows again.
  failList=false;await node('queue-refresh').handlers.click();assert.equal(node('saved-status').textContent,'Finished tests refreshed.');
  // A delayed older list must not revive a record deleted by a newer action.
@@ -114,7 +114,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  await node('save-backtest').handlers.click();assert.equal(records.length,100);assert(node('saved-message').textContent.includes('100'));
  const beforeDelete=requests.length;
  node('saved-list').handlers.click({target:{dataset:{delete:first.id}}});
- assert(node('saved-list').innerHTML.includes('Delete this saved backtest?'));
+ assert(node('saved-list').innerHTML.includes('Delete this finished test?'));
  node('saved-list').handlers.click({target:{dataset:{keep:first.id}}});assert.equal(requests.length,beforeDelete);
  node('saved-list').handlers.click({target:{dataset:{delete:first.id}}});
  await node('saved-list').handlers.click({target:{dataset:{confirm:first.id}}});

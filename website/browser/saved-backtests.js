@@ -9,7 +9,7 @@ const SavedBacktests=(()=>{
   // Descriptions reuse stored-artifact descriptions and keep their rows only. They
   // own no artifact, evidence reader, form or main-result lifetime. An id that
   // leaves the list leaves the ticks and the descriptions.
-  const ticked=new Set(),descriptions=new Map();
+  const ticked=new Set(),descriptions=new Map(),opened={};
   let loading=false,refocus=null;
   const headings={name:'Name',cagr:'CAGR',saved:'Saved'},directions={name:1,cagr:-1,saved:-1};
   let records=[],limit=100,sorting={key:'saved',direction:-1},renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
@@ -56,8 +56,8 @@ const SavedBacktests=(()=>{
       const kind={january:'January',custom:'Fixed dates',random:'Random'+(record.trials?' · '+escape(record.trials)+' trials':' dates')}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const button=(key,label)=>'<button type="button" id="saved-do-'+key+'-'+id+'" data-'+key+'="'+id+'">'+label+'</button>';
-      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this saved backtest?</span>'+button('confirm','Delete record')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
-      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'">'+name+'</button><span class="run-status"><span class="queue-state">Finished</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Actions for '+name+'" title="Actions">⋯</summary><div class="run-actions">'+actions+'</div></details></li>';
+      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this finished test?</span>'+button('confirm','Delete test')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
+      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">Finished</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Actions for '+name+'" title="Actions">⋯</summary><div class="run-actions">'+actions+'</div></details></li>';
     }).join('')||'<li class="run-empty">No finished tests yet.</li>';
     // Ticks stay usable while a list action runs.
     list.querySelectorAll('button,input:not([type=checkbox])').forEach(control=>control.disabled=busy);
@@ -69,29 +69,38 @@ const SavedBacktests=(()=>{
     update();
   }
   const menu=id=>node('saved-menu-'+id)?.focus?.({preventScroll:true});
-  // One tick shows that test: its headline, its saved ID and every setting in plain
-  // wording, with the exact recorded text in a closed disclosure. More ticks show
-  // one column per test in list order: the settings that differ, then the
-  // headlines, then every measure and setting in a closed disclosure. Only
-  // setting rows carry the difference marker.
+  // The panel shows the ticked tests whose descriptions are read. One test shows
+  // its headline, its saved ID and every setting in plain wording, with the exact
+  // recorded text in a closed disclosure. More tests show one column per test in
+  // list order: the requested settings that differ, then the headlines, then
+  // every measure and setting in a closed disclosure. Only setting rows carry the
+  // difference marker. While another description is read, the panel keeps what it
+  // shows and its top line says so. A redraw keeps the open disclosure and the
+  // sideways scroll.
   function renderPanel(){
-    const panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),all=panel.querySelectorAll('details[open]').length>0;
+    const panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),ready=chosen.filter(record=>descriptions.has(record.id));
+    const [disclosure]=panel.querySelectorAll('details'),scrolled=[...panel.querySelectorAll('.comparison-scroll')].map(box=>box.scrollLeft);
+    if(disclosure)opened[disclosure.dataset.kind]=disclosure.open;
     panel.hidden=!chosen.length;
     if(!chosen.length){panel.innerHTML='';return;}
-    if(chosen.some(record=>!descriptions.has(record.id))){panel.innerHTML='<p role="status">Reading the stored '+(chosen.length>1?'results of '+chosen.length+' tests':'result')+'…</p>';return;}
-    const described=chosen.map(record=>descriptions.get(record.id)),notes=notices=>notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('');
-    if(chosen.length===1){
+    const reading=chosen.length-ready.length,described=ready.map(record=>descriptions.get(record.id)),notes=notices=>notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('');
+    const fold=(kind,title,content)=>'<details data-kind="'+kind+'"'+(opened[kind]?' open':'')+'><summary>'+title+'</summary>'+content+'</details>';
+    let body='';
+    if(ready.length===1){
       const list=(name,rows,key='display')=>'<dl class="'+name+'">'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>',exact=described[0].parameters.filter(row=>row.exact);
-      panel.innerHTML='<h4>'+escape(chosen[0].name)+'<small class="saved-id">Saved ID: '+escape(chosen[0].id)+'</small></h4>'+list('comparison-headline',described[0].headline)+notes(described[0].notices)+list('comparison-settings',described[0].parameters)+
-        (exact.length?'<details'+(all?' open':'')+'><summary>Exact recorded values</summary>'+list('comparison-settings',exact,'exact')+'</details>':'');
-      return;
+      body='<h4>'+escape(ready[0].name)+'<small class="saved-id">Saved ID: '+escape(ready[0].id)+'</small></h4>'+list('comparison-headline',described[0].headline)+notes(described[0].notices)+list('comparison-settings',described[0].parameters)+
+        (exact.length?fold('exact','Exact recorded values',list('comparison-settings',exact,'exact')):'');
+    }else if(ready.length){
+      // Recorded facts, such as a fresh random date set, are not requested settings: they show in the full list only.
+      const compared=BacktestComparison.compare(described),differing=compared.parameters.filter(row=>row.different&&!row.recorded);
+      const group=(title,rows,marked)=>'<tbody><tr class="comparison-group"><th scope="rowgroup" colspan="'+(ready.length+1)+'">'+title+'</th></tr>'+rows.map(row=>'<tr'+(marked&&row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(marked&&row.different?'<span class="comparison-difference">Different</span>':'')+'</th>'+row.cells.map(cell=>'<td>'+escape(cell)+'</td>').join('')+'</tr>').join('')+'</tbody>';
+      // Each table keeps the same column widths; many ticked tests scroll sideways inside the panel.
+      const table=(caption,groups)=>'<div class="comparison-scroll"><table style="min-width:'+(170+140*ready.length)+'px"><caption>'+caption+'</caption><thead><tr><td></td>'+ready.map(record=>'<th scope="col" title="'+escape(record.name)+'"><span>'+escape(record.name)+'</span></th>').join('')+'</tr></thead>'+groups+'</table></div>';
+      body=notes(compared.notices)+table('Comparison of '+ready.length+' ticked tests',group(differing.length?'Settings that differ':'Same settings',differing)+group('Headline',compared.headline))+
+        fold('all','All measures and settings',table('All measures and settings of the ticked tests',group('Measures',compared.performance)+group('Settings',[{label:'Saved ID',cells:ready.map(record=>record.id)},...compared.parameters],true)));
     }
-    const compared=BacktestComparison.compare(described),differing=compared.parameters.filter(row=>row.different);
-    const group=(title,rows,marked)=>'<tbody><tr class="comparison-group"><th scope="rowgroup" colspan="'+(chosen.length+1)+'">'+title+'</th></tr>'+rows.map(row=>'<tr'+(marked&&row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(marked&&row.different?'<span class="comparison-difference">Different</span>':'')+'</th>'+row.cells.map(cell=>'<td>'+escape(cell)+'</td>').join('')+'</tr>').join('')+'</tbody>';
-    // Each table keeps the same column widths; many ticked tests scroll sideways inside the panel.
-    const table=(caption,groups)=>'<div class="comparison-scroll"><table style="min-width:'+(170+140*chosen.length)+'px"><caption>'+caption+'</caption><thead><tr><td></td>'+chosen.map(record=>'<th scope="col">'+escape(record.name)+'</th>').join('')+'</tr></thead>'+groups+'</table></div>';
-    panel.innerHTML=notes(compared.notices)+table('Comparison of '+chosen.length+' ticked tests',group(differing.length?'Settings that differ':'These tests have the same settings',differing)+group('Headline',compared.headline))+
-      '<details'+(all?' open':'')+'><summary>All measures and settings</summary>'+table('All measures and settings of the ticked tests',group('Measures',compared.performance)+group('Settings',[{label:'Saved ID',cells:chosen.map(record=>record.id)},...compared.parameters],true))+'</details>';
+    panel.innerHTML='<div class="comparison-bar"><strong>'+chosen.length+(chosen.length>1?' tests ticked':' test ticked')+'</strong><span role="status">'+(reading?'Reading '+(reading>1?reading+' stored results':'1 stored result')+'…':'')+'</span><button type="button" id="saved-clear" data-clear>Clear</button></div>'+body;
+    panel.querySelectorAll('.comparison-scroll').forEach((box,at)=>{box.scrollLeft=scrolled[at]||0;});
   }
   // One loader reads the descriptions of the ticked rows, one at a time. A row
   // that nobody ticked is never read. A failed read is not kept: the row loses
@@ -118,7 +127,7 @@ const SavedBacktests=(()=>{
   async function request(path='',options={}){
     const response=await fetch('/api/backtests'+path,options);
     let value;try{value=await response.json();}catch(_){throw Error('The saved-backtest service is unavailable. Start the updated website and reload this page.');}
-    if(!response.ok){const error=Error(value.error||'Could not access saved backtests.');error.requires_reader=value.requires_reader;throw error;}
+    if(!response.ok){const error=Error(value.error||'Could not access the finished tests.');error.requires_reader=value.requires_reader;throw error;}
     return value;
   }
   async function refresh(){
@@ -137,7 +146,7 @@ const SavedBacktests=(()=>{
   // Ignore stale reads and feedback if a newer library action has started.
   async function reconcile(success,ticket,report=message){
     try{await refresh();}
-    catch(_){if(ticket===feedback)report(success+' The saved list could not be refreshed. Select Refresh in Runs to try again.');}
+    catch(_){if(ticket===feedback)report(success+' The Finished list could not be refreshed. Select Refresh in Runs to try again.');}
   }
   async function save(){
     const snapshot=current();
@@ -157,7 +166,7 @@ const SavedBacktests=(()=>{
   async function open(id){
     const number=++operation,isCurrent=ResultArtifacts.opening();
     await perform(async()=>{
-      message('Opening saved backtest…');
+      message('Opening the stored result…');
       const used=await ResultArtifacts.use({kind:'saved',id},(artifact,record)=>openRecord(artifact,record?.name||records.find(row=>row.id===id)?.name),{current:()=>number===operation&&isCurrent()});
       if(used.consumed)message('Opened “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'” without rerunning it.');
     });
@@ -171,10 +180,10 @@ const SavedBacktests=(()=>{
   }
   async function remove(id){
     await perform(async ticket=>{
-      message('Deleting saved record…');
+      message('Deleting the finished test…');
       await request('/'+encodeURIComponent(id),{method:'DELETE'});
       mutation++;records=records.filter(record=>record.id!==id);pendingDelete=null;render();
-      const success='Saved backtest deleted. The displayed results remain available.';message(success);
+      const success='Finished test deleted. The displayed results remain available.';message(success);
       void reconcile(success,ticket);
     });
   }
@@ -205,11 +214,14 @@ const SavedBacktests=(()=>{
       const key=event.target.dataset.sort;if(!key)return;
       sorting={key,direction:sorting.key===key?-sorting.direction:directions[key]};render();
     });
+    // The panel compares 8 tests at most. Clear removes every tick.
     node('saved-list').addEventListener('change',event=>{
       const id=event.target.dataset.tick;if(!id)return;
+      if(event.target.checked&&ticked.size>=8){event.target.checked=false;message('Untick a test first. The panel compares 8 tests at most.');return;}
       if(event.target.checked)ticked.add(id);else ticked.delete(id);
       renderPanel();return load();
     });
+    node('saved-comparison').addEventListener('click',event=>{if('clear' in event.target.dataset){ticked.clear();render();}});
     node('saved-list').addEventListener('input',event=>{
       if(renaming&&renaming.id===event.target.dataset.renameInput)renaming.name=event.target.value;
     });

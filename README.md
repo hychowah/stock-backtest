@@ -32,8 +32,8 @@ market data.
   result shows the spread of returns against SPY, not one lucky start date.
 - **Saved library and queue.** Queue tests to run overnight. Edit, hold,
   reorder or pause waiting tests. Completed results move to a library of up to
-  100 saved backtests. You can rename them, sort them and compare two side by
-  side. Opening a saved result never recalculates it.
+  100 saved backtests. You can rename them, sort them and compare up to eight
+  side by side. Opening a saved result never recalculates it.
 - **Incremental daily updates.** A data update downloads only what is new or
   missing. Preparation then recalculates only the affected companies and
   dates. Tests check that the result matches a fresh full build.

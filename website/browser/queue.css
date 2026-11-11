@@ -1,8 +1,9 @@
 /* Runs: In progress and Finished are two row groups with one column layout, so
-   they read as one table. A row is one line. Its other actions wait in the row
+   they read as one table. A row is one line; a long name takes two lines at most
+   and shows in full as a tooltip. The other actions of a row wait in its row
    control, which opens below the row inside the page flow: no scroll box clips it.
    The base rules give the narrow layout, which the queue tray also uses: the name,
-   then the other values on a second line. */
+   then the other values below it. */
 .run-counts{font:14px system-ui,sans-serif;color:#617172}
 .run-counts>span{white-space:nowrap}
 .backtest-queue>.toolbar>div:last-child{display:flex;flex-wrap:wrap;gap:8px}
@@ -12,7 +13,8 @@
 .run-empty{padding:12px 0;border-top:1px solid #e2e7df;font-size:13px;color:#617172}
 .run-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;min-height:48px;padding:4px 48px 4px 0;border-top:1px solid #e2e7df;font-size:13px;color:#536762}
 .run-row>input[type=checkbox]{flex:none;width:20px;height:20px;min-height:0;margin:0;padding:0;accent-color:#20775e}
-.run-name{flex:1 1 calc(100% - 32px);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;color:#192b31}
+.run-name{flex:1 1 calc(100% - 32px);min-width:0;font-size:14px;font-weight:600;line-height:1.25;color:#192b31}
+.run-name>span,.saved-comparison thead th>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;pointer-events:none}
 button.run-name{border:0;border-radius:4px;background:none;padding:0;text-align:left;color:#1d5a49}
 button.run-name:hover{text-decoration:underline}
 .run-status{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0}
@@ -27,6 +29,7 @@ button.run-name:hover{text-decoration:underline}
 li>.run-cagr::before{content:'CAGR ';color:#536762}
 #workspace-direct-stop{margin-left:auto;min-height:36px;padding:4px 12px;border-color:#a93830;color:#a93830}
 #workspace-direct-run{padding-right:0}
+#workspace-direct-run:not([hidden])+#queue-list>.run-empty{display:none}
 /* The column headings show in the wide layout. In the narrow layout the Finished
    headings stay as a line of sort buttons. */
 .run-head{min-height:32px;border-top:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#6b7862}
@@ -46,12 +49,18 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .run-menu[open]{padding:6px 0 12px}
 .run-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .run-menu p{margin:8px 0 0;overflow-wrap:anywhere}
+.run-menu details{margin-top:4px}
+.run-menu details>summary,.saved-comparison summary{width:fit-content;min-height:32px;padding:7px 0;cursor:pointer;color:#536762}
+.run-menu details>p{margin-top:4px}
 .saved-rename{flex:1 1 260px;font-size:12px}
 .saved-rename input{display:block;width:100%;margin-top:4px}
 .saved-id{font:11px ui-monospace,monospace;color:#617172;overflow-wrap:anywhere}
 /* The panel of the ticked finished tests sits above their rows. */
 .saved-comparison{margin:4px 0 12px;padding:10px 14px;border:1px solid #d5dfcd;border-radius:8px;background:#f8faf5;font-size:13px}
 .saved-comparison>p{margin:0}
+.comparison-bar{display:flex;align-items:center;gap:12px;min-height:32px;margin-bottom:4px;color:#192b31}
+.comparison-bar>span{flex:1;font-size:12px;color:#617172}
+.comparison-bar>button{min-height:32px;padding:4px 12px}
 .saved-comparison h4{margin:0 0 8px;font-size:14px;color:#192b31}
 .saved-comparison h4>small{margin-left:12px;font-weight:400}
 .comparison-notice{font-size:12px;line-height:1.5;color:#78561b}
@@ -74,11 +83,10 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .saved-comparison .comparison-different>*{background:#fff2ce}
 .comparison-difference{margin-left:8px;font-size:11px;font-weight:700;color:#704d12}
 .saved-comparison details{margin-top:4px}
-.saved-comparison summary{width:fit-content;min-height:32px;padding:7px 0;cursor:pointer;color:#536762}
 /* Wide layout: both groups use the same columns. The first column holds the tick
    box of a finished row; the last column holds the row control. */
 @media(min-width:1300px){
-  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,1.6fr) minmax(0,1fr) 126px 172px 64px 104px 44px;grid-template-rows:minmax(48px,auto);gap:0 12px;padding:0}
+  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,2.1fr) minmax(0,1fr) 112px 156px 58px 104px 44px;grid-template-rows:minmax(48px,auto);gap:0 8px;padding:0}
   #workspace-runs .run-head{grid-template-rows:auto}
   #workspace-runs .run-row>.run-name,#workspace-runs .run-head>:first-child{grid-column:2}
   #workspace-runs .run-status{flex-direction:column;flex-wrap:nowrap;align-items:flex-start;padding:5px 0}
@@ -89,11 +97,13 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
   #workspace-runs .run-head>span{display:block}
   #workspace-runs .run-head:has(~ol>.run-empty,~ul>.run-empty){display:none}
   #workspace-runs .run-menu{grid-column:1/-1}
-  #workspace-runs .run-menu[open]{padding-left:32px}
+  #workspace-runs .run-menu[open]{padding-left:28px}
   #workspace-runs #workspace-direct-run>.run-status{grid-column:3/7}
   #workspace-runs #workspace-direct-stop{grid-column:7/-1;justify-self:end}
 }
-/* Builder: the test name sits beside Add to queue. */
+/* Builder: the test name sits beside Add to queue. One line below the buttons
+   shows the result of Add and of a held edit, then why Auto-run waits. */
+#queue-builder-status{margin:8px 0 0;overflow-wrap:anywhere}
 .strategy-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .strategy-actions #queue-name{flex:0 1 210px;width:auto;min-width:120px}
 .strategy-actions #queue-add{border:2px solid #20775e;color:#193e36;font-weight:600;min-height:44px}

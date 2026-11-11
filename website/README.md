@@ -41,9 +41,9 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. In latest mode, the offline picks table follows the builder, and the coverage and range notes of the displayed result show below that table. A latest screen from the local service shows below these notes. In backtest mode, the notes show below the builder. The results notice shows when the displayed results and the current settings differ, when the settings have no result, or while a backtest runs. Results that match the settings show no notice. A status line appears only when it has a message.
 
-The menu has **Build strategy**, **Runs** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank and the filters, for example `Ranks 1–20 · EV / EBITDA yield · highest first · Market cap ≥ $100M`. The dates and the test type are columns in **Runs**. [Runs](#save-and-reopen-completed-backtests) shows the waiting, running and finished tests in one table.
+The menu has **Build strategy**, **Runs** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank, then the other steps in step order. It adds the rebalance interval when that is not 12 months, and the market when that is not US, for example `Ranks 1–10 · EV / EBITDA yield · highest first · quarterly · Market cap ≥ $100M`. A name has 120 characters at most. The dates and the test type are columns in **Runs**. The line below these buttons shows the result of **Add to queue** and of a held edit, and tells you when Auto-run waits for the queue. [Runs](#save-and-reopen-completed-backtests) shows the waiting, running and finished tests in one table.
 
-**Tune** on a queued or finished test, and **Edit a copy** in Result review, copy the settings of that record to the builder. The strategy returns as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
+**Tune** on a queued or finished test, and **Tune this strategy** in Result review, copy the settings of that record to the builder and empty the test-name box. The strategy returns as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
 
 Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **original completed result**. Exploration selections do not change an export. Sector and exchange are cached company metadata, not historical classifications.
 
@@ -363,7 +363,8 @@ the queue: the running test first, then the waiting tests in queue order, then
 failed tests, stopped tests and completed tests that are not moved yet.
 **Finished** shows the saved library, newest first. A row is one line: name,
 status, test type and trials, date window, CAGR and the time when the test was
-added or saved. CAGR is the mean trial CAGR for random dates. A running row
+added or saved. A long name takes two lines at most; point at it to read the
+full name. CAGR is the mean trial CAGR for random dates. A running row
 shows its progress with its status, and a failed row shows the reason there;
 a long reason adds lines to that row. One toolbar holds **Pause queue**,
 **Refresh** and the two counts. **Refresh** reads both groups again. A direct
@@ -391,7 +392,9 @@ scrolls, and the queue tray scrolls as one box, so an open control is not cut
 off. It stays open when the lists update. A finished row has **Tune**, **Rename** and **Delete**. An In
 progress row has **Edit settings**, **Move up**, **Move down**, **Release
 hold**, **Stop test**, **Open result**, **Tune** and **Delete**, as its state
-allows, and lists every recorded setting with its exact recorded text.
+allows. It lists every recorded setting in plain wording; **Exact recorded
+values** below that list shows the exact recorded text and stays open while the
+list updates.
 Select **Rename**, edit the name, then **Save name** or **Cancel**. Renaming
 changes no settings or stored results.
 
@@ -414,7 +417,8 @@ but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
 Tick finished tests to read them without opening a result or changing the
-form. A panel above the Finished rows shows the ticked tests. One tick shows
+form. A panel above the Finished rows shows the ticked tests. You can tick 8
+tests at most; **Clear** in the panel removes every tick. One tick shows
 the headline of that test, its saved ID (the stable UUID database ID) and its
 recorded settings. A setting reads in plain wording, such as
 `Market cap ≥ $100M`. When that wording leaves out a recorded id, unit,
@@ -424,7 +428,9 @@ settings shows the exact recorded text. An open In progress row control and
 exact text.
 
 Two or more ticks show one column for each test, in list order. The first rows
-are the settings that differ. The headline rows follow. A closed **All measures
+are the requested settings that differ, or **Same settings**. Recorded facts,
+such as the random date set of a run with fresh dates, are not in these rows.
+The headline rows follow. A closed **All measures
 and settings** disclosure contains every recorded measure and setting. In that
 list, an amber row that also says **Different** marks a setting that differs;
 measures have no mark. When two tests differ in a setting that reads the same
@@ -436,8 +442,10 @@ settings stay unchanged.
 The page reads a stored result when you tick its row, one result at a time and
 each result one time. It reads nothing for a row without a tick. A failed read
 removes the tick and shows the reason above the Finished rows; tick the row
-again to retry. Sorting, renaming and refreshing keep the ticks. A deleted test
-leaves the panel. Temporary evidence readers close after each description is
+again to retry. During a read the panel keeps the tests that it shows, and its
+top line names the read. Sorting, renaming and refreshing keep the ticks, the
+open disclosure and the sideways scroll of the panel. A deleted test leaves the
+panel. Temporary evidence readers close after each description is
 read.
 
 Comparison reads saved results without recalculation. Legacy/current calendars

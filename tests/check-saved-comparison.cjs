@@ -65,8 +65,12 @@ const refresh=()=>node('queue-refresh').handlers.click();
  await node('saved-list').handlers.click({target:{dataset:{saveName:ids[0]}}});await settle();
  assert(panel().includes('Renamed &lt;comparison&gt;'));assert.equal(rows(panel())[2],'Last rank 25 50');assert.deepEqual([loads(ids[0]),loads(ids[2])],[1,1]);
  // One loader reads one result at a time. A compact result uses a temporary reader, which closes after the read.
- holdAcquire=true;const third=tick(ids[1]);await settle();assert(releaseAcquire);assert(text(panel()).startsWith('Reading the stored results of 3 tests'));
+ // During a read the panel keeps the tests that it shows; its top line names the read.
+ const shown=panel().split('</div>').slice(1).join('</div>');
+ holdAcquire=true;const third=tick(ids[1]);await settle();assert(releaseAcquire);assert(text(panel()).startsWith('3 tests ticked Reading 1 stored result… Clear'));
+ assert.equal(panel().split('</div>').slice(1).join('</div>'),shown,'The comparison below the top line does not change during a read');
  const extra='9'.repeat(32);records.push(make(extra));await refresh();const fourth=tick(extra);await settle();assert.equal(loads(extra),0,'The next read waits for the current one');
+ assert(text(panel()).startsWith('4 tests ticked Reading 2 stored results… Clear'));assert.equal(rows(panel())[0],'Renamed <comparison> Saved c');
  releaseAcquire();await third;await fourth;assert.equal(loads(extra),1);assert.equal(acquired.length,1);assert.deepEqual(released,acquired);
  await tick(extra,false);
  // Tests of different types line up on the shared headline keys; a measure that a test lacks shows a dash.
@@ -90,19 +94,34 @@ const refresh=()=>node('queue-refresh').handlers.click();
  await tick(retryId,false);assert.equal(panel(),two);
  // A late reply cannot change a newer state: the tick was removed during the read.
  const lateId='f'.repeat(32);records.push(make(lateId,'custom',3));await refresh();
- holdAcquire=true;const late=tick(lateId);await settle();assert(text(panel()).startsWith('Reading'));
+ holdAcquire=true;const late=tick(lateId);await settle();assert(text(panel()).includes('Reading 1 stored result'));assert.equal(rows(panel())[0],'Renamed <comparison> Saved c');
  await tick(lateId,false);assert.equal(panel(),two);releaseAcquire();await late;assert.equal(panel(),two);assert.deepEqual(released,acquired);
  // A deleted row leaves the panel and the descriptions, also when its read is still in progress.
  const goneId='e'.repeat(32);records.push(make(goneId,'custom',3));await refresh();
  holdAcquire=true;const gone=tick(goneId);await settle();
  records=records.filter(record=>record.id!==goneId&&record.id!==ids[2]);await refresh();
- assert.equal(text(panel()).split(' Saved ID')[0],'Renamed <comparison>','One ticked test remains');
+ assert.equal(text(panel()).split(' Saved ID')[0],'1 test ticked Clear Renamed <comparison>','One ticked test remains');
  releaseAcquire();await gone;assert(!panel().includes('Saved e'));assert.deepEqual(released,acquired);
  records.push(make(ids[2]),make(goneId,'custom',3));await refresh();assert(!panel().includes('Saved c'),'A returned id has no tick');
  const beforeReturn=acquired.length;await tick(ids[2]);await tick(goneId);assert.equal(loads(ids[2]),2,'A deleted row left the descriptions');assert.equal(acquired.length,beforeReturn+1);assert.deepEqual(released,acquired);
  // A sort changes the column order with the row order. It reads nothing.
  const beforeSort=requests.length;node('saved-head').handlers.click({target:{dataset:{sort:'cagr'}}});
  assert.equal(rows(panel())[0],'Saved c Renamed <comparison> Saved e');assert.equal(requests.length,beforeSort);
- assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
- console.log('Passed: no read before a tick, one read per ticked test by one serial loader, the one-test panel with exact text, differing settings first, shared headline keys, marked setting differences only, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
+ // Clear removes every tick.
+ const clear=()=>node('saved-comparison').handlers.click({target:{dataset:{clear:''}}});
+ clear();assert(node('saved-comparison').hidden);assert.equal(panel(),'');assert(!node('saved-list').innerHTML.includes(' checked'));
+ node('saved-comparison').handlers.click({target:{dataset:{}}});assert(node('saved-comparison').hidden,'Another click in the panel changes nothing');
+ // Recorded facts are not requested settings: two random tests with equal settings and fresh dates have the same
+ // settings. The recorded date sets still show, marked, in the full list.
+ const fresh=['1','2'].map((digit,index)=>{const record=make(digit.repeat(32),'random',3);record.snapshot.result.configuration.seed=42+index;return record;});
+ records.push(...fresh);await refresh();await tick(fresh[0].id);await tick(fresh[1].id);
+ [top,all]=panel().split('<details');
+ assert.deepEqual(rows(top).slice(0,3),['Saved 1 Saved 2','Same settings','Headline']);assert(rows(all).includes('Recorded random date set Different 42 43'));
+ // The panel compares 8 tests at most: a ninth tick is refused with a reason, reads nothing, and the box loses its tick.
+ clear();assert(records.length>=9);for(const record of records.slice(0,8))await tick(record.id);
+ const ninth={dataset:{tick:records[8].id},checked:true},beforeNinth=requests.length;await node('saved-list').handlers.change({target:ninth});
+ assert.equal(ninth.checked,false);assert(node('saved-status').textContent.includes('Untick a test first'));assert.equal(requests.length,beforeNinth);assert(text(panel()).startsWith('8 tests ticked'));
+ await tick(records[0].id,false);ninth.checked=true;await node('saved-list').handlers.change({target:ninth});assert.equal(ninth.checked,true);assert(text(panel()).startsWith('8 tests ticked'));
+ assert.deepEqual(released,acquired);assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
+ console.log('Passed: no read before a tick, one read per ticked test by one serial loader, the one-test panel with exact text, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
 })().catch(error=>{console.error(error);process.exitCode=1});

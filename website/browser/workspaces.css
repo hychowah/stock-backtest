@@ -53,7 +53,6 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #latest-view .latest-facts>span{border:0;padding:0}
 #latest-view .latest-facts strong{display:inline;margin:0 0 0 7px;font-size:15px;font-weight:600}
 #latest-view th{white-space:nowrap}
-.exact-setting{display:block;font:11px ui-monospace,monospace;color:#7b8970;margin-top:3px;overflow-wrap:anywhere}
 /* Runs: the queue panel and the Finished rows join into one card. The queue tray
    can borrow the queue panel; the Finished rows then stand alone. */
 #workspace-runs>.backtest-queue{margin:0;padding-bottom:8px;border-bottom:0;border-radius:10px 10px 0 0}

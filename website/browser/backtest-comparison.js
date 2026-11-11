@@ -24,6 +24,8 @@ const BacktestComparison=(()=>{
   const defaults={rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',selection_order:'filter_first',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};
   const names={rank_from:'First rank',rank_to:'Last rank',pool:'Stock pool',metric:'Ranking metric',selection_order:'Selection order',min_cap:'Minimum market cap (USD)',max_cap:'Maximum market cap (USD)',min_ev:'Minimum EV (USD)',min_yield:'Minimum yield',max_multiple:'Maximum multiple',sector:'Sector',exchange:'Exchange'};
   const entry=(key,label,value,display=text(value),exact=display)=>exact===display?{key,label,value,display}:{key,label,value,display,exact};
+  // A recorded fact is what the run stored, not what the user requested: fresh random dates differ on every run.
+  const fact=(...row)=>({...entry(...row),recorded:true});
   const catalogLabel=(catalog,id)=>typeof catalog?.[id]==='string'?catalog[id]:catalog?.[id]?.label||id;
   function filters(value){
     // All conditions are AND: order and repeated identical conditions do not
@@ -116,7 +118,7 @@ const BacktestComparison=(()=>{
       handled.add('trials');handled.add('seed');
       add('trials','Requested trials',own(s,'trials')?s.trials:24);
       add('seed_policy','Requested random date policy',s.seed==null?{fresh:true}:{seed:s.seed},s.seed==null?'Fresh dates each run':'Repeat date set '+text(s.seed));
-      add('actual_seed','Recorded random date set',r.configuration?.seed);
+      parameters.push(fact('actual_seed','Recorded random date set',r.configuration?.seed));
     }
     for(const key of Object.keys(s).filter(key=>!handled.has(key)).sort())add('setting.'+key,'Setting: '+key,s[key]);
     let headline;
@@ -141,7 +143,7 @@ const BacktestComparison=(()=>{
       const provenance=Object.keys(producer).filter(key=>!['label','engine'].includes(key)).sort().map(key=>key+': '+text(producer[key]));
       if(provenance.length)producerDisplay+=' · '+provenance.join('; ');
     }
-    add('producer','Recorded producer',producer,producerDisplay);
+    parameters.push(fact('producer','Recorded producer',producer,producerDisplay));
     let observationWindow;
     if(kind==='random'){
       observationWindow={start:r.configuration?.window_start,end:r.configuration?.window_end};
@@ -163,15 +165,15 @@ const BacktestComparison=(()=>{
       observationWindow={start:r.start??r.first,end:r.end};
       performance.push(entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('growth','Growth of $1',r.growth,Number.isFinite(r.growth)?rounded(r.growth)+'×':'Unavailable'));
     }
-    add('observed_start','Recorded observation start',observationWindow.start);
-    add('observed_end','Recorded observation end',observationWindow.end);
+    parameters.push(fact('observed_start','Recorded observation start',observationWindow.start),fact('observed_end','Recorded observation end',observationWindow.end));
     return {kind,parameters,performance,headline,requestedWindow,observationWindow,notices:kind==='random'?['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.']:[]};
   }
   // Inputs are compact descriptions, not stored artifacts, one cell of text per
   // description in each row. Values determine differences; a label keeps each
   // record's original wording. When two values differ behind the same plain
   // text, the cells of that row print the exact text. A setting that a test
-  // lacks reads Not recorded; a measure that it lacks shows a dash.
+  // lacks reads Not recorded; a measure that it lacks shows a dash. A row of
+  // recorded facts keeps its mark, so a list of requested settings can omit it.
   function compare(descriptions){
     const distinct=values=>new Set(values).size>1;
     function align(lists,missing){
@@ -179,7 +181,7 @@ const BacktestComparison=(()=>{
       return [...new Set(maps.flatMap(map=>[...map.keys()]))].map(key=>{
         const rows=maps.map(map=>map.get(key)),values=rows.map(row=>stable(row?.value));
         const hidden=rows.some((row,i)=>row&&rows.some((other,j)=>j>i&&other&&values[i]!==values[j]&&row.display===other.display));
-        return {key,label:[...new Set(rows.filter(Boolean).map(row=>row.label))].join(' / '),cells:rows.map(row=>row?hidden?row.exact??row.display:row.display:missing),different:distinct(values)};
+        return {key,label:[...new Set(rows.filter(Boolean).map(row=>row.label))].join(' / '),cells:rows.map(row=>row?hidden?row.exact??row.display:row.display:missing),different:distinct(values),...(rows.some(row=>row?.recorded)&&{recorded:true})};
       });
     }
     const of=key=>descriptions.map(description=>description[key]),notices=[...new Set(of('notices').flat())];

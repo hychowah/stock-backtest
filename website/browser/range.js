@@ -567,11 +567,13 @@ const StrategyDraft=(()=>{
     restored={content:content(),selection:settings.strategy?{strategy:copy(settings.strategy)}:Object.fromEntries(Object.entries(settings).filter(([key])=>flatKeys.has(key)))};
     setModeVisibility();
   }
-  // A copy refuses more than 50 steps; a held queue edit loads every step.
+  // A copy refuses more than 50 steps; a held queue edit loads every step. Every
+  // copy into the builder leaves the test-name box empty: a name typed for other
+  // settings must not name the next test. A held edit loads its own name.
   function restore(settings,...args){
     if(active)throw refusal();
     if(fromSettings(settings).steps.length>50)throw Error('This strategy has more than 50 steps as a chain, so it cannot be copied into the builder. Its record was kept.');
-    return apply(settings,...args);
+    apply(settings,...args);document.getElementById('queue-name').value='';
   }
   function beginQueuedEdit(id){
     if(active)throw refusal();

@@ -111,4 +111,11 @@ assert.deepEqual(mixed.parameters.find(row=>row.key==='trials').cells,['Not reco
 // Each notice is one short line. Two different windows share a line.
 assert.deepEqual(compare(a,changedWindow).notices,['These tests use different requested date windows and recorded observation windows.']);
 assert.deepEqual(compare(a,random).notices,['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.','These tests use different test types; their measures can differ.']);
-console.log('Passed: a comparison of any number of tests, exact text where plain wording is equal, shared headline keys across test types and one-line notices.');
+// A recorded fact is what a run stored, not a requested setting. Its rows keep a mark, so that two random tests
+// with equal settings and fresh dates have no requested setting that differs.
+const otherDates=structuredClone(random);otherDates.result.configuration.seed=43;otherDates.result.producer={engine:'original'};
+const facts=compare(random,otherDates).parameters.filter(row=>row.different);
+assert.deepEqual(facts.map(row=>[row.key,row.recorded]),[['actual_seed',true],['producer',true]]);
+assert.deepEqual(compare(random,otherDates).parameters.filter(row=>row.recorded).map(row=>row.key),['actual_seed','producer','observed_start','observed_end']);
+assert.deepEqual(compare(random,repeated).parameters.filter(row=>row.different&&!row.recorded).map(row=>row.key),['seed_policy'],'A requested date policy is a setting');
+console.log('Passed: a comparison of any number of tests, exact text where plain wording is equal, shared headline keys across test types, one-line notices and marked recorded facts.');
