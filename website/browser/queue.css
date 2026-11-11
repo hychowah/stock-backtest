@@ -86,8 +86,12 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 /* Wide layout: both groups use the same columns. The first column holds the tick
    box of a finished row; the last column holds the row control. */
 @media(min-width:1300px){
-  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,2.1fr) minmax(0,1fr) 112px 156px 58px 104px 44px;grid-template-rows:minmax(48px,auto);gap:0 8px;padding:0}
-  #workspace-runs .run-head{grid-template-rows:auto}
+  /* The value columns are in ch, so a wider font cannot cut a date or a time. The
+     heading row keeps the row font size on its box, so both resolve ch alike. */
+  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,3fr) minmax(0,1fr) 15ch 22ch 7ch 15ch 44px;grid-template-rows:minmax(48px,auto);gap:0 8px;padding:0}
+  #workspace-runs .run-head{grid-template-rows:auto;font-size:13px}
+  #workspace-runs .run-head>*{font-size:11px}
+  #workspace-runs li>.run-type,#workspace-runs li>.run-window,#workspace-runs li>.run-time{font-size:12px}
   #workspace-runs .run-row>.run-name,#workspace-runs .run-head>:first-child{grid-column:2}
   #workspace-runs .run-status{flex-direction:column;flex-wrap:nowrap;align-items:flex-start;padding:5px 0}
   #workspace-runs .run-type,#workspace-runs .run-window,#workspace-runs .run-time{overflow:hidden;text-overflow:ellipsis}
