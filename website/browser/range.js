@@ -257,7 +257,6 @@ function copySavedBacktestSettings(snapshot){
   restoreBacktestSettings(artifact.settings,artifact.catalog,artifact.result.configuration?.seed);
   updateResultsState();
   Workspaces.show('builder');
-  document.getElementById('strategy-form').scrollIntoView?.({behavior:'smooth',block:'start'});
   document.getElementById('queue-add').focus?.({preventScroll:true});
 }
 // The form owns one ordered draft: Universe (market and pool controls), then

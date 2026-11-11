@@ -60,7 +60,9 @@ and best trial CAGR. When some trials are incomplete, the count reads
 `n/N complete`. A difference that rounds to 0.00 shows no sign and no colour.
 Each value comes from the stored summary of the result. A
 value that the result did not store shows **Unavailable**. The headline always
-shows the original result. It shows above the tabs, on every tab.
+shows the original result. It shows above the tabs, on every tab. The tab row
+stays at the top of the window while the page scrolls. Changing the view in the
+menu, or opening a result, starts at the top of the page.
 
 **Overview** then shows the main chart and its table. A fixed schedule shows
 returns by holding period. Random dates show the return distribution, the

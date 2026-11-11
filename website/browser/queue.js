@@ -27,7 +27,6 @@ const BacktestQueue=(()=>{
       if(editing.loading){
         editing.revision=edit.revision;editing.loading=false;node('queue-name').value=record.name;
         callbacks.showBuilder?.();editing.draft.restore({mode:record.mode,...record.options});
-        node('strategy-heading').scrollIntoView?.({behavior:'smooth',block:'start'});
       }
       if(edit.revision===editing.revision)return;
     }

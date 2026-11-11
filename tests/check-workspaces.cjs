@@ -13,16 +13,20 @@ const panels=[...new Set([...template.matchAll(/data-review-panel="([^"]+)"/g)].
 node('workspace-review').querySelectorAll=()=>panels;
 const shows=id=>{const name=template.slice(0,template.indexOf('id="'+id+'"')).match(/.*data-review-panel="([^"]+)"/s)[1];return !panels.find(panel=>panel.dataset.reviewPanel===name).hidden;};
 const blocks=()=>['robustness-chart','schedule-trial-missing','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer'].filter(shows);
-let copied=null,shown=null;
+let copied=null,shown=null,tabsTop=120,contentStarts=0;const scrolls=[];
+// The tab row of Result review and the content that follows it.
+Object.assign(node('workspace-review-tabs'),{getBoundingClientRect:()=>({top:tabsTop}),nextElementSibling:{getClientRects:()=>[{}],scrollIntoView(){contentStarts++;}}});
 const artifacts=require('../website/browser/result-artifacts.js');
-const context=vm.createContext({console,document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
+const context=vm.createContext({console,scrollTo:(x,y)=>scrolls.push(y),document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
  BacktestComparison:require('../website/browser/backtest-comparison.js'),SectorView:{init(){},show:a=>shown=a,load(){}},ScheduleView:{show(){},inspectOriginal(){}},EvidenceResults:{show(){}},copySavedBacktestSettings:a=>copied=a});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/workspaces.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context);
 node('rank-to').value='25';node('filter-value').value='17';node('strategy-form').innerHTML='Mounted draft';
 run('Workspaces.init()');
 const form=node('strategy-form'),queue=node('queue-panel');
+// A view change starts at the top of the page. Showing the same view again does not move the page.
 for(const view of ['runs','review','builder'])run(`Workspaces.show('${view}')`);
+assert.deepEqual(scrolls,[0,0,0]);run("Workspaces.show('builder')");assert.equal(scrolls.length,3);
 // The tray borrows the queue panel and returns it to the top of Runs, above the Saved backtests rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
 node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
@@ -50,6 +54,8 @@ publish(fixed({cagr:.1+.2,spy_cagr:.3}));assert.equal(headline()[2],'Difference 
 // The fixed result shows its chart, its pager and Explore in Overview; Returns adds the stocks. The per-trial block stays hidden.
 assert.deepEqual(blocks(),['robustness-chart','schedule-chart','schedule-period-pages','result-explorer']);
 run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
+// A tab change moves the page only while the tab row is stuck at the top of the window: the start of the new content goes under the row.
+assert.equal(contentStarts,0);tabsTop=0;run("Workspaces.reviewSection('overview')");assert.equal(contentStarts,1);tabsTop=120;run("Workspaces.reviewSection('returns')");assert.equal(contentStarts,1);
 // The coverage line of a fixed result is a recorded note. It moves below the headline when a headline value is unavailable.
 assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));assert.equal(node('workspace-recorded-context').hidden,false);
 publish(fixed({cagr:null,growth:null}));assert.equal(headline()[0],'Strategy CAGR Unavailable');
@@ -79,4 +85,4 @@ run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
 context.queue={records:[],paused:false,available:true};run('Workspaces.queueStatus(queue)');assert.equal(node('workspace-run-state').textContent,'Idle');assert.equal(node('workspace-run-detail').textContent,'No active backtest.');
 assert.equal(form.innerHTML,'Mounted draft');
-console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, and explicit copy.');
+console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, the scroll reset of a view change and the tab change under a stuck tab row, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, and explicit copy.');

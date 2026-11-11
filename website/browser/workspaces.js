@@ -1,4 +1,5 @@
-/* Navigation changes visibility, never the lifetime of the draft or result.
+/* Navigation changes visibility, never the lifetime of the draft or result. A
+   view change starts at the top of the page.
    The queue tray borrows the existing mounted queue panel and its owner, then
    returns it to the top of Runs, above the Saved backtests rows. */
 const Workspaces=(()=>{
@@ -7,8 +8,11 @@ const Workspaces=(()=>{
   let active='builder',section='overview',rendered='latest',queue={records:[],available:false,paused:false};
   function closeQueue(){if(node('workspace-queue-tray').open)node('workspace-queue-tray').close();}
   function show(view){
-    closeQueue();active=view;
+    closeQueue();
     for(const name of ['builder','runs','review'])node('workspace-'+name).hidden=name!==view;
+    // Showing the same view again does not move the page.
+    if(view!==active)scrollTo(0,0);
+    active=view;
     document.querySelectorAll('#workspace-nav [data-workspace]').forEach(button=>button.setAttribute('aria-current',button.dataset.workspace===view?'page':'false'));
     // Scalar latest screens and dated evidence share the existing explanation
     // presenter. Restore its artifact when returning to the other workspace.
@@ -23,14 +27,22 @@ const Workspaces=(()=>{
     if(view==='review')reviewSection(section);
   }
   function reviewSection(next){
+    // The tab row stays at the top of the window while the page scrolls. A tab change in that state
+    // brings the start of the new content to just under the row; otherwise the page does not move.
+    const tabs=node('workspace-review-tabs'),stuck=tabs.getBoundingClientRect().top<1;
     section=next;node('workspace-review').dataset.section=next;
     // A block lists its tabs. A name such as random-returns or fixed-overview
     // shows it on that tab for that kind of result only.
     const random=ResultArtifacts.forView('custom')?.kind==='random',names=[next,(random?'random-':'fixed-')+next];
     node('workspace-review').querySelectorAll('[data-review-panel]').forEach(panel=>panel.hidden=!panel.dataset.reviewPanel.split(' ').some(name=>names.includes(name)));
     document.querySelectorAll('[data-review]').forEach(button=>button.setAttribute('aria-current',button.dataset.review===next?'page':'false'));
-    if(next==='selection')void SectorView.load();
+    const loaded=next==='selection'?SectorView.load():null;
     if(next==='returns'&&random)ScheduleView.inspectOriginal();
+    if(stuck){
+      const start=()=>{let first=tabs.nextElementSibling;while(first&&!first.getClientRects().length)first=first.nextElementSibling;first?.scrollIntoView();};
+      // The sector view gets its height after its read. The page is set again then.
+      start();loaded?.then(start);
+    }
   }
   // note: one line about how this result was opened, kept with the recorded notes.
   function published(artifact,name,note=''){
