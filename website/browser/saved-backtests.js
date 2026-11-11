@@ -88,7 +88,7 @@ const SavedBacktests=(()=>{
   const menu=id=>node('saved-menu-'+id)?.focus?.({preventScroll:true});
   // The panel compares the ticked tests whose descriptions are read: one column
   // per test in list order, with the requested settings that differ, then the
-  // headlines, then every measure and setting in a closed disclosure. Only
+  // headlines, then a short list of other measures and every setting in a closed disclosure. Only
   // setting rows carry the difference marker. One tick shows the top line only.
   // While another description is read, the panel keeps what it shows and its top
   // line says so. A redraw keeps the open disclosure and the sideways scroll.
@@ -103,11 +103,13 @@ const SavedBacktests=(()=>{
     if(ready.length>1){
       // Recorded facts, such as a fresh random date set, are not requested settings: they show in the full list only.
       const compared=BacktestComparison.compare(ready.map(record=>descriptions.get(record.id))),differing=compared.parameters.filter(row=>row.different&&!row.recorded);
+      // Only random-date tests have measures outside the headline.
+      const more=compared.measures.length?'More measures and all settings':'All settings';
       const group=(title,rows,marked)=>'<tbody><tr class="comparison-group"><th scope="rowgroup" colspan="'+(ready.length+1)+'">'+title+'</th></tr>'+rows.map(row=>'<tr'+(marked&&row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(marked&&row.different?'<span class="comparison-difference">Different</span>':'')+'</th>'+row.cells.map(cell=>'<td>'+escape(cell)+'</td>').join('')+'</tr>').join('')+'</tbody>';
       // Each table keeps the same column widths; many ticked tests scroll sideways inside the panel.
       const table=(caption,groups)=>'<div class="comparison-scroll"><table style="min-width:'+(170+140*ready.length)+'px"><caption>'+caption+'</caption><thead><tr><td></td>'+ready.map(record=>'<th scope="col" title="'+escape(record.name)+'"><span>'+escape(record.name)+'</span></th>').join('')+'</tr></thead>'+groups+'</table></div>';
       body=compared.notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('')+table('Comparison of '+ready.length+' ticked tests',group(differing.length?'Settings that differ':'Same settings',differing)+group('Headline',compared.headline))+
-        '<details'+(allOpen?' open':'')+'><summary>All measures and settings</summary>'+table('All measures and settings of the ticked tests',group('Measures',compared.performance)+group('Settings',[{label:'Saved ID',cells:ready.map(record=>record.id)},...compared.parameters],true))+'</details>';
+        '<details'+(allOpen?' open':'')+'><summary>'+more+'</summary>'+table(more+' of the ticked tests',(compared.measures.length?group('More measures',compared.measures):'')+group('Settings',[{label:'Saved ID',cells:ready.map(record=>record.id)},...compared.parameters],true))+'</details>';
     }
     const note=chosen.length===1?'Tick another to compare.':reading?'Reading '+(reading>1?reading+' stored results':'1 stored result')+'…':'';
     panel.innerHTML='<div class="comparison-bar"><strong>'+(chosen.length>1?chosen.length+' tests ticked':'1 test ticked.')+'</strong><span role="status">'+note+'</span><button type="button" id="saved-clear" data-clear>Clear</button></div>'+body;

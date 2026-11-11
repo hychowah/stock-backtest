@@ -24,8 +24,14 @@ const random=artifact({trials:2},{completed:2,valid:1,incomplete:1,configuration
 const randomDescription=describe(random);assert(randomDescription.notices.some(text=>text.includes('not one portfolio')));assert.equal(randomDescription.parameters.find(row=>row.key==='actual_seed').value,42);
 assert.equal(randomDescription.parameters.find(row=>row.key==='seed_policy').display,'Fresh dates each run');
 const repeated=structuredClone(random);repeated.settings.seed=42;assert(compare(random,repeated).parameters.find(row=>row.key==='seed_policy').different);
-assert.equal(randomDescription.performance.find(row=>row.key==='cagr.p90').value,.22);assert(!('result' in randomDescription));
-const unavailable=artifact({},{cagr:null});assert.equal(describe(unavailable).performance.find(row=>row.key==='cagr').display,'Unavailable');
+assert(!('result' in randomDescription));
+// The short list of other measures of a random-date test: stored statistics only, two of them as a range. A
+// missing statistic reads Unavailable. A fixed test has none: its stored values are all in the headline.
+const measured=artifact({trials:24},{completed:24,valid:22,incomplete:2,distributions:{cagr:{median:.0088,p10:.0075,p90:.01,stddev:.001},excess_cagr:{median:-.006,min:-.008,max:-.0041}}},'random');
+assert.deepEqual(describe(measured).measures.map(row=>[row.key,row.label,row.display]),[['cagr.median','Median strategy CAGR','0.88%'],['cagr.range','Strategy CAGR, P10 to P90','0.75% to 1.00%'],['cagr.stddev','Std. dev. of strategy CAGR','0.10%'],
+ ['excess_cagr.median','Median difference vs SPY','-0.60 pp'],['excess_cagr.range','Difference vs SPY, worst to best','-0.80 pp to -0.41 pp'],['trials','Trials','22 of 24 complete']]);
+assert.deepEqual(randomDescription.measures.map(row=>row.display),['14.00%','3.00% to 22.00%','Unavailable','Unavailable','Unavailable','1 of 2 complete']);assert.deepEqual(describe(a).measures,[]);
+const unavailable=artifact({},{cagr:null});assert.equal(describe(unavailable).headline.find(row=>row.key==='cagr').display,'Unavailable');
 const v3=structuredClone(random);v3.version=3;v3.evidence={id:'a'.repeat(32)};assert.deepEqual(describe(v3),randomDescription);
 const changedWindow=artifact({start:'2016-01-01'},{start:'2016-01-04'});assert(compare(a,changedWindow).notices.some(text=>text.includes('requested date')));assert(compare(a,changedWindow).notices.some(text=>text.includes('observation')));
 assert(compare(a,random).notices.some(text=>text.includes('different test types')));
@@ -66,12 +72,12 @@ const flat=describe(artifact({min_cap:250e6,min_ev:1234567,min_yield:.07,pool:'c
 assert.deepEqual([shown('min_cap').display,shown('min_cap').exact,shown('min_cap').value],['$250M','250000000',250e6]);assert.equal(shown('min_ev').display,'$1,234,567');
 assert.equal(shown('min_yield').display,'7%');assert.equal(shown('max_cap').display,'No limit');assert.deepEqual([shown('pool').display,shown('pool').exact],['All stocks with cached prices','cached']);
 assert.deepEqual([shown('metric').display,shown('metric').exact],['Original EBITDA multiple','Original EBITDA multiple (ev_ebitda)']);
-assert.equal(flat.performance.find(row=>row.key==='growth').display,'2.35×');assert.equal(flat.performance.find(row=>row.key==='cagr').display,'12.00%');
-const spread=describe(artifact({trials:2},{completed:2,valid:2,incomplete:0,configuration:{seed:1},distributions:{cagr:{mean:.000082208838},excess_cagr:{mean:-.005837653252144099,min:-.00004},growth:{mean:1.23456}}},'random')).performance;
-assert.deepEqual(['cagr.mean','excess_cagr.mean','excess_cagr.min','growth.mean'].map(key=>spread.find(row=>row.key===key).display),['0.0082%','-0.58 pp','-0.0040 pp','1.23×']);
+assert.equal(flat.headline.find(row=>row.key==='growth').display,'$2.35');assert.equal(flat.headline.find(row=>row.key==='cagr').display,'12.00%');
+const spread=describe(artifact({trials:2},{completed:2,valid:2,incomplete:0,configuration:{seed:1},distributions:{cagr:{mean:.000082208838},excess_cagr:{mean:-.005837653252144099}}},'random')).headline;
+assert.deepEqual(['cagr','difference'].map(key=>spread.find(row=>row.key===key).display),['0.0082%','-0.58 pp']);
 // A value below 0.000001 in its unit shows 0.00, never exponent notation.
-const tiny=describe(artifact({},{cagr:5.55e-17,spy_cagr:-2e-9,growth:1.2e-6})).performance.map(row=>row.display);assert.deepEqual(tiny,['0.00%','0.00%','0.0000012×']);
-assert.equal(spread.find(row=>row.key==='excess_cagr.mean').value,-.005837653252144099);
+const tiny=describe(artifact({},{cagr:5.55e-17,spy_cagr:-2e-9,growth:1.2e-6})).headline.map(row=>row.display);assert.deepEqual(tiny,['0.00%','0.00%','0.00 pp','$0.0000012']);
+assert.equal(spread.find(row=>row.key==='difference').value,-.005837653252144099);
 console.log('Passed: chain captures list the universe and ordered steps in plain wording with exact text kept, compare by step, the last Rank sets the recorded range, and on-screen values are rounded.');
 // The headline is the short answer of one result. Every test type starts with the
 // same three keys; each value is a stored summary field or their difference.
@@ -107,7 +113,7 @@ assert.equal(compare(left,right).parameters.find(row=>row.key==='step.0').cells[
 const mixed=compare(a,trials);
 assert.deepEqual(mixed.headline.map(row=>[row.key,row.label,...row.cells]),[['cagr','Strategy CAGR / Mean strategy CAGR','12.00%','15.00%'],['spy_cagr','SPY CAGR / Mean SPY CAGR','8.00%','8.00%'],
  ['difference','Difference vs SPY / Mean difference vs SPY','+4.00 pp','+7.00 pp'],['growth','Growth of $1','$2.00','—'],['beat_spy','Trials beating SPY','—','2/5 complete'],['worst','Worst trial CAGR','—','-2.00%'],['best','Best trial CAGR','—','31.00%']]);
-assert.deepEqual(mixed.parameters.find(row=>row.key==='trials').cells,['Not recorded','6']);assert.deepEqual(mixed.performance.find(row=>row.key==='growth').cells,['2.00×','—']);
+assert.deepEqual(mixed.parameters.find(row=>row.key==='trials').cells,['Not recorded','6']);assert.deepEqual(mixed.measures.find(row=>row.key==='trials').cells,['—','5 of 6 complete']);
 // Each notice is one short line. Two different windows share a line.
 assert.deepEqual(compare(a,changedWindow).notices,['These tests use different requested date windows and recorded observation windows.']);
 assert.deepEqual(compare(a,random).notices,['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.','These tests use different test types; their measures can differ.']);

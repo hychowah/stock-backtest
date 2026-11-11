@@ -73,9 +73,10 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  [top,all]=panel().split('<details');
  assert.deepEqual(rows(top),['Saved a Saved c','Settings that differ','Last rank 25 50','Additional AND conditions <Original & cash flow> > -2 None','Setting: future_setting <img src=x onerror=bad> Not recorded',
   'Headline','Strategy CAGR 12.00% 20.00%','SPY CAGR 8.00% 8.00%','Difference vs SPY +4.00 pp +12.00 pp','Growth of $1 $2.00 $2.00']);
- // Every measure and setting waits in a closed disclosure. Only setting rows carry the difference marker.
- assert(!all.startsWith(' open'));assert(text('<details'+all).startsWith('All measures and settings'));
- assert(!text(top).includes('Different'));assert(rows(all).includes('Last rank Different 25 50'));assert(rows(all).includes('Strategy CAGR 12.00% 20.00%'));assert(rows(all).includes('First rank 1 1'));
+ // Every setting waits in a closed disclosure. Fixed tests have no measure outside the headline, so its title is
+ // All settings. Only setting rows carry the difference marker.
+ assert(!all.startsWith(' open'));assert(text('<details'+all).startsWith('All settings'));assert(!rows(all).includes('More measures'));
+ assert(!text(top).includes('Different'));assert(rows(all).includes('Last rank Different 25 50'));assert(rows(all).includes('First rank 1 1'));
  assert(rows(all).includes('Saved ID '+ids[0]+' '+ids[2]));
  assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);assert(requests.every(request=>request.method==='GET'),'A tick only reads');
  // A rename keeps the ticks and reads no result again.
@@ -95,7 +96,10 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  // Tests of different types line up on the shared headline keys; a measure that a test lacks shows a dash.
  [top,all]=panel().split('<details');
  assert.equal(rows(top)[0],'Renamed <comparison> Saved b Saved c');assert(rows(top).includes('Strategy CAGR / Mean strategy CAGR 12.00% 12.00% 20.00%'));assert(rows(top).includes('Growth of $1 $2.00 — $2.00'));
- assert(rows(top).includes('Test type Fixed dates Random dates Fixed dates'));assert(rows(all).includes('P90 trial strategy CAGR — 20.00% —'));
+ assert(rows(top).includes('Test type Fixed dates Random dates Fixed dates'));
+ // With a random-date test the disclosure adds its 6 other measures, without a marker; a fixed test shows a dash there.
+ assert(text('<details'+all).startsWith('More measures and all settings'));assert.equal(rows(all).indexOf('Settings')-rows(all).indexOf('More measures'),7);
+ assert(rows(all).includes('Strategy CAGR, P10 to P90 — 5.00% to 20.00% —'));assert(rows(all).includes('Trials — 2 —'));
  assert(text(top).includes('not one portfolio return'));assert(text(top).includes('different test types'));
  // An unticked row leaves the panel. Its description stays, so a new tick reads nothing.
  await tick(ids[1],false);assert.equal(rows(panel())[0],'Renamed <comparison> Saved c');
@@ -164,5 +168,5 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  assert.equal(ninth.checked,false);assert(node('saved-status').textContent.includes('Untick a test first'));assert.equal(requests.length,beforeNinth);assert(text(panel()).startsWith('8 tests ticked'));
  await tick(records[0].id,false);ninth.checked=true;await node('saved-list').handlers.change({target:ninth});assert.equal(ninth.checked,true);assert(text(panel()).startsWith('8 tests ticked'));
  assert.deepEqual(released,acquired);assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
- console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, a failed open read retried only by Retry, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
+ console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, a failed open read retried only by Retry, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, the short list of other measures for random dates, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
 })().catch(error=>{console.error(error);process.exitCode=1});

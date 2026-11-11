@@ -90,7 +90,8 @@ not kept: the row shows the reason with Retry. An id that leaves the list
 leaves the ticks and the descriptions. Details of a saved row prints the
 description of that row in place; the panel compares two or more ticked rows.
 `BacktestComparison.compare` takes a list of descriptions and returns one cell
-for each test in every row. A row whose values differ behind the same plain
+for each test in every row: settings, the headline and, for random dates, six
+more stored measures. The full distribution table stays on the page of each result. A row whose values differ behind the same plain
 wording prints the exact text. A row of recorded facts (the recorded random
 date set, observation window and producer) keeps a `recorded` mark, so the
 first block of the panel lists requested settings only. The panel is derived

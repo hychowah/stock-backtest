@@ -4,7 +4,9 @@
    A row's display is plain wording for summaries. Its exact field keeps the
    recorded ids, units and canonical values when the plain wording leaves them out.
    The headline is the short answer of one result: the same first three keys for
-   every test type, read from stored summary fields only. */
+   every test type, read from stored summary fields only. The measures are the few
+   other stored statistics of a random-date result that help to compare tests;
+   its full distribution table is on the page of the result. */
 const BacktestComparison=(()=>{
   const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
   const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
@@ -80,7 +82,7 @@ const BacktestComparison=(()=>{
   }
   function describe(artifact){
     if(!artifact||![1,2,3,4].includes(artifact.version)||!labels[artifact.kind]||!artifact.settings||!artifact.result)throw Error('This saved test cannot be compared. Its record was kept.');
-    const kind=artifact.kind,s=artifact.settings,r=artifact.result,catalog=artifact.catalog||{},parameters=[],performance=[],handled=new Set(['mode']);
+    const kind=artifact.kind,s=artifact.settings,r=artifact.result,catalog=artifact.catalog||{},parameters=[],handled=new Set(['mode']);
     const add=(...row)=>parameters.push(entry(...row));
     add('mode','Test type',kind,labels[kind]);
     handled.add('market');const market=s.market??'us';
@@ -121,7 +123,7 @@ const BacktestComparison=(()=>{
       parameters.push(fact('actual_seed','Recorded random date set',r.configuration?.seed));
     }
     for(const key of Object.keys(s).filter(key=>!handled.has(key)).sort())add('setting.'+key,'Setting: '+key,s[key]);
-    let headline;
+    let headline,measures=[];
     if(kind==='random'){
       // Stored trial statistics and counts only; a missing one stays unavailable.
       // Only complete trials are counted, and the display says so when some are incomplete.
@@ -129,6 +131,11 @@ const BacktestComparison=(()=>{
       headline=[entry('cagr','Mean strategy CAGR',stat('cagr','mean'),percent(stat('cagr','mean'))),entry('spy_cagr','Mean SPY CAGR',stat('spy_cagr','mean'),percent(stat('spy_cagr','mean'))),
         entry('difference','Mean difference vs SPY',stat('excess_cagr','mean'),points(stat('excess_cagr','mean'))),entry('beat_spy','Trials beating SPY',counted?r.beat_spy:undefined,counted?r.beat_spy+'/'+r.valid+(r.incomplete>0?' complete':''):'Unavailable'),
         entry('worst','Worst trial CAGR',stat('cagr','min'),percent(stat('cagr','min'))),entry('best','Best trial CAGR',stat('cagr','max'),percent(stat('cagr','max')))];
+      // The short list of other measures. A range shows two stored statistics in one cell.
+      const range=(label,measure,low,high,format)=>{const ends=[stat(measure,low),stat(measure,high)];return entry(measure+'.range',label,ends,ends.every(Number.isFinite)?ends.map(value=>format(value)).join(' to '):'Unavailable');};
+      measures=[entry('cagr.median','Median strategy CAGR',stat('cagr','median'),percent(stat('cagr','median'))),range('Strategy CAGR, P10 to P90','cagr','p10','p90',percent),
+        entry('cagr.stddev','Std. dev. of strategy CAGR',stat('cagr','stddev'),percent(stat('cagr','stddev'))),entry('excess_cagr.median','Median difference vs SPY',stat('excess_cagr','median'),points(stat('excess_cagr','median'))),
+        range('Difference vs SPY, worst to best','excess_cagr','min','max',points),entry('trials','Trials',r.completed,!Number.isInteger(r.completed)?'Unavailable':r.incomplete>0?r.valid+' of '+r.completed+' complete':String(r.completed))];
     }else{
       const difference=Number.isFinite(r.cagr)&&Number.isFinite(r.spy_cagr)?r.cagr-r.spy_cagr:undefined;
       headline=[entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('difference','Difference vs SPY',difference,points(difference)),
@@ -144,39 +151,19 @@ const BacktestComparison=(()=>{
       if(provenance.length)producerDisplay+=' · '+provenance.join('; ');
     }
     parameters.push(fact('producer','Recorded producer',producer,producerDisplay));
-    let observationWindow;
-    if(kind==='random'){
-      observationWindow={start:r.configuration?.window_start,end:r.configuration?.window_end};
-      performance.push(entry('completed','Completed trials',r.completed),entry('valid','Trials with available performance',r.valid),entry('incomplete','Incomplete trials',r.incomplete));
-      const statisticLabels={mean:'Mean',median:'Median',p10:'P10',p25:'P25',p75:'P75',p90:'P90',min:'Worst',max:'Best',stddev:'Std. dev.'};
-      const measures={cagr:'strategy CAGR',spy_cagr:'paired SPY CAGR',excess_cagr:'CAGR difference vs SPY',total_return:'strategy total return',growth:'strategy growth'};
-      // Read stored distributions directly. Missing statistics stay unavailable;
-      // never derive means, percentiles or performance from trial holdings.
-      const distributions=r.distributions||{};
-      for(const measure of new Set(['cagr',...Object.keys(distributions)])){
-        const statistics=distributions[measure]||{};
-        for(const stat of new Set(['mean',...Object.keys(statistics).filter(k=>k!=='n')])){
-          const value=statistics[stat],label=(statisticLabels[stat]||stat)+' trial '+(measures[measure]||measure);
-          const display=!own(measures,measure)?text(value):measure==='growth'?Number.isFinite(value)?rounded(value)+'×':'Unavailable':measure==='excess_cagr'?Number.isFinite(value)?rounded(value*100)+' pp':'Unavailable':percent(value);
-          performance.push(entry(measure+'.'+stat,label,value,display));
-        }
-      }
-    }else{
-      observationWindow={start:r.start??r.first,end:r.end};
-      performance.push(entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('growth','Growth of $1',r.growth,Number.isFinite(r.growth)?rounded(r.growth)+'×':'Unavailable'));
-    }
+    const observationWindow=kind==='random'?{start:r.configuration?.window_start,end:r.configuration?.window_end}:{start:r.start??r.first,end:r.end};
     parameters.push(fact('observed_start','Recorded observation start',observationWindow.start),fact('observed_end','Recorded observation end',observationWindow.end));
     // A quiet row holds only its documented default or no bound: the Original engine, filtering before
     // ranking, no extra condition, fresh random dates, no limit, a zero minimum. A short list of settings
     // leaves these rows to the full list.
     for(const row of parameters)if(row.key==='engine'&&row.value==='original'||row.key==='selection_order'&&row.value==='filter_first'||row.key==='filters'&&!row.value.length||row.key==='seed_policy'&&row.value.fresh||/^(bound\.)?(min_|max_|sector$|exchange$)/.test(row.key)&&(row.value===null||row.value===0))row.quiet=true;
-    return {kind,parameters,performance,headline,requestedWindow,observationWindow,notices:kind==='random'?['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.']:[]};
+    return {kind,parameters,headline,measures,requestedWindow,observationWindow,notices:kind==='random'?['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.']:[]};
   }
   // Inputs are compact descriptions, not stored artifacts, one cell of text per
   // description in each row. Values determine differences; a label keeps each
   // record's original wording. When two values differ behind the same plain
   // text, the cells of that row print the exact text. A setting that a test
-  // lacks reads Not recorded; a measure that it lacks shows a dash. A row of
+  // lacks reads Not recorded; a headline or measure that it lacks shows a dash. A row of
   // recorded facts keeps its mark, so a list of requested settings can omit it.
   function compare(descriptions){
     const distinct=values=>new Set(values).size>1;
@@ -192,7 +179,7 @@ const BacktestComparison=(()=>{
     if(distinct(of('kind')))notices.push('These tests use different test types; their measures can differ.');
     const windows=[['requested date windows','requestedWindow'],['recorded observation windows','observationWindow']].filter(([,key])=>distinct(of(key).map(stable))).map(([name])=>name);
     if(windows.length)notices.push('These tests use different '+windows.join(' and ')+'.');
-    return {parameters:align(of('parameters'),'Not recorded'),headline:align(of('headline'),'—'),performance:align(of('performance'),'—'),notices};
+    return {parameters:align(of('parameters'),'Not recorded'),headline:align(of('headline'),'—'),measures:align(of('measures'),'—'),notices};
   }
   return {describe,compare,scalarRows,finalRank,plainName};
 })();

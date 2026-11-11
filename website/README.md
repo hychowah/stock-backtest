@@ -435,8 +435,10 @@ exact text as Details.
 Two or more ticks show one column for each test, in list order. The first rows
 are the requested settings that differ, or **Same settings**. Recorded facts,
 such as the random date set of a run with fresh dates, are not in these rows.
-The headline rows follow. A closed **All measures
-and settings** disclosure contains every recorded measure and setting. In that
+The headline rows follow. A closed **More measures and all settings**
+disclosure contains six more measures of a random-date test and every setting;
+with fixed tests only, it is **All settings**. The full distribution table is
+on the page of each result. In that
 list, an amber row that also says **Different** marks a setting that differs;
 measures have no mark. When two tests differ in a setting that reads the same
 in plain wording, for example one variable at two revisions, that row shows the
@@ -463,7 +465,7 @@ shows 2 decimals; a value below 0.01 shows 2 significant digits, and a value
 below 0.000001 shows 0.00. Requested engine
 and recorded producer are separate. Older results without producer evidence are
 unidentified. Random comparisons show requested date policy, recorded seed and
-stored trial distributions. Mean trial CAGR is not one portfolio return.
+stored trial statistics. Mean trial CAGR is not one portfolio return.
 Different test types or requested/recorded windows receive a one-line notice.
 
 The maximum is 100 records, and every finished test takes one. When full,
