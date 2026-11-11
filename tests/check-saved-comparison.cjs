@@ -64,6 +64,8 @@ function choose(left,right){for(const [id,value] of [['saved-compare-left',left]
  const beforeDisclosure=requests.length;await toggle(ids[0]);
  assert.equal(requests.length,beforeDisclosure+1);assert(node('saved-list').innerHTML.includes('&lt;Original &amp; cash flow&gt;'));
  assert(node('saved-list').innerHTML.includes('&lt;img src=x onerror=bad&gt;'));assert(!node('saved-list').innerHTML.includes('<img src=x'));
+ // A row reads plain wording; its exact recorded text follows in the same list.
+ assert(node('saved-list').innerHTML.includes('<dd>$100M<small class="exact-setting">100000000</small></dd>'),'Exact text follows the plain wording');
  const beforeReopen=requests.length;await toggle(ids[0],false);await toggle(ids[0]);assert.equal(requests.length,beforeReopen);
  node('saved-sort').value='performance-asc';node('saved-sort').handlers.change();
  assert(node('saved-list').innerHTML.includes('data-parameters-id="'+ids[0]+'" open'));

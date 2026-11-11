@@ -240,8 +240,13 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   settings={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,strategy:chain};context.config.prepareSubmission=async()=>copy(settings);
   node('queue-name').value='';await call('BacktestQueue.add()');
   const chainRecord=records.at(-1);assert.equal(chainRecord.name,'Fixed dates · 2015-01-02 → 2015-01-05 · ranks 20–40');
-  for(const text of ['Step 1 · Rank: Chain P/E (filter:pe) lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy','Step 3 · Rank: Chain P/E (filter:pe) highest first · ranks 20–40','Step 4 · Filter: Market cap (USD) ≥ 100 usd_million (canonical 100000000 USD)'])
-    assert(node('queue-list').innerHTML.includes(text),'Missing '+text);
+  // The row summary reads plain wording. All parameters adds the exact recorded text.
+  const chainRow=node('queue-list').innerHTML.slice(node('queue-list').innerHTML.indexOf('data-queue-id="'+chainRecord.id+'"')),chainSummary=chainRow.slice(chainRow.indexOf('class="queue-summary"'),chainRow.indexOf('<details>'));
+  for(const text of ['Stock pool: All stocks with cached prices','Step 1 · Rank: Chain P/E · lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy','Step 3 · Rank: Chain P/E · highest first · ranks 20–40','Step 4 · Filter: Market cap ≥ $100M'])
+    assert(chainSummary.includes(text),'Missing '+text);
+  for(const text of ['usd_million','canonical','filter:pe'])assert(!chainSummary.includes(text),'The summary shows '+text);
+  for(const text of ['Chain P/E (filter:pe) lowest first · ranks 1–200','Chain P/E (filter:pe) highest first · ranks 20–40','Market cap (USD) ≥ 100 usd_million (canonical 100000000 USD)'])
+    assert(chainRow.includes('<small class="exact-setting">'+text+'</small>'),'Missing exact '+text);
   // A waiting test that names an engine this server does not run explains how to continue.
   records.push({id:'f'.repeat(32),name:'Recorded experimental',mode:'custom',options:{start:'2015-01-01',end:'2016-12-30',months:3,engine:'experimental'},state:'queued',position:records.length+1,revision:1,cagr:null,edit:null});
   await call('BacktestQueue.refresh()');

@@ -24,6 +24,9 @@ assert.equal(node('rank-to').value,'25');assert.equal(node('filter-value').value
 context.input=artifacts.create({mode:'custom',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50},{cagr:.1,spy_cagr:.05,growth:1.1,start:'2015-01-02',end:'2016-01-04'},{metrics:{},filters:{}},{});
 run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 assert.equal(shown.kind,'custom');assert.equal(node('workspace-review').hidden,false);assert(node('workspace-parameters').innerHTML.includes('Last rank</dt><dd>50'));
+// The settings list reads plain wording; the exact recorded text waits in a closed disclosure.
+const [plainSettings,exactSettings]=node('workspace-parameters').innerHTML.split('<details><summary>Exact recorded values</summary>');
+assert(plainSettings.includes('Minimum market cap (USD)</dt><dd>$100M</dd>')&&!plainSettings.includes('100000000'));assert(exactSettings.includes('Minimum market cap (USD)</dt><dd>100000000</dd>')&&!exactSettings.includes('Last rank'));
 assert.equal(node('rank-to').value,'25');assert.equal(node('workspace-result-title').textContent,'Recorded test');
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
 run("Workspaces.runStatus({detail:'Preparing original books',elapsed:'0:02'})");assert(node('workspace-run-detail').textContent.includes('Preparing original books'));

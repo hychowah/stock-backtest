@@ -46,6 +46,10 @@ const rows=()=>JSON.parse(JSON.stringify(run('StrategyDraft.view()')));
 const ids=()=>rows().map(row=>row.id);
 (async()=>{
  const [cap,ev,rank]=ids();
+ // A step is one line of controls: compact move and remove buttons keep their ids and full names.
+ for(const text of ['id="step-up-'+cap+'" data-action="up" data-step="'+cap+'" aria-label="Move up step 1 · filter" title="Move up" disabled>↑</button>','id="step-down-'+ev+'" data-action="down" data-step="'+ev+'" aria-label="Move down step 2 · filter" title="Move down">↓</button>',
+   'id="step-remove-'+rank+'" data-action="remove" data-step="'+rank+'" aria-label="Remove step 3 · rank" title="Remove">✕</button>','aria-label="Step 3 · Rank order"','<label for="filter-search-'+rank+'">Rank by</label>'])assert(list.innerHTML.includes(text),text);
+ assert(!/<label>(Comparison|Value|Order|Ranks)/.test(list.innerHTML),'A row has no stacked field labels');
  // Without the local service, built-in sources remain and the list says why.
  add('filter');assert(list.innerHTML.includes('id="filter-search-new"'));assert(list.innerHTML.includes('New filter'));assert(list.innerHTML.includes('data-action="cancel"'));assert.equal(document.activeElement.id,'filter-search-new');
  fire('focusin',search('new'));assert.equal(node('filter-options-new').hidden,false);

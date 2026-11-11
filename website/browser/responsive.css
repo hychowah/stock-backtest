@@ -23,8 +23,6 @@ th{z-index:2}
 #schedule-period,#robustness-trial{max-width:100%}
 .backtest-progress > div{min-width:0;flex:1}
 .backtest-progress p{overflow-wrap:anywhere}
-.random-advanced{min-width:0}
-.random-advanced label{display:block;margin-top:12px}
 @media(max-width:850px){
   main{padding:28px 20px}
   .filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -52,11 +50,6 @@ th{z-index:2}
   #custom-view > button,#schedule-results > button{display:block;width:100%;margin:10px 0}
   footer{overflow-wrap:anywhere}
 }
-
-/* Nested calendar labels retain their spacing inside the strategy grid. */
-#calendar-controls > label{display:grid;gap:.35rem;margin-bottom:.6rem}
-#calendar-controls > label:first-child{display:flex;align-items:center;gap:.5rem}
-#calendar-controls > label:first-child input{margin:0}
 
 #result-explorer{margin-bottom:24px;padding:18px;border:1px solid #c8ded3;border-radius:8px;background:#f7fbf8}
 #result-explorer summary{font-weight:600;cursor:pointer;color:#244f43}

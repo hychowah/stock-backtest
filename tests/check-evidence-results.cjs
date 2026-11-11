@@ -60,7 +60,7 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  run('ScheduleView.show(ResultArtifacts.publish(prior))');assert.equal(node('result-producer').textContent,'Producer not recorded in this result.');assert.equal(node('result-producer').hidden,false);
  context.metricLabel=()=>{throw Error('Scalar presentation must use captured meaning');};
  await show(artifact());
- assert(node('scalar-screen-rows').innerHTML.includes('10%'));assert(node('scalar-evidence-summary').textContent.includes('Submitted original'));
+ assert(node('scalar-screen-rows').innerHTML.includes('<td>10.00%</td>'));assert(node('scalar-evidence-summary').textContent.includes('Submitted original'));
  // A capture/1 row has no step evidence; it is never reconstructed.
  assert(node('scalar-screen-rows').innerHTML.includes('Step trail not recorded in this result.'));assert(node('scalar-screen-page').textContent.includes('of 70'));
  node('scalar-screen-next').handlers.click();await tick();assert(node('scalar-screen-rows').innerHTML.includes('A0064'));assert(node('scalar-screen-next').disabled);
@@ -82,7 +82,7 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  // eager and bounded custom results. January controls always use January.
  for(const retained of [null,2,3]){
   if(retained){const old=artifact('custom',retained,'7'.repeat(32));old.result={...summary,options:{metric:'ev_ebitda'},periods:[{...period,holdings:[holding]}]};context.old=old;run('ResultArtifacts.publish(old)');}
-  await show(artifact('january',4,'4'.repeat(32)));assert.equal(node('custom-view').hidden,false);assert(node('schedule-stock-body').innerHTML.includes('10%'));assert.equal(node('schedule-explanation-head').hidden,false);assert(node('schedule-dates').textContent.includes('January books'));
+  await show(artifact('january',4,'4'.repeat(32)));assert.equal(node('custom-view').hidden,false);assert(node('schedule-stock-body').innerHTML.includes('<td>10.00%</td>'));assert.equal(node('schedule-explanation-head').hidden,false);assert(node('schedule-dates').textContent.includes('January books'));
   node('schedule-period').value='2';node('schedule-period').handlers.change();await tick();await tick();assert(node('schedule-stock-body').innerHTML.includes('SECOND'));assert(!node('schedule-stock-body').innerHTML.includes('FIRST'));
   for(const kind of ['holdings','returns']){node('schedule-download-'+kind).handlers.click();assert.equal(downloads.at(-1).href,'/api/backtest-runs/'+'4'.repeat(32)+'/reader/export/'+kind+'/1');}
  }
@@ -117,8 +117,8 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  await show(chain);
  assert.equal(node('scalar-evidence-summary').textContent,'Recorded EV/EBITDA yield · highest first · ranks 20–40 · 4 steps. These values and downloads use original captured evidence.');
  // Plain recorded names; a scalar value's display already carries its unit.
- for(const line of ['Step 1 · Rank · Submitted original · 5% · rank 7 (kept 1–200)','Step 2 · Filter · Sector · Energy · passed',
-   'Step 3 · Filter · Submitted original · 5% · passed','Step 4 · Rank · Recorded EV/EBITDA yield · 30% · rank 25 (kept 20–40)'])
+ for(const line of ['Step 1 · Rank · Submitted original · 5.00% · rank 7 (kept 1–200)','Step 2 · Filter · Sector · Energy · passed',
+   'Step 3 · Filter · Submitted original · 5.00% · passed','Step 4 · Rank · Recorded EV/EBITDA yield · 30.00% · rank 25 (kept 20–40)'])
   assert(node('schedule-stock-body').innerHTML.includes('<li>'+line+'</li>'),line);
  // A latest chain shows the same trail and its recorded market date.
  const latestChain=artifact('latest',4,'6'.repeat(32));latestChain.settings={mode:'latest',strategy:chain.settings.strategy};latestChain.result.asof='2015-01-05';

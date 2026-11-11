@@ -1,16 +1,15 @@
-/* Strategy steps: one row layout and one searchable source list. Rows
-   share the list's columns so Rank and Filter rows line up. */
-#strategy-steps{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) minmax(0,1.4fr) auto;column-gap:12px;list-style:none;margin:0;padding:0}
-.condition-row{display:grid;grid-column:1/-1;grid-template-columns:subgrid;gap:12px;align-items:end;margin:12px 0}
-.condition-row label{font-size:12px;color:#536762;min-width:0}
-.condition-row label>select{display:block;width:100%;margin-top:7px}
+/* Strategy steps: each step is one line with one searchable source list.
+   Rows share the list's columns so Rank and Filter rows line up. Each control
+   has its own accessible name, so a row needs no visible field labels. */
+#strategy-steps{display:grid;grid-template-columns:auto minmax(0,2.4fr) minmax(0,1fr) minmax(0,1.4fr) auto;column-gap:10px;list-style:none;margin:6px 0 0;padding:0}
+.condition-row{display:grid;grid-column:1/-1;grid-template-columns:subgrid;align-items:center;padding:4px 0}
 .condition-row select,.condition-row input,.condition-row button{min-height:44px}
-.condition-pending .filter-source{grid-column:1/4}
-.step-name{grid-column:1/-1;margin-bottom:-6px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#536762}
-.condition-row+.condition-row{border-top:1px solid #e2e7df;padding-top:12px}
-.filter-source{min-width:0;font-size:12px;color:#536762}
-.filter-source>label{display:block}
-.filter-combo{position:relative;margin-top:7px}
+.condition-row>select{width:100%;min-width:0}
+.condition-pending .filter-source{grid-column:2/5}
+.step-name{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#536762;white-space:nowrap}
+.filter-source{min-width:0}
+.filter-source>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.filter-combo{position:relative}
 .filter-combo input{padding-right:34px;text-overflow:ellipsis}
 .filter-combo-arrow{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#536762;font-size:14px}
 .filter-options{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:max(100%,min(560px,calc(100vw - 48px)));max-height:min(420px,55vh);overflow:auto;background:#fff;border:1px solid #b8cbc0;border-radius:8px;box-shadow:0 10px 28px #102e2530;padding:6px 0;color:#192b31}
@@ -23,16 +22,29 @@
 .filter-options-actions{border-top:1px solid #e2e7df;margin-top:4px;padding-top:4px}
 .filter-options-actions [role=option]{color:#20775e;font-weight:600}
 .filter-options-note,.filter-options-empty{margin:0;padding:10px 14px;font-size:12px;line-height:1.5;color:#647575}
-.condition-value{display:flex;gap:6px;margin-top:7px}
+.condition-value{display:flex;align-items:center;gap:6px;min-width:0}
 .condition-value input{min-width:0;flex:1 1 90px}
 .condition-value select{flex:0 1 auto;min-width:0}
-.condition-unit{align-self:center;white-space:nowrap;font-size:13px;color:#536762}
-.condition-actions{display:flex;gap:8px;flex-wrap:wrap}
+.condition-unit{white-space:nowrap;font-size:13px;color:#536762}
+.condition-actions{display:flex;gap:6px;justify-content:flex-end}
+.condition-actions button{min-width:40px;padding:0 10px}
 #filter-message{min-height:0;margin:4px 0 0;font-size:13px}
 #filter-message.error{color:#a93830}
+/* Narrower pages put the step name and its buttons on one line and the three fields on the next. */
+@media(max-width:1200px){
+  #strategy-steps{grid-template-columns:minmax(0,2fr) minmax(0,1.1fr) minmax(0,1.6fr)}
+  .condition-row{row-gap:6px;padding:8px 0}
+  .condition-row>*{grid-row:2}
+  .condition-row .step-name{grid-area:1/1/2/3}
+  .condition-row .condition-actions{grid-area:1/3}
+  .condition-pending .filter-source{grid-column:1/-1}
+}
 @media(max-width:650px){
   #strategy-steps{display:block}
-  .condition-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  .condition-row .filter-source,.condition-row .condition-actions{grid-column:1/-1}
+  .condition-row{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);column-gap:10px}
+  .condition-row>*{grid-row:auto}
+  .condition-row .step-name,.condition-row .filter-source,.condition-row .condition-actions{grid-area:auto/1/auto/-1}
+  .condition-actions{justify-content:flex-start}
+  .condition-actions button{min-width:44px}
   .filter-options{width:100%}
 }

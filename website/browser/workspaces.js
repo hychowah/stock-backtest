@@ -38,8 +38,10 @@ const Workspaces=(()=>{
     rendered='custom';
     if(scalar)node('workspace-evidence').append(scalar);
     node('workspace-result-title').textContent=name||'Backtest result';
-    const description=BacktestComparison.describe(artifact);
-    node('workspace-parameters').innerHTML='<dl>'+description.parameters.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd></div>').join('')+'</dl>';
+    // Plain wording first; the exact recorded text waits in a closed disclosure.
+    const description=BacktestComparison.describe(artifact),exact=description.parameters.filter(row=>row.exact);
+    const list=(rows,key)=>'<dl>'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>';
+    node('workspace-parameters').innerHTML=list(description.parameters,'display')+(exact.length?'<details><summary>Exact recorded values</summary>'+list(exact,'exact')+'</details>':'');
     const presentation=artifact.presentation||{},notice=presentation.notice||{};
     node('workspace-recorded-notice').textContent=notice.text||'';
     node('workspace-recorded-notice').hidden=!notice.text;

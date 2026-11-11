@@ -44,13 +44,30 @@ const chain={format:'strategy-capture',version:2,universe:{pool:'cached'},variab
  steps:[{kind:'rank',source:{kind:'formula',variable_id:'variable:a',revision:'sha256:'+'a'.repeat(64)},direction:'lowest',rank_from:1,rank_to:200},{kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},
   {kind:'filter',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},op:'ge',threshold:{value:'0.02',unit:'scalar'},submitted_threshold:{value:'2',unit:'percent'},comparison_value:.02,storage_comparison_value:.02},
   {kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:20,rank_to:40}]};
-const chainRows=Comparison.scalarRows(chain).map(row=>row.label+': '+row.display);
-assert.deepEqual(chainRows,['Stock pool: cached','Step 1 · Rank: Recorded margin @ sha256:'+'a'.repeat(64)+' lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy',
- 'Step 3 · Filter: Recorded EBITDA yield (metric:ev_ebitda:yield) ≥ 2 percent (canonical 0.02 scalar)','Step 4 · Rank: Recorded EBITDA yield (metric:ev_ebitda:yield) highest first · ranks 20–40']);
+// Summaries read plain wording. The exact field keeps the recorded id, revision,
+// unit and canonical value; a row whose plain wording is exact has none.
+const chainRows=Comparison.scalarRows(chain);
+assert.deepEqual(chainRows.map(row=>row.label+': '+row.display),['Stock pool: All stocks with cached prices','Step 1 · Rank: Recorded margin · lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy',
+ 'Step 3 · Filter: Recorded EBITDA yield ≥ 2%','Step 4 · Rank: Recorded EBITDA yield · highest first · ranks 20–40']);
+assert.deepEqual(chainRows.map(row=>row.exact),['cached','Recorded margin @ sha256:'+'a'.repeat(64)+' lowest first · ranks 1–200',undefined,
+ 'Recorded EBITDA yield (metric:ev_ebitda:yield) ≥ 2 percent (canonical 0.02 scalar)','Recorded EBITDA yield (metric:ev_ebitda:yield) highest first · ranks 20–40']);
+assert.deepEqual(chainRows.map(row=>row.value),['cached',...chain.steps],'Plain wording never changes the compared value');
+const dollarStep=(value,unit)=>Comparison.scalarRows({...chain,steps:[{kind:'filter',source:{kind:'field',field:'market_cap'},op:'ge',threshold:{value:'1',unit:'USD'},submitted_threshold:{value,unit}}]})[1];
+assert.equal(dollarStep('100','usd_million').display,'Market cap ≥ $100M');assert.equal(dollarStep('100','usd_million').exact,'Market cap (USD) ≥ 100 usd_million (canonical 1 USD)');
+assert.equal(dollarStep('-2.5','usd').display,'Market cap ≥ -$2.5');assert.equal(dollarStep('3','future_unit').display,'Market cap ≥ 3 future_unit');
 assert.deepEqual({...Comparison.finalRank({strategy:chain})},chain.steps[3]);
 assert.deepEqual({...Comparison.finalRank({strategy:captured})},{source:captured.selection.ranking.source,direction:'highest',rank_from:1,rank_to:50});
 assert.deepEqual({...Comparison.finalRank({rank_to:7})},{rank_from:1,rank_to:7});
 const left=artifact({strategy:chain}),right=artifact({strategy:{...structuredClone(chain),steps:chain.steps.map((step,i)=>i===3?{...step,rank_to:30}:step)}});
 const differences=compare(left,right).parameters.filter(row=>row.different).map(row=>row.key);
 assert.deepEqual(differences,['step.3']);
-console.log('Passed: chain captures list the universe and ordered steps, compare by step, and the last Rank sets the recorded range.');
+// Flat settings read plain too; performance shows 2 decimals, or 2 significant digits below 0.01.
+const flat=describe(artifact({min_cap:250e6,min_ev:1234567,min_yield:.07,pool:'cached'},{growth:2.345678})),shown=key=>flat.parameters.find(row=>row.key===key);
+assert.deepEqual([shown('min_cap').display,shown('min_cap').exact,shown('min_cap').value],['$250M','250000000',250e6]);assert.equal(shown('min_ev').display,'$1,234,567');
+assert.equal(shown('min_yield').display,'7%');assert.equal(shown('max_cap').display,'No limit');assert.deepEqual([shown('pool').display,shown('pool').exact],['All stocks with cached prices','cached']);
+assert.deepEqual([shown('metric').display,shown('metric').exact],['Original EBITDA multiple','Original EBITDA multiple (ev_ebitda)']);
+assert.equal(flat.performance.find(row=>row.key==='growth').display,'2.35×');assert.equal(flat.performance.find(row=>row.key==='cagr').display,'12.00%');
+const spread=describe(artifact({trials:2},{completed:2,valid:2,incomplete:0,configuration:{seed:1},distributions:{cagr:{mean:.000082208838},excess_cagr:{mean:-.005837653252144099,min:-.00004},growth:{mean:1.23456}}},'random')).performance;
+assert.deepEqual(['cagr.mean','excess_cagr.mean','excess_cagr.min','growth.mean'].map(key=>spread.find(row=>row.key===key).display),['0.0082%','-0.58 pp','-0.0040 pp','1.23×']);
+assert.equal(spread.find(row=>row.key==='excess_cagr.mean').value,-.005837653252144099);
+console.log('Passed: chain captures list the universe and ordered steps in plain wording with exact text kept, compare by step, the last Rank sets the recorded range, and on-screen values are rounded.');

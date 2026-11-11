@@ -35,9 +35,11 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 1. Choose **US**, **Hong Kong** or **Japan · Tokyo**, then **Latest stock picks** or **Historical backtest**. New strategies use the broad cached-price pool. It is not the full market. Restored US work retains its recorded original candidate pool.
 2. Build the strategy as ordered steps under the stock universe. A new strategy has three steps: **Market cap** at least $100 million, **Enterprise value** at least $50 million, then a **Rank** by EBITDA/EV yield, highest first, ranks 1–50.
-3. Use **+ Add filter** or **+ Add rank**. Type in the new row to search one list: size and listing fields, EV/EBITDA metrics, built-in values, saved variables, measures and financial parameters. A Filter takes a comparison (more than, less than, at least, at most) and a value in the shown unit; sector and exchange filters take one choice. A Rank takes **Highest first** or **Lowest first** and an inclusive rank range. A new filter goes before the last Rank. Use **Move up**, **Move down** and **Remove** to change the order. Built-in sources work offline; saved variables, measures and parameters need the local service. A stock with a missing value fails a filter and is left out of a Rank. Enter 10 for a 10% trailing return. Choose **Manage backtest data → Update data** to get financial-ratio inputs.
+3. Use **+ Add filter** or **+ Add rank**. Type in the new row to search one list: size and listing fields, EV/EBITDA metrics, built-in values, saved variables, measures and financial parameters. A Filter takes a comparison (more than, less than, at least, at most) and a value in the shown unit; sector and exchange filters take one choice. A Rank takes **Highest first** or **Lowest first** and an inclusive rank range. A new filter goes before the last Rank. Each step is one line. Use its **↑**, **↓** and **✕** buttons (Move up, Move down and Remove) to change the order. Built-in sources work offline; saved variables, measures and parameters need the local service. A stock with a missing value fails a filter and is left out of a Rank. Enter 10 for a 10% trailing return. Choose **Manage backtest data → Update data** to get financial-ratio inputs.
 4. Steps run in order. Each Rank keeps its range from the stocks that reach it. The last Rank sets the final order and ranks; filters after it keep original ranks and add no replacements. Survivors receive equal weight. Filters → Rank is the old filter-first order; Rank → filters is the old rank-first order. If 20 stocks pass after a top-50 Rank, each receives 5% weight.
 5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Latest picks run offline for filters it supports and one highest EV/EBITDA-yield Rank, first or last. **Screen latest** runs every other chain on the local service. Auto-run works for the offline shape only. Each selected stock's **Details** shows its step trail: each step's value and its rank or pass. Reset strategy restores the broad pool and the three default steps while preserving the chosen dates.
+
+Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. The steps disclosure also holds the coverage notes of the displayed result. A status line appears only when it has a message.
 
 Copying a saved result, queued test or older record restores its strategy as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
 
@@ -245,8 +247,9 @@ period, followed by integrity checks and a successful retry.
 
 ## Random-date sensitivity
 
-In custom historical mode, select **Random date at every rebalance**. Choose
-**Random trials** (1–100, default 24). Each run draws fresh random dates by default.
+In custom historical mode, select **Random date at every rebalance**. **Random
+trials** and **Advanced** appear only for this choice. Choose **Random trials**
+(1–100, default 24). Each run draws fresh random dates by default.
 Under **Advanced**, optionally enable **Repeat the same dates** to use a fixed
 date-set number (seed), or replay a number from earlier results. Every trial draws
 one trading session independently from each frequency-sized block, including
@@ -346,6 +349,11 @@ original bytes when duplicate queue evidence is released.
 
 Each saved row has **All parameters**. Expand it to read that test's recorded
 settings and selected filters without opening its results or changing the form.
+A setting reads in plain wording, such as `Market cap ≥ $100M`. When that wording
+leaves out a recorded id, unit, canonical value or variable revision, the exact
+recorded text follows in smaller type. A queue row's **All parameters** and
+**Exact recorded values** under the settings of an open result show the same
+exact text. Row summaries and comparison tables show the plain wording only.
 The first expansion loads only that record. Sorting, renaming and refreshing keep
 its expansion. A failed load shows **Retry parameters** inside the row. Temporary
 evidence readers close after the parameter description is read.
@@ -358,8 +366,10 @@ clears both selected IDs. The main results and strategy settings stay unchanged.
 
 Comparison reads saved results without recalculation. Legacy/current calendars
 and documented defaults compare consistently. Reordered AND conditions and
-repeated identical conditions mean the same thing. Strict operators, exact
-values, unknown setting fields and original labels stay visible. Requested engine
+repeated identical conditions mean the same thing. Strict operators, unknown
+setting fields and original labels stay visible. A difference uses the exact
+recorded value, also when two rows show the same rounded text. Performance
+shows 2 decimals; a value below 0.01 shows 2 significant digits. Requested engine
 and recorded producer are separate. Older results without producer evidence are
 unidentified. Random comparisons show requested date policy, recorded seed and
 stored trial distributions. Mean trial CAGR is not one portfolio return.

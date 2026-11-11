@@ -154,5 +154,8 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  assert(html.indexOf('id="result-explorer"')>html.indexOf('</form>'));
  assert(html.includes('Save original backtest')&&html.includes('Download original holdings'));
  assert(html.indexOf('id="result-explorer"')<html.indexOf('id="robustness-results"'));
+ // The builder shows controls first: no page heading, and one help line each for the steps and the dates outside the disclosures.
+ const builder=html.slice(html.indexOf('id="workspace-builder"'),html.indexOf('id="workspace-runs"')).replace(/<details[\s\S]*?<\/details>/g,'');
+ assert(!builder.includes('<h1')&&!html.includes('class="intro"'));assert.equal((builder.match(/<p class="hint">/g)||[]).length,2);
  console.log('Passed: visible all-24-trial date/rank controls, combined statistics and chart, eager and both codec transports, original artifacts, reset, validation and cancellation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

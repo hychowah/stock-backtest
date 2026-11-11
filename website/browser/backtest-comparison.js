@@ -1,16 +1,20 @@
 /* Read-only descriptions of stored tests. No transport, DOM, holdings traversal,
    calculation or artifact publication belongs here. Defaults describe documented
-   omission semantics; explicit values and unfamiliar settings remain visible. */
+   omission semantics; explicit values and unfamiliar settings remain visible.
+   A row's display is plain wording for summaries. Its exact field keeps the
+   recorded ids, units and canonical values when the plain wording leaves them out. */
 const BacktestComparison=(()=>{
   const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
   const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
   const stable=value=>value===undefined?'[not recorded]':JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
   const text=value=>value===undefined?'Not recorded':value===null?'None':typeof value==='object'?stable(value):String(value);
-  const percent=value=>Number.isFinite(value)?(value*100).toFixed(2)+'%':'Unavailable';
+  // On-screen numbers: 2 decimals; a value below 0.01 keeps 2 significant digits.
+  const rounded=value=>value!==0&&Math.abs(value)<.01?value.toPrecision(2):value.toFixed(2);
+  const percent=value=>Number.isFinite(value)?rounded(value*100)+'%':'Unavailable';
   const labels={january:'January',custom:'Fixed dates',random:'Random dates'};
   const defaults={rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',selection_order:'filter_first',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};
   const names={rank_from:'First rank',rank_to:'Last rank',pool:'Stock pool',metric:'Ranking metric',selection_order:'Selection order',min_cap:'Minimum market cap (USD)',max_cap:'Maximum market cap (USD)',min_ev:'Minimum EV (USD)',min_yield:'Minimum yield',max_multiple:'Maximum multiple',sector:'Sector',exchange:'Exchange'};
-  const entry=(key,label,value,display=text(value))=>({key,label,value,display});
+  const entry=(key,label,value,display=text(value),exact=display)=>exact===display?{key,label,value,display}:{key,label,value,display,exact};
   const catalogLabel=(catalog,id)=>typeof catalog?.[id]==='string'?catalog[id]:catalog?.[id]?.label||id;
   function filters(value){
     // All conditions are AND: order and repeated identical conditions do not
@@ -26,23 +30,47 @@ const BacktestComparison=(()=>{
     return {...rank,rank_from:rank.rank_from??1,rank_to:rank.rank_to??50};
   }
   // A recorded source name from the capture itself, never a current catalog.
-  function sourceName(capture,value){
-    if(value.kind==='field')return {market_cap:'Market cap (USD)',enterprise_value:'Enterprise value (USD)',sector:'Sector',exchange:'Exchange'}[value.field]||value.field;
-    if(value.kind==='builtin')return (capture.builtins.find(item=>item.id===value.id)?.label||value.id)+' ('+value.id+')';
-    return (capture.variables?.presentation.find(item=>item.variable_id===value.variable_id&&item.revision===value.revision)?.name||value.variable_id)+' @ '+value.revision;
+  // The plain name leaves out the unit, id or revision that the exact name keeps.
+  function plainName(capture,value){
+    if(value.kind==='field')return {market_cap:'Market cap',enterprise_value:'Enterprise value',sector:'Sector',exchange:'Exchange'}[value.field]||value.field;
+    if(value.kind==='builtin')return capture.builtins.find(item=>item.id===value.id)?.label||value.id;
+    return capture.variables?.presentation.find(item=>item.variable_id===value.variable_id&&item.revision===value.revision)?.name||value.variable_id;
+  }
+  function exactName(capture,value){
+    const name=plainName(capture,value);
+    return value.kind==='field'?name+(['market_cap','enterprise_value'].includes(value.field)?' (USD)':''):value.kind==='builtin'?name+' ('+value.id+')':name+' @ '+value.revision;
+  }
+  const dollars=(value,suffix='')=>String(value).replace(/^[+-]?/,sign=>sign+'$')+suffix;
+  // A submitted threshold as typed, with its unit in plain form: $100M, 2%, 8×.
+  const quantity=({value,unit})=>unit==='usd_million'?dollars(value,'M'):unit==='usd'?dollars(value):unit==='usd_per_share'?dollars(value,' per share'):value+({percent:'%',percentage_points:' pp',multiple:'×',shares:' shares',number:'',scalar:''}[unit]??' '+unit);
+  // A pool, flat setting or capture/1 bound: its plain display, then its exact text when that differs.
+  function setting(key,value){
+    if(key==='pool')return [value==='cached'?'All stocks with cached prices':value==='legacy'?'Original candidate set':text(value),text(value)];
+    if(['min_cap','max_cap','min_ev'].includes(key)&&Number.isFinite(value))return [value&&value%1e6===0?dollars(value/1e6,'M'):dollars(value.toLocaleString('en-US')),text(value)];
+    if(key==='min_yield'&&Number.isFinite(value))return [Number((value*100).toPrecision(12))+'%'];
+    if(key==='selection_order')return [value==='filter_first'?'Filter before ranking':value==='rank_first'?'Select ranks before filtering':text(value)];
+    if(value===null&&['max_cap','max_multiple'].includes(key))return ['No limit'];
+    if(value===null&&['sector','exchange'].includes(key))return ['All'];
+    return [text(value)];
   }
   function scalarRows(capture){
-    const source=value=>sourceName(capture,value);
-    if(capture.version===2)return [entry('pool','Stock pool',capture.universe.pool),...capture.steps.map((step,index)=>entry('step.'+index,'Step '+(index+1)+' · '+(step.kind==='rank'?'Rank':'Filter'),step,
-      source(step.source)+' '+(step.kind==='rank'?step.direction+' first · ranks '+step.rank_from+'–'+step.rank_to:typeof step.threshold==='string'?'= '+step.threshold
-        :symbols[step.op]+' '+step.submitted_threshold.value+' '+step.submitted_threshold.unit+' (canonical '+step.threshold.value+' '+step.threshold.unit+')')))];
+    const plain=value=>plainName(capture,value),exact=value=>exactName(capture,value);
+    const condition=item=>{
+      const op=' '+symbols[item.op]+' ',submitted=item.submitted_threshold;
+      return typeof item.threshold==='string'?[plain(item.source)+op+item.threshold,exact(item.source)+op+item.threshold]
+        :[plain(item.source)+op+quantity(submitted),exact(item.source)+op+submitted.value+' '+submitted.unit+' (canonical '+item.threshold.value+' '+item.threshold.unit+')'];
+    };
+    if(capture.version===2)return [entry('pool','Stock pool',capture.universe.pool,...setting('pool',capture.universe.pool)),...capture.steps.map((step,index)=>{
+      const range=step.direction+' first · ranks '+step.rank_from+'–'+step.rank_to;
+      return entry('step.'+index,'Step '+(index+1)+' · '+(step.kind==='rank'?'Rank':'Filter'),step,...(step.kind==='rank'?[plain(step.source)+' · '+range,exact(step.source)+' '+range]:condition(step)));
+    })];
     const s=capture.selection;
-    return [entry('strategy','Captured ranking',s.ranking,source(s.ranking.source)),entry('direction','Ranking direction',s.ranking.direction),entry('rank_from','First rank',s.rank_from),entry('rank_to','Last rank',s.rank_to),entry('selection_order','Selection order',s.selection_order),entry('pool','Stock pool',capture.pool),...Object.entries(capture.bounds).map(([key,value])=>entry('bound.'+key,names[key]||key,value)),...s.conditions.map((condition,index)=>entry('condition.'+index,'Variable condition '+(index+1),condition,source(condition.source)+' '+(condition.op==='lt'?'<':'>')+' '+condition.submitted_threshold.value+' '+condition.submitted_threshold.unit+' (canonical '+condition.threshold.value+' '+condition.threshold.unit+')'))];
+    return [entry('strategy','Captured ranking',s.ranking,plain(s.ranking.source),exact(s.ranking.source)),entry('direction','Ranking direction',s.ranking.direction),entry('rank_from','First rank',s.rank_from),entry('rank_to','Last rank',s.rank_to),entry('selection_order','Selection order',s.selection_order),entry('pool','Stock pool',capture.pool,...setting('pool',capture.pool)),...Object.entries(capture.bounds).map(([key,value])=>entry('bound.'+key,names[key]||key,value,...setting(key,value))),...s.conditions.map((item,index)=>entry('condition.'+index,'Variable condition '+(index+1),item,...condition(item)))];
   }
   function describe(artifact){
     if(!artifact||![1,2,3,4].includes(artifact.version)||!labels[artifact.kind]||!artifact.settings||!artifact.result)throw Error('This saved test cannot be compared. Its record was kept.');
     const kind=artifact.kind,s=artifact.settings,r=artifact.result,catalog=artifact.catalog||{},parameters=[],performance=[],handled=new Set(['mode']);
-    const add=(key,label,value,display)=>parameters.push(entry(key,label,value,display));
+    const add=(...row)=>parameters.push(entry(...row));
     add('mode','Test type',kind,labels[kind]);
     handled.add('market');const market=s.market??'us';
     add('market','Stock market',market,{us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'}[market]||text(market));
@@ -70,14 +98,8 @@ const BacktestComparison=(()=>{
     }
     for(const [key,fallback] of Object.entries(s.strategy?{}:defaults)){
       handled.add(key);const value=own(s,key)?s[key]:fallback;
-      let display=text(value);
-      if(key==='metric')display=catalogLabel(catalog.metrics,value)+' ('+text(value)+')';
-      if(key==='pool')display=value==='legacy'?'Original candidate set':value==='cached'?'All cached stocks':text(value);
-      if(key==='selection_order')display=value==='filter_first'?'Filter before ranking':value==='rank_first'?'Select ranks before filtering':text(value);
-      if(key==='min_yield')display=Number.isFinite(value)?text(value*100)+'%':text(value);
-      if(value===null&&['max_cap','max_multiple'].includes(key))display='No limit';
-      if(value===null&&['sector','exchange'].includes(key))display='All';
-      add(key,names[key],value,display);
+      if(key==='metric'){const label=catalogLabel(catalog.metrics,value);add(key,names[key],value,label,label+' ('+text(value)+')');continue;}
+      add(key,names[key],value,...setting(key,value));
     }
     handled.add('filters');const conditions=filters(s.filters);
     add('filters','Additional AND conditions',conditions,conditions.length?conditions.map(c=>catalogLabel(catalog.filters,c.field)+' '+(c.op==='lt'?'<':c.op==='gt'?'>':text(c.op))+' '+text(c.value)+(Object.keys(c).some(k=>!['field','op','value'].includes(k))?' '+stable(c):'')).join('; '):'None');
@@ -111,13 +133,13 @@ const BacktestComparison=(()=>{
         const statistics=distributions[measure]||{};
         for(const stat of new Set(['mean',...Object.keys(statistics).filter(k=>k!=='n')])){
           const value=statistics[stat],label=(statisticLabels[stat]||stat)+' trial '+(measures[measure]||measure);
-          const display=!own(measures,measure)?text(value):measure==='growth'?Number.isFinite(value)?text(value)+'×':'Unavailable':measure==='excess_cagr'?Number.isFinite(value)?text(value*100)+' pp':'Unavailable':percent(value);
+          const display=!own(measures,measure)?text(value):measure==='growth'?Number.isFinite(value)?rounded(value)+'×':'Unavailable':measure==='excess_cagr'?Number.isFinite(value)?rounded(value*100)+' pp':'Unavailable':percent(value);
           performance.push(entry(measure+'.'+stat,label,value,display));
         }
       }
     }else{
       observationWindow={start:r.start??r.first,end:r.end};
-      performance.push(entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('growth','Growth of $1',r.growth,Number.isFinite(r.growth)?text(r.growth)+'×':'Unavailable'));
+      performance.push(entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('growth','Growth of $1',r.growth,Number.isFinite(r.growth)?rounded(r.growth)+'×':'Unavailable'));
     }
     add('observed_start','Recorded observation start',observationWindow.start);
     add('observed_end','Recorded observation end',observationWindow.end);
@@ -136,6 +158,6 @@ const BacktestComparison=(()=>{
     if(stable(left.observationWindow)!==stable(right.observationWindow))notices.push('These tests use different recorded observation windows.');
     return {parameters:align(left.parameters,right.parameters),performance:align(left.performance,right.performance),notices};
   }
-  return {describe,compare,scalarRows,finalRank,sourceName};
+  return {describe,compare,scalarRows,finalRank,plainName};
 })();
 if(typeof module!=='undefined')module.exports=BacktestComparison;

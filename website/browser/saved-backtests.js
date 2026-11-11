@@ -49,9 +49,10 @@ const SavedBacktests=(()=>{
   }
   // Disclosures reuse stored-artifact descriptions and retain parameter rows
   // only. They own no artifact, evidence reader, form or main-result lifetime.
+  // A row's exact recorded text follows its plain wording.
   function parameterDisclosure(id){
     const state=disclosures.get(id);
-    const content=state?.rows?'<dl>'+state.rows.map(row=>'<dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd>').join('')+'</dl>':
+    const content=state?.rows?'<dl>'+state.rows.map(row=>'<dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+(row.exact?'<small class="exact-setting">'+escape(row.exact)+'</small>':'')+'</dd>').join('')+'</dl>':
       state?.loading?'<p role="status">Loading recorded parameters…</p>':state?.error?'<p role="status">'+escape(state.error)+'</p><button type="button" data-parameters-retry="'+escape(id)+'">Retry parameters</button>':'<p>Expand to read the settings and filters used for this saved test.</p>';
     return '<details class="saved-parameters" data-parameters-id="'+escape(id)+'"'+(state?.open?' open':'')+'><summary id="saved-parameters-toggle-'+escape(id)+'">All parameters</summary>'+content+'</details>';
   }

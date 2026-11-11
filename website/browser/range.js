@@ -102,18 +102,19 @@ function stepRow(row){
   const key=row.id,name='Step '+row.number+' · '+(row.kind==='rank'?'Rank':'Filter'),field=(id,extra)=>`id="step-${id}-${key}" data-step="${key}" data-key="${id}" ${extra}`;
   let middle,value;
   if(row.kind==='rank'){
-    middle=`<label>Order<select ${field('direction',`aria-label="${name} order"`)}>${[['highest','Highest first'],['lowest','Lowest first']].map(([v,l])=>`<option value="${v}" ${row.direction===v?'selected':''}>${l}</option>`).join('')}</select></label>`;
-    value=`<label>Ranks<span class="condition-value"><input ${field('rank_from',`aria-label="${name} first rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_from)}"`)}><span class="condition-unit">to</span><input ${field('rank_to',`aria-label="${name} last rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_to)}"`)}></span></label>`;
+    middle=`<select ${field('direction',`aria-label="${name} order"`)}>${[['highest','Highest first'],['lowest','Lowest first']].map(([v,l])=>`<option value="${v}" ${row.direction===v?'selected':''}>${l}</option>`).join('')}</select>`;
+    value=`<span class="condition-value"><span class="condition-unit">Ranks</span><input ${field('rank_from',`aria-label="${name} first rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_from)}"`)}><span class="condition-unit">to</span><input ${field('rank_to',`aria-label="${name} last rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_to)}"`)}></span>`;
   }else if(row.text){
-    middle='<label>Comparison<span class="condition-unit">Equals</span></label>';
-    value=`<label>Value<select ${field('value',`aria-label="${name} value"`)}><option value="">Choose…</option>${[...new Set([...row.choices,...(row.value?[row.value]:[])])].map(v=>`<option value="${safe(v)}" ${v===row.value?'selected':''}>${safe(v)}</option>`).join('')}</select></label>`;
+    middle='<span class="condition-unit">Equals</span>';
+    value=`<select ${field('value',`aria-label="${name} value"`)}><option value="">Choose…</option>${[...new Set([...row.choices,...(row.value?[row.value]:[])])].map(v=>`<option value="${safe(v)}" ${v===row.value?'selected':''}>${safe(v)}</option>`).join('')}</select>`;
   }else{
-    middle=`<label>Comparison<select ${field('op',`aria-label="${name} comparison"`)}>${comparisons.map(([v,l])=>`<option value="${v}" ${row.op===v?'selected':''}>${safe(l)}</option>`).join('')}</select></label>`;
+    middle=`<select ${field('op',`aria-label="${name} comparison"`)}>${comparisons.map(([v,l])=>`<option value="${v}" ${row.op===v?'selected':''}>${safe(l)}</option>`).join('')}</select>`;
     const unit=row.units?.length>1?`<select ${field('unit',`aria-label="${name} unit"`)}>${row.units.map(u=>`<option value="${safe(u)}" ${u===row.unit?'selected':''}>${safe(VariableWorkspace.displayName(u))}</option>`).join('')}</select>`:row.unit?`<span class="condition-unit">${safe(VariableWorkspace.displayName(row.unit))}</span>`:'';
-    value=`<label>Value<span class="condition-value"><input ${field('value',`aria-label="${name} value" inputmode="decimal" autocomplete="off" value="${safe(row.value)}" placeholder="Enter value"`)}>${unit}</span></label>`;
+    value=`<span class="condition-value"><input ${field('value',`aria-label="${name} value" inputmode="decimal" autocomplete="off" value="${safe(row.value)}" placeholder="Enter value"`)}>${unit}</span>`;
   }
-  const button=(action,label,disabled=false)=>`<button type="button" id="step-${action}-${key}" data-action="${action}" data-step="${key}" aria-label="${label} ${name.toLowerCase()}"${disabled?' disabled':''}>${label}</button>`;
-  return `<li class="condition-row step-${row.kind}"><span class="step-name">${name}</span>${sourceField(key,row,name)}${middle}${value}<div class="condition-actions">${row.formula?button('edit','Edit formula'):''}${button('up','Move up',row.number===1)}${button('down','Move down',row.last)}${button('remove','Remove')}</div></li>`;
+  // A compact button keeps its full name as the accessible name and the tooltip.
+  const button=(action,label,text=label,disabled=false)=>`<button type="button" id="step-${action}-${key}" data-action="${action}" data-step="${key}" aria-label="${label} ${name.toLowerCase()}" title="${label}"${disabled?' disabled':''}>${text}</button>`;
+  return `<li class="condition-row step-${row.kind}"><span class="step-name">${name}</span>${sourceField(key,row,name)}${middle}${value}<div class="condition-actions">${row.formula?button('edit','Edit formula'):''}${button('up','Move up','↑',row.number===1)}${button('down','Move down','↓',row.last)}${button('remove','Remove','✕')}</div></li>`;
 }
 function renderSteps(){
   const rows=StrategyDraft.view();
@@ -477,8 +478,12 @@ const StrategyDraft=(()=>{
     const last=steps.findLast(step=>step.kind==='rank'),offline=flat();
     document.getElementById('strategy-heading').textContent=last?(last.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(last.source):'Add a Rank step';
     document.getElementById('auto-run').disabled=!offline;
-    document.getElementById('auto-run-note').textContent=offline?'Turn off to change several settings, then select Run backtest. You can edit settings during a run.':'Auto-run is paused for this chain. Select '+(screeningMode==='latest'?'Screen latest':'Run backtest')+' to calculate.';
+    document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this chain. Select '+(screeningMode==='latest'?'Screen latest':'Run backtest')+' to calculate.';
     document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
+    // Random-date and custom-interval inputs show only while their choice is on.
+    const custom=document.getElementById('calendar-custom').checked;
+    document.getElementById('random-controls').hidden=document.getElementById('date-testing').value!=='random';
+    document.getElementById('calendar-interval').hidden=!custom;document.getElementById('rebalance-months').disabled=custom;
   }
   function after(id){changed=id;touch();renderSteps();render();updateResultsState();return id;}
   function patch(change,expected){

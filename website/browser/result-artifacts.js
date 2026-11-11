@@ -163,11 +163,13 @@ const ResultArtifacts=(()=>{
     const defaults=['custom','random'].includes(artifact.kind)||artifact.settings.strategy?{engine:'original',selection_order:'filter_first',market:'us'}:{selection_order:'filter_first',market:'us'};
     return signature({...defaults,...submitted})===signature({...defaults,...settings});
   }
-  function scalarValue(row){
+  // Evidence views keep 8 significant digits. A table shows 2 decimals, or 2
+  // significant digits for a value below 0.01.
+  function scalarValue(row,table=false){
     const value=row.ranking_value;if(!Number.isFinite(value))return 'Unavailable';
     const display=row.ranking_display,scaled=display==='percent'||display==='percentage_points'?value*100:display==='usd_million'?value/1e6:value;
     const suffix=display==='percent'?'%':display==='percentage_points'?' pp':display==='usd_million'?' USD million':display==='usd'?' USD':display==='multiple'?'×':'';
-    return Number(scaled.toPrecision(8)).toString()+suffix;
+    return (!table?Number(scaled.toPrecision(8)).toString():scaled!==0&&Math.abs(scaled)<.01?scaled.toPrecision(2):scaled.toFixed(2))+suffix;
   }
   return {create,decode,publish,matches,reader,use,release,opening,current,scalarValue,view,forView:key=>views.get(key)};
 })();

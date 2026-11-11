@@ -224,7 +224,9 @@ Legacy requests log their translated counts.
 The holding Details panel and the latest screen's Details show the step trail:
 for each step, its source label, recorded value and unit, then its rank and kept
 range for a Rank or "passed" for a Filter. `EvidenceResults` reads it from the
-stored row and the captured strategy only. A row without step evidence, such as
+stored row and the captured strategy only. Result tables and the trail show
+2 decimals, or 2 significant digits for a value below 0.01; downloads and the
+calculation evidence keep the recorded precision. A row without step evidence, such as
 capture/1 and every older result, says the trail is not recorded.
 
 ## Dated submissions and replay
