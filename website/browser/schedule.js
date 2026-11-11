@@ -178,7 +178,11 @@ const ScheduleView=(()=>{
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration,stored,index)=>stored||[3,4].includes(ResultArtifacts.forView('custom')?.version)?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    // A stored trial opens in Returns, where its period returns and stocks show.
+    RobustnessView.init((trial,configuration,stored,index)=>{
+      if(!stored&&![3,4].includes(ResultArtifacts.forView('custom')?.version))return run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)});
+      inspect(index);Workspaces.reviewSection('returns');
+    },configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
@@ -199,12 +203,15 @@ const ScheduleView=(()=>{
     catch(error){node('screen-error').textContent=error.message;return;}
     return follow(run);
   }
-  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if([3,4].includes(artifact?.version))EvidenceResults.show(artifact,index+1);else render();}
+  // The per-trial block of a random-date result names its trial; the headline shows all trials.
+  function trialTitle(artifact){if(artifact?.kind==='random')node('schedule-trial-title').textContent='Trial '+(inspectedTrial+1)+' of '+artifact.result.trials.length;}
+  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');trialTitle(artifact);if([3,4].includes(artifact?.version))EvidenceResults.show(artifact,index+1);else render();}
   function inspectOriginal(number,period,sector){
     if(number===undefined&&inspectedTrial!==null){node('schedule-results').hidden=false;return;}
     number??=1;period??=1;
     inspectedTrial=number-1;inspectedSector=sector;
     const artifact=ResultArtifacts.forView('custom');if(!artifact)return;
+    trialTitle(artifact);
     if([3,4].includes(artifact.version))EvidenceResults.show(artifact,number,{period,sector});
     else{render();node('schedule-period').value=String(period-1);stocks();}
   }
@@ -219,7 +226,8 @@ const ScheduleView=(()=>{
     }else{
       if([3,4].includes(artifact.version))EvidenceResults.show(artifact,1);else render();node('robustness-results').hidden=true;
     }
-    node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
+    // The status line speaks only for a run or a failed read; an opened result needs none.
+    node('schedule-message').textContent='';node('schedule-message').className='';
   }
   function cancel(){
     if(!running||!activeRun)return;

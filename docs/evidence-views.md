@@ -12,12 +12,16 @@ financial generation, calculation readiness or calculation.
 
 ## Explore a completed result
 
-The dated result has an **Explore this result** panel. Choose saved holding
+The dated result has an **Explore this result** panel. It starts closed, after
+the chart and tables, and reads its date labels when it opens. Choose saved holding
 periods and an inclusive rank range within the original request. Apply summarizes
 saved returns without screening, formulas, preparation or market inputs.
 
-Random results open **Explore all trials** above the combined summary. One
+Random results have **Explore all trials** in the same position. One
 selection updates every trial, combined statistics and the distribution chart.
+The panel shows the mean and median strategy CAGR and the mean paired SPY CAGR
+of the selection. A notice above the chart gives the applied window and ranks.
+The result headline keeps the original result.
 Selectors name saved entry and exit blocks. The actual shared window runs from
 the earliest selected entry to the latest selected exit. A selection beginning
 with the first period keeps the original common start. Strategy and paired SPY
@@ -59,6 +63,13 @@ the mounted strategy form. Opening a result publishes its artifact without
 restoring draft settings. Copy settings and Edit a copy retain the existing
 held-edit protection. Recorded parameter rows reuse `BacktestComparison.describe`.
 Desktop review shows them in a side column; phones have a Settings section.
+The same description supplies `headline`, the short answer that review prints
+below the title: `cagr`, `spy_cagr` and `difference` for every test type, then
+`growth` for a fixed schedule or a January result, or `beat_spy`, `worst` and
+`best` for random dates. Random values are the stored trial statistics and
+counts. A value that the result did not store reads Unavailable. A review block
+lists its tabs in `data-review-panel`; a `random-` or `fixed-` name limits the
+block to that kind of result.
 The bottom status bar consumes existing direct-run and queue state. Its dialog
 borrows the mounted queue panel, including the same controls and polling owner.
 

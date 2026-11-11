@@ -24,6 +24,9 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  assert(node('robustness-chart').innerHTML.includes('<rect'));
  assert(!node('robustness-chart').innerHTML.includes('NaN'));
  assert(node('robustness-chart-note').textContent.includes('Seed 42'));
+ // The summary line stays short; the sampling rules of the result wait under How to read this.
+ assert.equal(node('robustness-description').textContent,'2 trials · 2 complete, 0 incomplete · 2 distinct schedules · 1/2 complete trials beat paired SPY.');
+ assert.equal(node('robustness-note').textContent,'试验 dates vary.');assert(node('robustness-scope').hidden&&!node('robustness-scope').textContent);
  batch.trials.push({...batch.trials[0],trial:2,cagr:.2,total_return:2,excess_cagr:.03}, {...batch.trials[0],trial:3,cagr:null,total_return:999});
  batch.trials[0].total_return=1;batch.trials[0].spy_growth=1.5;
  call('RobustnessView.render(batch)');
@@ -49,6 +52,10 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  node('robustness-measure').value='cagr';node('robustness-measure').handlers.change();
  assert(node('robustness-chart').innerHTML.includes('mean 90.00%'));
  assert.equal(saved.get('backtest-experiment'),remembered,'Preview preserves original replay settings');
+ // A previewed selection says which window and ranks the chart and tables show.
+ ctx.preview={...ctx.preview,exploration:{start:'2016-01-04',end:'2019-01-02',rank_from:5,rank_to:10}};call('RobustnessView.preview(preview)');
+ assert(!node('robustness-scope').hidden&&node('robustness-scope').textContent.startsWith('Explore selection: 2016-01-04 → 2019-01-02 · ranks 5–10.'));
+ call('RobustnessView.render(batch)');assert(node('robustness-scope').hidden);
  node('robustness-download').handlers.click();assert(csv.includes('2015-03-02;2017-07-03'));assert(csv.includes('"42"'));assert.equal(download,'random-dates-seed-42.csv');
  node('robustness-trial').value='0';node('robustness-inspect').handlers.click();assert.equal(inspected.trial.trial,1);assert.equal(inspected.config.months,24);
  console.log('Passed: remembered replay settings, repeat seed, distribution rendering, reproducible CSV and trial inspection.');

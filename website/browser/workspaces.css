@@ -44,6 +44,15 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 .how-it-works{font-size:13px;color:#536762}
 .how-it-works>summary{width:fit-content;min-height:36px;padding:9px 0;cursor:pointer}
 .how-it-works>.hint{max-width:960px;margin:4px 0 10px}
+/* Latest picks: the picks table starts in the first screen. Its facts share the
+   heading row, and the notes of the displayed result follow the table. */
+#screen-status{margin-bottom:0}
+#latest-view{padding-top:18px}
+#latest-view>.toolbar>h2{flex:0 1 auto;margin:0}
+#latest-view .latest-facts{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:4px 24px;margin:0}
+#latest-view .latest-facts>span{border:0;padding:0}
+#latest-view .latest-facts strong{display:inline;margin:0 0 0 7px;font-size:15px;font-weight:600}
+#latest-view th{white-space:nowrap}
 .exact-setting{display:block;font:11px ui-monospace,monospace;color:#7b8970;margin-top:3px;overflow-wrap:anywhere}
 #workspace-library{padding-top:5px}
 #workspace-review{padding-top:25px}
@@ -55,9 +64,33 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #workspace-review-tabs{display:flex;gap:28px;border-bottom:1px solid #d7dfcf;margin-bottom:24px}
 #workspace-review-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:0 0 13px;background:none;color:#6b7862;font-size:13px}
 #workspace-review-tabs button[aria-current=page]{border-bottom-color:#285e49;color:#285e49;font-weight:650}
+/* Result review: the headline of the original result, then the main chart and
+   its table. Explore, replay and the notes follow them. */
+#workspace-headline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;margin:0 0 20px;padding:15px 18px;background:#fff;border:1px solid #dfe5d8;border-radius:10px}
+#workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))}
+#workspace-headline:empty{display:none}
+#workspace-headline>div{display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-width:0}
+#workspace-headline dt{font-size:12px;line-height:1.3;color:#617172}
+#workspace-headline dd{margin:0;font-size:24px;font-weight:500;line-height:1.2;color:#244f43;overflow-wrap:anywhere}
+#workspace-headline [data-tone=up] dd{color:#13755a}
+#workspace-headline [data-tone=down] dd{color:#a93830}
+#workspace-recorded-notice{margin:0 0 20px}
 #custom-view{border:0;padding:0;background:none;margin-top:0}
 #custom-view>h2{display:none}
 #schedule-message{font-size:12px}
+#schedule-message:empty{display:none}
+.review-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;margin-bottom:12px}
+.review-heading h3{margin:0}
+#robustness-scope{margin:0 0 12px}
+/* A pager with one page has nothing to say. */
+#schedule-period-pages:not(:has(button:enabled)),#schedule-holdings-pages:not(:has(button:enabled)){display:none}
+#schedule-period-pages{margin-top:10px}
+#schedule-download-returns,#schedule-download-holdings{margin-top:12px}
+#result-explorer{margin-top:24px}
+#result-explorer:not([open]){padding-top:6px;padding-bottom:6px}
+#result-explorer>summary{padding:11px 0}
+#robustness-replay-note{margin:8px 0 0}
+#workspace-recorded-context{margin-top:10px}
 #workspace-settings{position:sticky;top:18px;max-height:calc(100vh - 110px);overflow:auto;margin:0;padding:20px 17px;background:#eff2e8;scrollbar-gutter:stable}
 #workspace-settings h2{font-size:14px;margin:10px 0 17px}
 #workspace-settings .eyebrow{font-size:10px;letter-spacing:1px}
@@ -97,7 +130,8 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #workspace-queue-tray #queue-list{max-height:36vh}
 #workspace-queue-tray .backtest-queue>p.hint{font-size:11px}
 @media(min-width:1900px){main{margin-right:20px;padding-left:42px;padding-right:42px}}
+@media(min-width:1400px){#workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media(max-width:1200px){main{padding-left:23px;padding-right:23px}.workspace-review-layout{grid-template-columns:minmax(0,1fr) 235px;gap:18px}#workspace-settings{padding:17px 14px}.workspace-review-heading{align-items:flex-start;flex-wrap:wrap}.workspace-review-main .latest-facts{gap:14px}.workspace-review-main .latest-facts strong{font-size:23px}}
 @media(max-width:1000px){.workspace-review-layout{grid-template-columns:minmax(0,1fr)}#workspace-settings{display:none;position:static;max-height:none}#workspace-review[data-section=settings] #workspace-settings{display:block}.workspace-phone-settings{display:block}}
 @media(max-width:850px){main{margin-left:0;padding:20px}#workspace-nav{position:static;width:auto;display:flex;flex-direction:row;flex-wrap:wrap;padding:9px 14px;gap:4px}#workspace-nav .workspace-brand{display:none}#workspace-nav>a,#workspace-nav>button{padding:9px 11px;font-size:12px}#workspace-statusbar{left:0;padding:9px 18px}#workspace-queue-count{margin-left:7px}#workspace-nav>a:last-child{margin-left:auto}}
-@media(max-width:600px){main{padding:18px 14px}.builder-options label:not(.check),.schedule-row label:not(.check){flex:1 1 140px}.schedule-row label.check,.random-advanced{margin-top:0}#auto-run-note{min-height:0}.how-it-works>summary{min-height:44px;padding:13px 0}#workspace-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}#workspace-nav>a,#workspace-nav>button{font-size:11px;text-align:center;padding:8px 5px}#workspace-nav>a:last-child{margin-left:0}#workspace-statusbar{padding:8px 14px;gap:12px}#workspace-waiting{display:none}#workspace-statusbar button{font-size:11px}#workspace-run-state{font-size:11px}#workspace-run-detail{font-size:9px}#workspace-review{padding-top:20px}.workspace-review-heading h1{font-size:31px}#workspace-review-tabs{gap:23px}#workspace-review-tabs button{font-size:12px}#workspace-queue-tray{inset:auto 10px 75px;width:calc(100% - 20px);max-height:78vh;padding:12px}#workspace-settings{padding:18px}.workspace-review-layout{gap:16px}}
+@media(max-width:600px){main{padding:18px 14px}.builder-options label:not(.check),.schedule-row label:not(.check){flex:1 1 140px}.schedule-row label.check,.random-advanced{margin-top:0}#auto-run-note{min-height:0}.how-it-works>summary{min-height:44px;padding:13px 0}#workspace-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}#workspace-nav>a,#workspace-nav>button{font-size:11px;text-align:center;padding:8px 5px}#workspace-nav>a:last-child{margin-left:0}#workspace-statusbar{padding:8px 14px;gap:12px}#workspace-waiting{display:none}#workspace-statusbar button{font-size:11px}#workspace-run-state{font-size:11px}#workspace-run-detail{font-size:9px}#workspace-review{padding-top:20px}.workspace-review-heading h1{font-size:31px}#workspace-review-tabs{gap:23px}#workspace-review-tabs button{font-size:12px}#workspace-queue-tray{inset:auto 10px 75px;width:calc(100% - 20px);max-height:78vh;padding:12px}#workspace-settings{padding:18px}.workspace-review-layout{gap:16px}#workspace-headline,#workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(2,minmax(0,1fr));padding:14px}#workspace-headline dd{font-size:21px}}

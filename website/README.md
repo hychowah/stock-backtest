@@ -39,7 +39,7 @@ revision without watching. Ctrl+C stops the watcher and its server.
 4. Steps run in order. Each Rank keeps its range from the stocks that reach it. The last Rank sets the final order and ranks; filters after it keep original ranks and add no replacements. Survivors receive equal weight. Filters → Rank is the old filter-first order; Rank → filters is the old rank-first order. If 20 stocks pass after a top-50 Rank, each receives 5% weight.
 5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Latest picks run offline for filters it supports and one highest EV/EBITDA-yield Rank, first or last. **Screen latest** runs every other chain on the local service. Auto-run works for the offline shape only. Each selected stock's **Details** shows its step trail: each step's value and its rank or pass. Reset strategy restores the broad pool and the three default steps while preserving the chosen dates.
 
-Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. The coverage and range notes of the displayed result show below the results notice. A status line appears only when it has a message.
+Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. In latest mode, the offline picks table follows the builder, and the coverage and range notes of the displayed result show below that table. A latest screen from the local service shows below these notes. In backtest mode, the notes show below the builder. The results notice shows when the displayed results and the current settings differ, when the settings have no result, or while a backtest runs. Results that match the settings show no notice. A status line appears only when it has a message.
 
 Copying a saved result, queued test or older record restores its strategy as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
 
@@ -47,9 +47,37 @@ Backtests rebalance on the selected fixed or random schedule; a January study is
 
 If fewer stocks match than requested, the available picks receive equal weights and short periods are counted. A complete period with no matches holds cash at 0% until the next rebalance. SPY keeps its period return. CAGR includes the full elapsed window.
 
+## Read a completed result
+
+A completed backtest opens in **Result review**. A headline below the title
+gives the answer first. For a fixed schedule or a saved January result, it shows
+strategy CAGR, SPY CAGR, their difference in percentage points and growth of $1.
+For random dates, it shows the mean strategy CAGR, the mean SPY CAGR, the mean
+difference, the number of complete trials that beat paired SPY, and the worst
+and best trial CAGR. Each value comes from the stored summary of the result. A
+value that the result did not store shows **Unavailable**. The headline always
+shows the original result. It shows above the tabs, on every tab.
+
+**Overview** then shows the main chart and its table. A fixed schedule shows
+returns by holding period. Random dates show the return distribution, the
+statistics of complete trials and the trial table. **Explore**, **Replay saved
+date test** and **Recorded coverage and notes** follow them. **Replay saved date
+test** shows when the browser has a saved date set. **Recorded coverage
+and notes** contains the notes that the result recorded and tells you when a
+saved result opened without a calculation. A recorded warning stays above the
+tabs. **How to read this** below the tables contains the sampling and reading
+rules. A status line above the chart shows only when it has a message, such as
+a completed run or a failed read.
+
+**Returns** shows the period returns and the stocks of each rebalance. For
+random dates, it shows one trial below the title **Trial N of M**. The headline
+continues to show all trials.
+
 ## Explore a completed result
 
-Open **Explore this result** in the dated result panel. Choose **From entry**,
+Open **Explore this result** in **Result review**. The panel is below the chart
+and the period table in **Overview**, and below the stock table in **Returns**.
+It starts closed. Choose **From entry**,
 **Through exit / mark**, **From rank** and **Through rank**, then select **Apply**.
 For example, a saved 1997–2025 top-30 test can show the periods from 2008 to
 2016 and ranks 20–30. Each date comes from an original holding-period boundary.
@@ -64,9 +92,12 @@ recorded totals; select Apply to derive a cash-based summary.
 Older January results can have year-only boundaries; those selections have
 no CAGR when exact dates were not saved.
 
-Random-date results show **Explore all trials** above the combined summary.
+Random-date results show **Explore all trials** below the trial table.
 One selection updates every trial, the combined statistics and distribution
-chart. Choose saved entry and exit blocks. Each trial keeps its own trade dates.
+chart. The panel shows the mean and median strategy CAGR and the mean paired
+SPY CAGR of the selection. While the chart and tables show a selection, a notice
+above the chart gives its window and ranks. The headline does not change.
+Choose saved entry and exit blocks. Each trial keeps its own trade dates.
 The summary shows the shared window, with cash before each first selected trade
 and after each last selected exit for both strategy and SPY.
 
@@ -188,7 +219,7 @@ The website opens in **Latest stock picks** mode. Historical backtest remains av
 
 The displayed date comes from the selected market's latest completed cached session. Read the date above the latest stock table. Only companies marked currently listed in the cached universe, with a dividend-adjusted price on that exact session, are included. Earlier last-trade prices are not carried forward. The annual figure must be available under its market's reporting policy and no more than 800 days old. Market cap and EV are revalued at the latest price using report net debt and the same adjusted-price method as the historical model.
 
-Latest mode has market-bound prepared records. The original US 250-candidate pool remains available for restored work; new forms use all eligible cached-price companies. Both remain incomplete representations of the full market. The coverage line shows how many active names have financials and how many can be valued from current cached prices. US available-from dates assume 90 days after fiscal year-end. Hong Kong and Japan use reliable publication dates where available, otherwise four and three calendar months. Listing status, sector and exchange are cached metadata.
+Latest mode has market-bound prepared records. The original US 250-candidate pool remains available for restored work; new forms use all eligible cached-price companies. Both remain incomplete representations of the full market. The coverage line below the picks table shows how many active names have financials and how many can be valued from current cached prices. US available-from dates assume 90 days after fiscal year-end. Hong Kong and Japan use reliable publication dates where available, otherwise four and three calendar months. Listing status, sector and exchange are cached metadata.
 
 Click **Screen latest**. Download latest picks exports the currently selected stocks, including valuation date, adjusted price, estimated market cap/EV, ratios, fiscal date, and assumed availability date. `dist/latest-picks.csv` is the default-settings fallback export generated at build time; browser downloads reflect the current filters. The latest table is also embedded as a no-JavaScript fallback.
 
@@ -272,7 +303,8 @@ in order. The progress bar counts completed trials; a separate book count and
 worker count show preparation ahead of those saves. Cached replays start no
 workers. Results include each trial's actual
 trade dates in the CSV. Select a trial and click **Show stocks and period returns**
-to inspect its usual stock tables and contribution charts. Completed trial books
+to inspect its usual stock tables and contribution charts. The trial opens in
+**Returns** below the title **Trial N of M**. Completed trial books
 survive an interrupted batch; restart the launcher and rerun the same seed.
 
 On Windows, `backtest-web.cmd` and `start.cmd` use managed startup. A new launch

@@ -97,10 +97,13 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  context.artifact.result.completed=2;context.artifact.result.valid=2;context.artifact.result.incomplete=0;
  context.artifact.result.trials=[1,2].map(trial=>({trial,start:'2015-01-02',end:'2017-01-02',periods:2,dates:['2015-01-02','2016-01-04']}));
  run('ScheduleView.show(ResultArtifacts.publish(artifact))');await tick();assert.equal(robust,1);assert(node('schedule-results').hidden);
- assert(node('result-explorer').open&&!node('result-explorer').hidden);
- assert.equal(node('explore-title').textContent,'Explore all 2 trials');assert.equal(node('explore-rank-to').value,'70');
+ assert(!node('result-explorer').open&&!node('result-explorer').hidden);
+ assert.equal(node('explore-title').textContent,'Explore all 2 trials');
+ node('result-explorer').open=true;node('result-explorer').handlers.toggle();await tick();assert.equal(node('explore-rank-to').value,'70');
  run('EvidenceResults.show(ResultArtifacts.forView("custom"),2)');await tick();
  assert.equal(node('explore-title').textContent,'Explore all 2 trials','Inspecting an original trial keeps the batch controls');
+ // The per-trial block of a random-date result names its trial.
+ run('ScheduleView.inspectOriginal(1)');await tick();assert.equal(node('schedule-trial-title').textContent,'Trial 1 of 2');
  // The same extracted presenter still accepts codec1/artifact3.
  context.metricLabel=()=> 'Retained EV/EBITDA';await show(artifact('custom',3,'6'.repeat(32)));assert.equal(node('schedule-explanation-head').hidden,true);assert(node('schedule-stock-body').innerHTML.includes('10.00'));assert(!node('schedule-stock-body').innerHTML.includes('data-stored-explain'));
  // A chain capture summarizes its last Rank and step count from the record itself.

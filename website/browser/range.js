@@ -41,7 +41,7 @@ function applyPresentation(presentation={}){
 }
 // Every result other than a latest screen, saved January results included,
 // renders in the dated view.
-function publishResult(artifact,name){
+function publishResult(artifact,name,note){
   const completed=ResultArtifacts.publish(artifact);
   if(completed.kind==='latest'){
     applyPresentation(completed.presentation);
@@ -49,7 +49,7 @@ function publishResult(artifact,name){
   }else{
     ScheduleView.show(completed);
   }
-  Workspaces.published(completed,name);
+  Workspaces.published(completed,name,note);
   document.getElementById('screen-error').textContent='';updateResultsState();
 }
 function completeResult(settings,result){
@@ -70,8 +70,10 @@ function updateResultsState(){
   const stale=!!saved&&!matches;
   state.className='screen-message'+(stale||!saved?' warning':'');
   // A saved January result opens without calculation; no current setting reproduces it.
-  state.textContent=saved?.kind==='january'?'Saved January result shown without calculation. January backtests were removed. To compare, run a custom schedule every 12 months from 1 January.':stale?'Settings changed — displayed results do not match the current settings. Select '+(view==='latest'?'Screen latest':'Run backtest')+' to update them. Downloads still use the displayed results.':!saved?'No results for these settings yet. Select '+(view==='latest'?'Screen latest.':'Run backtest.'):'Results match the current settings.';
-  if(ScheduleView.isRunning())state.textContent+=' A backtest is running with the settings submitted at its start.';
+  // Results that match the settings need no line.
+  const lines=[saved?.kind==='january'?'Saved January result shown without calculation. January backtests were removed. To compare, run a custom schedule every 12 months from 1 January.':stale?'Settings changed — displayed results do not match the current settings. Select '+(view==='latest'?'Screen latest':'Run backtest')+' to update them. Downloads still use the displayed results.':!saved?'No results for these settings yet. Select '+(view==='latest'?'Screen latest.':'Run backtest.'):''];
+  if(ScheduleView.isRunning())lines.push('A backtest is running with the settings submitted at its start.');
+  state.textContent=lines.filter(Boolean).join(' ');
   for(const id of ['latest-view','custom-view'])document.getElementById(id).setAttribute('data-results-stale',String(stale));
   SavedBacktests.update();
 }
@@ -246,8 +248,7 @@ function downloadLatest(){
 function restoreSavedBacktest(snapshot,name){
   const artifact=ResultArtifacts.decode(snapshot);
   if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
-  publishResult(artifact,name);
-  document.getElementById('schedule-message').textContent='Saved backtest opened. Draft settings are unchanged; no calculation was run.';
+  publishResult(artifact,name,'Saved backtest opened. Draft settings are unchanged; no calculation was run.');
 }
 function copySavedBacktestSettings(snapshot){
   const artifact=ResultArtifacts.decode(snapshot);

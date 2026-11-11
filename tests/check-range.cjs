@@ -98,12 +98,13 @@ const beforeManual=run('ResultArtifacts.forView(LATEST_VIEW).result');
 stepEvent('change',rankId(),'rank_to','100');assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result'),beforeManual);
 assert(el('results-state').textContent.includes('do not match'));
 assert.equal(el('latest-view').attributes['data-results-stale'],'true');
-stepEvent('change',rankId(),'rank_to','50');assert(el('results-state').textContent.includes('match the current settings'));
+// Results that match the settings need no line.
+stepEvent('change',rankId(),'rank_to','50');assert.equal(el('results-state').textContent,'');
 stepEvent('input',rankId(),'rank_to','25');el('strategy-form').handlers.input({target:{id:'step-rank_to'}});
 assert(el('results-state').textContent.includes('do not match'));
 el('strategy-form').handlers.submit({preventDefault(){}});
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.rank_to'),25);
-assert(el('results-state').textContent.includes('Results match'));
+assert.equal(el('results-state').textContent,'');
 stepEvent('change',rankId(),'rank_to','50');
 el('auto-run').checked=true;el('auto-run').handlers.change();
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.rank_to'),50);
@@ -136,7 +137,7 @@ assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidd
 assert.equal(el('schedule-dates').textContent,'2015-01-02 → 2016-10-20 · January books');
 assert(el('schedule-rows').innerHTML.includes('<td>2015-01-02</td><td>2016</td><td>3</td>'));
 assert(el('schedule-rows').innerHTML.includes('<td>2016</td><td>2016-10-20</td><td>0</td>'));
-assert(el('schedule-message').textContent.includes('no calculation'));
+assert(el('workspace-opened-note').textContent.includes('no calculation'));assert.equal(el('schedule-message').textContent,'');
 assert.equal(el('workspace-review').hidden,false);assert.equal(el('workspace-builder').hidden,true);
 assert(el('workspace-parameters').innerHTML.includes('Saved valuation label'));
 assert.equal(el('workspace-recorded-notice').textContent,'Saved warning');assert(el('workspace-recorded-notice').className.includes('warning'));
@@ -204,7 +205,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(el('run-screen').disabled,true);assert.equal(el('trade-start').disabled,false);
  finishEdited(completed(fixture));await edited;
  assert(el('results-state').textContent.includes('do not match'));
- stepEvent('change',rankId(),'rank_to','50');assert(el('results-state').textContent.includes('Results match'));
+ stepEvent('change',rankId(),'rank_to','50');assert.equal(el('results-state').textContent,'');
  // Stop is explicit. A browser abort must never be the cancellation signal.
  let finishStopped,stopSignal,stopUrl;ctx.fetch=(url,options)=>{
    if(url.endsWith('/stop')){stopUrl=url;return Promise.resolve({ok:true,json:async()=>({state:'cancelled'})});}
@@ -223,7 +224,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  run('restoreSavedBacktest(savedFixed)');
  assert.equal(el('trade-start').value,'2001-01-01');assert.equal(steps().at(-1).rank_to,2);
  assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');
- assert(el('schedule-message').textContent.includes('no calculation'));
+ assert(el('workspace-opened-note').textContent.includes('no calculation'));
  // Reopening restores submitted settings and retrieves the server result by GET.
  let resumedMethod;ctx.fetch=async(_url,options)=>{resumedMethod=options.method;return completed(fixture)};
  el('trade-start').value='2000-01-01';stepEvent('input',rankId(),'rank_to','2');
@@ -275,8 +276,11 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,true);assert.equal(el('robustness-mean').textContent,'10.00%');
  assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);assert(el('schedule-message').textContent.includes('3 trials'));
  ctx.fetch=async(url,options)=>{const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};return completed(fixture)};
- const beforeInspect=request;await el('robustness-inspect').handlers.click();assert.equal(request,beforeInspect,'Stored trial inspection must not call the service');
+ const beforeInspect=request;assert.equal(el('workspace-review').dataset.section,'overview');assert.equal(el('workspace-opened-note').textContent,'');
+ el('robustness-trial').value='1';await el('robustness-inspect').handlers.click();assert.equal(request,beforeInspect,'Stored trial inspection must not call the service');
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);
+ // The chosen trial opens in Returns under its own title.
+ assert.equal(el('workspace-review').dataset.section,'returns');assert.equal(el('schedule-trial-title').textContent,'Trial 2 of 3');
  const savedRandom=JSON.parse(run('JSON.stringify(currentArtifact())'));ctx.savedRandom=savedRandom;
  const beforeRandomCopy=run('currentArtifact()');
  el('random-seed').value='999';el('random-trials').value='1';el('auto-run').checked=true;

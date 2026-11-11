@@ -73,3 +73,17 @@ assert.deepEqual(['cagr.mean','excess_cagr.mean','excess_cagr.min','growth.mean'
 const tiny=describe(artifact({},{cagr:5.55e-17,spy_cagr:-2e-9,growth:1.2e-6})).performance.map(row=>row.display);assert.deepEqual(tiny,['0.00%','0.00%','0.0000012×']);
 assert.equal(spread.find(row=>row.key==='excess_cagr.mean').value,-.005837653252144099);
 console.log('Passed: chain captures list the universe and ordered steps in plain wording with exact text kept, compare by step, the last Rank sets the recorded range, and on-screen values are rounded.');
+// The headline is the short answer of one result. Every test type starts with the
+// same three keys; each value is a stored summary field or their difference.
+const lines=description=>description.headline.map(row=>row.key+'|'+row.label+'|'+row.display);
+assert.deepEqual(lines(describe(a)),['cagr|Strategy CAGR|12.00%','spy_cagr|SPY CAGR|8.00%','difference|Difference vs SPY|+4.00 pp','growth|Growth of $1|$2.00']);
+assert.deepEqual(lines(describe(oldScalar)),lines(describe(a)),'A January result reads like a fixed schedule');
+assert.deepEqual(lines(describe(artifact({},{cagr:.05,spy_cagr:.08,growth:null}))).slice(2),['difference|Difference vs SPY|-3.00 pp','growth|Growth of $1|Unavailable']);
+assert.deepEqual(lines(describe(unavailable)).filter(line=>line.endsWith('Unavailable')),['cagr|Strategy CAGR|Unavailable','difference|Difference vs SPY|Unavailable']);
+const trials=artifact({trials:6},{completed:6,valid:5,incomplete:1,beat_spy:2,configuration:{seed:7},distributions:{cagr:{mean:.15,min:-.02,max:.31},spy_cagr:{mean:.08},excess_cagr:{mean:.07}},trial_results:[{cagr:9,spy_cagr:1}]},'random');
+assert.deepEqual(lines(describe(trials)),['cagr|Mean strategy CAGR|15.00%','spy_cagr|Mean SPY CAGR|8.00%','difference|Mean difference vs SPY|+7.00 pp','beat_spy|Trials beating SPY|2/5','worst|Worst trial CAGR|-2.00%','best|Best trial CAGR|31.00%']);
+assert.deepEqual(describe(trials).headline.map(row=>row.value),[.15,.08,.07,2,-.02,.31]);
+// A stored result that lacks a value shows Unavailable; nothing is derived from trials or holdings.
+assert.deepEqual(lines(randomDescription).map(line=>line.split('|')[2]),['15.00%','8.00%','Unavailable','Unavailable','Unavailable','Unavailable']);
+assert.deepEqual(describe(a).headline.slice(0,3).map(row=>row.key),describe(trials).headline.slice(0,3).map(row=>row.key));
+console.log('Passed: one headline per result with shared keys, stored trial statistics and counts, and unavailable values left unavailable.');

@@ -1,4 +1,5 @@
-/* Temporary date/rank selections over an immutable completed result.
+/* Temporary date/rank selections over an immutable completed result. The panel
+   starts closed and reads its date labels when it opens.
    Only the server aggregates returns. Original views and saving stay separate. */
 const ResultExplorer=(()=>{
   let active=null;
@@ -79,12 +80,11 @@ const ResultExplorer=(()=>{
     node('title').textContent=trial==='all'?'Explore all '+info.summary.completed+' trials':'Explore this result';
     node('from-label').textContent=trial==='all'?'From entry block':'From entry';
     node('to-label').textContent=trial==='all'?'Through exit block':'Through exit / mark';
-    node('summary').hidden=trial==='all';
+    node('summary').hidden=trial==='all';node('trials').hidden=trial!=='all';
     for(const id of ['rank-from','rank-to']){node(id).min=String(state.firstRank);node(id).max=String(state.lastRank);}
     node('apply').disabled=true;node('reset').disabled=true;node('period-from').innerHTML='';node('period-to').innerHTML='';
     node('window').textContent='';node('coverage').textContent='';node('status').textContent='Choose a saved time window and stock ranks.';
     for(const id of ['strategy-return','spy-return','strategy-cagr','spy-cagr'])node(id).textContent='—';
-    if(trial==='all'){panel().open=true;void load();}
   }
   async function apply(){
     const state=active;if(!state?.loaded||!valid(state))return;

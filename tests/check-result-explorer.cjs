@@ -72,7 +72,7 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  await show(random,2,{...info,summary:second});input('apply').handlers.click();await tick();
  assert.deepEqual(JSON.parse(applied().at(-1).options.body).result,second);
  assert.equal(JSON.parse(applied().at(-1).options.body).selection.trial,1);
- // Opening a saved 24-trial result exposes all-trial controls immediately.
+ // A saved 24-trial result shows its all-trial panel closed; its controls load when it opens.
  const stats=mean=>({n:24,mean,median:mean,p10:mean,p25:mean,p75:mean,p90:mean,min:mean,max:mean,stddev:0});
  const distributions=mean=>Object.fromEntries(['cagr','spy_cagr','excess_cagr','total_return','growth'].map(key=>[key,stats(mean)]));
  const batch=artifact();batch.kind='random';batch.settings={mode:'random',rank_from:1,rank_to:50};
@@ -84,9 +84,13 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  const batchBefore=JSON.stringify(batch);
  projected={...batch.result,note:'Selected',distributions:distributions(.42),trials:trialRows.map(row=>({...row,cagr:.42,periods:5,start:'2010-01-02',end:'2015-01-25'}))};
  projected.trials[0].empty_periods=1;
- await show(batch,'all',{summary:batch.result,periods:25});
- assert(panel().open&&!panel().hidden);assert.equal(input('title').textContent,'Explore all 24 trials');
- assert(input('summary').hidden);assert.equal(node('robustness-mean').textContent,'15.00%');
+ context.input=batch;context.details={summary:batch.result,periods:25};
+ run("ResultExplorer.show(ResultArtifacts.publish(input),'all',details)");
+ assert(!panel().open&&!panel().hidden);assert.equal(input('title').textContent,'Explore all 24 trials');
+ assert(input('apply').disabled);assert.equal(input('period-from').innerHTML,'');
+ panel().open=true;panel().handlers.toggle();await tick();assert(!input('apply').disabled);
+ assert(input('summary').hidden&&!input('trials').hidden);assert.equal(node('robustness-mean').textContent,'15.00%');
+ assert(node('robustness-scope').hidden,'The original result carries no selection notice');
  assert(input('period-from').innerHTML.includes('2010-01-01'));
  assert(input('period-to').innerHTML.includes('2015-01-01'));
  change('period-from',11);change('period-to',15);change('rank-from',20);change('rank-to',30);
@@ -95,6 +99,8 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  assert.equal(all.result.trial_results.length,24);
  assert.deepEqual(all.selection,{trial:'all',period_from:11,period_to:15,rank_from:20,rank_to:30});
  assert.equal(node('robustness-mean').textContent,'42.00%');
+ // The chart and tables that follow the selection say so; Reset removes the notice.
+ assert(!node('robustness-scope').hidden);assert(node('robustness-scope').textContent.includes('2010-01-02 → 2015-01-25 · ranks 20–30'));
  assert(input('coverage').textContent.includes('Trials with cash periods: 1.'));
  assert(input('coverage').textContent.includes('SPY keeps its period return'));
  assert(node('robustness-trials').innerHTML.includes('2010-01-02'));
@@ -104,6 +110,7 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  node('robustness-measure').handlers.change();assert(node('robustness-chart').innerHTML.includes('mean 42.00%'));
  const allCount=applied().length;input('reset').handlers.click();
  assert.equal(node('robustness-mean').textContent,'15.00%');assert.equal(applied().length,allCount);
+ assert(node('robustness-scope').hidden&&!node('robustness-scope').textContent);
  assert.equal(JSON.stringify(batch),batchBefore);
  for(const version of [3,4]){
   const bounded=structuredClone(batch);bounded.version=version;delete bounded.result.trial_results;
@@ -153,7 +160,8 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  const html=fs.readFileSync(path.join(__dirname,'../website/browser/template.html'),'utf8');
  assert(html.indexOf('id="result-explorer"')>html.indexOf('</form>'));
  assert(html.includes('Save original backtest')&&html.includes('Download original holdings'));
- assert(html.indexOf('id="result-explorer"')<html.indexOf('id="robustness-results"'));
+ // Explore follows the main chart and the tables of both kinds of result.
+ for(const id of ['robustness-chart','robustness-trials','schedule-chart','schedule-rows'])assert(html.indexOf('id="result-explorer"')>html.indexOf('id="'+id+'"'),id);
  // The builder shows controls first: no page heading, and at most three help
  // lines outside the disclosures in each mode. A help line is any element with
  // the hint class that has text, with or without an id. The latest picks panel
@@ -174,5 +182,5 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  const latestMode=helpLines([]),backtestMode=helpLines(['schedule-controls']);
  assert(latestMode>=1&&latestMode+2<=3,'Latest mode: '+latestMode);assert(backtestMode>latestMode&&backtestMode<=3,'Backtest mode: '+backtestMode);
  assert(helpLines(['schedule-controls','legacy-pool-note'])>backtestMode,'A hint with an id counts');
- console.log('Passed: visible all-24-trial date/rank controls, combined statistics and chart, eager and both codec transports, original artifacts, reset, validation and cancellation.');
+ console.log('Passed: closed all-24-trial date/rank controls that load on opening, the selection notice, combined statistics and chart, eager and both codec transports, original artifacts, reset, validation and cancellation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

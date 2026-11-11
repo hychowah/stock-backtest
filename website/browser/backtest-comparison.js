@@ -2,7 +2,9 @@
    calculation or artifact publication belongs here. Defaults describe documented
    omission semantics; explicit values and unfamiliar settings remain visible.
    A row's display is plain wording for summaries. Its exact field keeps the
-   recorded ids, units and canonical values when the plain wording leaves them out. */
+   recorded ids, units and canonical values when the plain wording leaves them out.
+   The headline is the short answer of one result: the same first three keys for
+   every test type, read from stored summary fields only. */
 const BacktestComparison=(()=>{
   const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
   const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
@@ -12,6 +14,8 @@ const BacktestComparison=(()=>{
   // ResultArtifacts.scalarValue applies the same rule to table values.
   const rounded=value=>{const size=Math.abs(value);return size<1e-6?'0.00':size<.01?value.toPrecision(2):value.toFixed(2);};
   const percent=value=>Number.isFinite(value)?rounded(value*100)+'%':'Unavailable';
+  // A difference from SPY in percentage points; a gain shows its plus sign.
+  const points=value=>Number.isFinite(value)?(value>0?'+':'')+rounded(value*100)+' pp':'Unavailable';
   const labels={january:'January',custom:'Fixed dates',random:'Random dates'};
   const defaults={rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',selection_order:'filter_first',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};
   const names={rank_from:'First rank',rank_to:'Last rank',pool:'Stock pool',metric:'Ranking metric',selection_order:'Selection order',min_cap:'Minimum market cap (USD)',max_cap:'Maximum market cap (USD)',min_ev:'Minimum EV (USD)',min_yield:'Minimum yield',max_multiple:'Maximum multiple',sector:'Sector',exchange:'Exchange'};
@@ -111,6 +115,18 @@ const BacktestComparison=(()=>{
       add('actual_seed','Recorded random date set',r.configuration?.seed);
     }
     for(const key of Object.keys(s).filter(key=>!handled.has(key)).sort())add('setting.'+key,'Setting: '+key,s[key]);
+    let headline;
+    if(kind==='random'){
+      // Stored trial statistics and counts only; a missing one stays unavailable.
+      const stat=(measure,name)=>r.distributions?.[measure]?.[name],counted=Number.isInteger(r.beat_spy)&&Number.isInteger(r.valid);
+      headline=[entry('cagr','Mean strategy CAGR',stat('cagr','mean'),percent(stat('cagr','mean'))),entry('spy_cagr','Mean SPY CAGR',stat('spy_cagr','mean'),percent(stat('spy_cagr','mean'))),
+        entry('difference','Mean difference vs SPY',stat('excess_cagr','mean'),points(stat('excess_cagr','mean'))),entry('beat_spy','Trials beating SPY',counted?r.beat_spy:undefined,counted?r.beat_spy+'/'+r.valid:'Unavailable'),
+        entry('worst','Worst trial CAGR',stat('cagr','min'),percent(stat('cagr','min'))),entry('best','Best trial CAGR',stat('cagr','max'),percent(stat('cagr','max')))];
+    }else{
+      const difference=Number.isFinite(r.cagr)&&Number.isFinite(r.spy_cagr)?r.cagr-r.spy_cagr:undefined;
+      headline=[entry('cagr','Strategy CAGR',r.cagr,percent(r.cagr)),entry('spy_cagr','SPY CAGR',r.spy_cagr,percent(r.spy_cagr)),entry('difference','Difference vs SPY',difference,points(difference)),
+        entry('growth','Growth of $1',r.growth,Number.isFinite(r.growth)?'$'+rounded(r.growth):'Unavailable')];
+    }
     const producer=r.producer;
     let producerDisplay='Unidentified (not recorded)';
     if(producer){
@@ -144,7 +160,7 @@ const BacktestComparison=(()=>{
     }
     add('observed_start','Recorded observation start',observationWindow.start);
     add('observed_end','Recorded observation end',observationWindow.end);
-    return {kind,parameters,performance,requestedWindow,observationWindow,notices:kind==='random'?['Random results are trial distributions. Mean trial CAGR is not one portfolio return. Percentiles are not confidence intervals.']:[]};
+    return {kind,parameters,performance,headline,requestedWindow,observationWindow,notices:kind==='random'?['Random results are trial distributions. Mean trial CAGR is not one portfolio return. Percentiles are not confidence intervals.']:[]};
   }
   // Inputs are compact descriptions, not stored artifacts. Values determine
   // differences; labels retain each record's original catalog wording.

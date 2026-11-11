@@ -23,12 +23,16 @@ const Workspaces=(()=>{
   }
   function reviewSection(next){
     section=next;node('workspace-review').dataset.section=next;
-    node('workspace-review').querySelectorAll('[data-review-panel]').forEach(panel=>panel.hidden=!panel.dataset.reviewPanel.split(' ').includes(next));
+    // A block lists its tabs. A name such as random-returns or fixed-overview
+    // shows it on that tab for that kind of result only.
+    const random=ResultArtifacts.forView('custom')?.kind==='random',names=[next,(random?'random-':'fixed-')+next];
+    node('workspace-review').querySelectorAll('[data-review-panel]').forEach(panel=>panel.hidden=!panel.dataset.reviewPanel.split(' ').some(name=>names.includes(name)));
     document.querySelectorAll('[data-review]').forEach(button=>button.setAttribute('aria-current',button.dataset.review===next?'page':'false'));
     if(next==='selection')void SectorView.load();
-    if(next==='returns'&&ResultArtifacts.forView('custom')?.kind==='random')ScheduleView.inspectOriginal();
+    if(next==='returns'&&random)ScheduleView.inspectOriginal();
   }
-  function published(artifact,name){
+  // note: one line about how this result was opened, kept with the recorded notes.
+  function published(artifact,name,note=''){
     const scalar=node('scalar-evidence-view');
     if(artifact.kind==='latest'){
       rendered='latest';
@@ -42,15 +46,16 @@ const Workspaces=(()=>{
     const description=BacktestComparison.describe(artifact),exact=description.parameters.filter(row=>row.exact);
     const list=(rows,key)=>'<dl>'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>';
     node('workspace-parameters').innerHTML=list(description.parameters,'display')+(exact.length?'<details><summary>Exact recorded values</summary>'+list(exact,'exact')+'</details>':'');
-    const presentation=artifact.presentation||{},notice=presentation.notice||{};
-    node('workspace-recorded-notice').textContent=notice.text||'';
-    node('workspace-recorded-notice').hidden=!notice.text;
-    node('workspace-recorded-notice').className='screen-message'+(notice.severity==='warning'?' warning':'');
-    for(const [id,key] of [['coverage','coverage'],['range','rangeNote'],['period','periodLabel']]){
-      node('workspace-recorded-'+id).textContent=presentation[key]||'';
-      node('workspace-recorded-'+id).hidden=!presentation[key];
-    }
-    node('workspace-recorded-context').hidden=!presentation.coverage&&!presentation.rangeNote&&!presentation.periodLabel;
+    // The headline always shows the original result. An Explore selection never changes it.
+    node('workspace-headline').innerHTML=description.headline.map(row=>'<div'+(row.key==='difference'&&row.value?' data-tone="'+(row.value>0?'up':'down')+'"':'')+'><dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd></div>').join('');
+    // A recorded warning stays above the tabs. Every other note waits in the closed disclosure.
+    const presentation=artifact.presentation||{},notice=presentation.notice||{},warning=notice.severity==='warning'&&notice.text||'';
+    node('workspace-recorded-notice').textContent=warning;
+    node('workspace-recorded-notice').hidden=!warning;
+    node('workspace-recorded-notice').className='screen-message'+(warning?' warning':'');
+    const notes=[['workspace-opened-note',note],['workspace-recorded-info',warning?'':notice.text],['workspace-recorded-coverage',presentation.coverage],['workspace-recorded-range',presentation.rangeNote],['workspace-recorded-period',presentation.periodLabel]];
+    for(const [id,text] of notes){node(id).textContent=text||'';node(id).hidden=!text;}
+    node('workspace-recorded-context').hidden=!notes.some(([,text])=>text);
     const window=description.observationWindow;
     node('workspace-result-window').textContent=(window.start??'Not recorded')+' → '+(window.end??'Not recorded')+' · '+(artifact.kind==='random'?'Random dates':artifact.kind==='january'?'Saved January books':'Fixed schedule');
     node('workspace-no-result').hidden=true;

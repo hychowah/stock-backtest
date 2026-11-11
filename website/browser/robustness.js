@@ -19,7 +19,7 @@ const RobustnessView=(()=>{
     const series=[{name:key==='excess_cagr'?'Strategy − SPY':'Strategy',color:'#20775e',values:complete.map(t=>t[key]).filter(Number.isFinite)}];
     if(key!=='excess_cagr')series.push({name:'Paired SPY',color:'#557ca5',values:complete.map(t=>key==='cagr'?t.spy_cagr:Number.isFinite(t.spy_growth)?t.spy_growth-1:null).filter(Number.isFinite)});
     const svg=node('robustness-chart');
-    node('robustness-chart-note').textContent=`Seed ${result.configuration.seed} · ${complete.length} complete trials. Bars show observed trial counts. Strategy and paired SPY use the same bins and axes. Dashed bell curves are normal fits, not evidence that returns are normally distributed. They are not confidence intervals.`;
+    node('robustness-chart-note').textContent=`Seed ${result.configuration.seed} · ${complete.length} complete trials.`;
     const values=series.flatMap(s=>s.values);
     if(!values.length){svg.innerHTML='<text x="60" y="80">No complete trials to plot.</text>';return;}
     series.forEach(s=>{
@@ -65,12 +65,19 @@ const RobustnessView=(()=>{
   }
   function preview(result){
     displayed=result;node('robustness-results').hidden=false;
+    // An applied Explore selection replaces the chart and tables until Reset. Say so above them.
+    const view=result.exploration;
+    node('robustness-scope').hidden=!view;
+    node('robustness-scope').textContent=view?`Explore selection: ${view.start} → ${view.end} · ranks ${view.rank_from}–${view.rank_to}. The chart and tables below show this temporary selection. The headline shows the original result. Select Reset to original in Explore to restore them.`:'';
     chart(result);
     const d=result.distributions;
+    // The Explore panel shows these three values of the displayed trials.
     node('robustness-mean').textContent=pct(d.cagr.mean);
     node('robustness-median').textContent=pct(d.cagr.median);
     node('robustness-spy').textContent=pct(d.spy_cagr.mean);
-    node('robustness-description').textContent=`${result.completed} trials · ${result.valid} complete, ${result.incomplete} incomplete · ${result.unique_schedules} distinct schedules · ${result.beat_spy}/${result.valid} complete trials beat paired SPY. ${result.note}`;
+    node('robustness-description').textContent=`${result.completed} trials · ${result.valid} complete, ${result.incomplete} incomplete · ${result.unique_schedules} distinct schedules · ${result.beat_spy}/${result.valid} complete trials beat paired SPY.`;
+    // The sampling and reading rules of this result wait under How to read this.
+    node('robustness-note').textContent=result.note;
     const definitions=[['Strategy CAGR','cagr',pct],['Paired SPY CAGR','spy_cagr',pct],['CAGR difference (pp)','excess_cagr',v=>v===null?'—':(v*100).toFixed(2)],['Total strategy return','total_return',pct],['Ending value of $1','growth',v=>v===null?'—':'$'+v.toFixed(2)]];
     node('robustness-distribution').innerHTML=definitions.map(([label,key,format])=>'<tr><td>'+label+'</td>'+['mean','median','p10','p25','p75','p90','min','max','stddev'].map(stat=>'<td>'+format(d[key][stat])+'</td>').join('')+'</tr>').join('');
     node('robustness-trials').innerHTML=result.trials.map(t=>'<tr>'+[t.trial,t.start,t.first_trade,t.end,t.periods,pct(t.cagr),pct(t.spy_cagr),t.excess_cagr===null?'—':(t.excess_cagr*100).toFixed(2),t.empty_periods,t.short_periods].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
