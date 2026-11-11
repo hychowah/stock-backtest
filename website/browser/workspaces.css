@@ -129,17 +129,17 @@ html:has(#workspace-review:not([hidden])){scroll-padding-top:66px}
 .holding-details dd{margin:3px 0 0;overflow-wrap:anywhere}
 .holding-details button{font-size:11px;min-height:33px}
 .holding-details .step-trail{margin:8px 0;padding-left:18px;font-size:11px;line-height:1.6;overflow-wrap:break-word}
-#workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;background:#172e26;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
+#workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;background:#e9f0e4;border-top:1px solid #a9bda8;box-shadow:0 -8px 20px #172e2624;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
 #workspace-statusbar button{font-size:12px;min-height:40px}
 #workspace-run-open{flex:1;border:0;background:none;text-align:left;padding:5px 0;min-width:0}
-#workspace-run-state{display:block;font-size:12px;color:#f3f7e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:850px}
+#workspace-run-state{display:block;font-size:12px;font-weight:600;color:#1c3a2f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:850px}
 /* The dot before the state: grey when idle, green when a test runs, amber when the queue is paused or a test stops. */
-#workspace-run-state::before{content:'';display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:50%;background:#8b9a87}
-#workspace-run-state[data-state=running]::before{background:#5fcf8b}
-#workspace-run-state[data-state=attention]::before{background:#e8b04b}
-#workspace-run-detail{display:block;font-size:10px;line-height:1.5;color:#a2b59c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:850px;margin-top:4px;padding-left:16px}
-#workspace-waiting{font-size:11px;color:#c7d5c3;white-space:nowrap}
-#workspace-queue-open{background:#314d3b;border-color:#314d3b;color:#f3f7e8;white-space:nowrap}
+#workspace-run-state::before{content:'';display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:50%;background:#9aa797}
+#workspace-run-state[data-state=running]::before{background:#20775e}
+#workspace-run-state[data-state=attention]::before{background:#c98a1a}
+#workspace-run-detail{display:block;font-size:10px;line-height:1.5;color:#536762;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:850px;margin-top:4px;padding-left:16px}
+#workspace-waiting{font-size:11px;color:#536762;white-space:nowrap}
+#workspace-queue-open{background:#193e36;border-color:#193e36;color:#fff;white-space:nowrap}
 #workspace-queue-tray{position:fixed;inset:auto 18px 78px auto;width:min(680px,calc(100% - 36px));max-height:75vh;overflow:auto;border:1px solid #dbe4d0;border-radius:12px;padding:15px;box-shadow:0 12px 50px #193a2630;color:inherit}
 #workspace-queue-tray::backdrop{background:#18352424}
 .workspace-tray-close{display:block;margin-left:auto;font-size:12px;min-height:36px}
