@@ -62,6 +62,13 @@ and the trial table for random dates. **Explore** and **Recorded coverage and
 notes** follow them. **Returns** shows the period returns and the stocks of
 each rebalance; for random dates, it shows one trial.
 
+**Value of $1 day by day** starts Overview. It shows the strategy and SPY on
+every market day, so the rallies and falls inside each holding period show.
+For random dates it shows the median trial with a band from the lowest to the
+highest trial, and Returns shows the selected trial. Point at the chart to read
+one day. The vertical scale is logarithmic: equal heights are equal percentage
+moves. A result saved before this chart existed has no chart.
+
 ## Explore a completed result
 
 Open **Explore this result** in **Result review**. Choose **From entry**,

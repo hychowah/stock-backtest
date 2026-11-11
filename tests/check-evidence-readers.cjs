@@ -14,6 +14,7 @@ const ctx=vm.createContext({document,console,AbortController,Uint8Array,crypto:r
   const parts=url.split('/'),id=parts[3],op=parts[6],trial=+parts[7];
   let value;
   if(op==='trial')value={summary,periods:70,empty:0,short:0};
+  else if(op==='curve')value={available:false};
   else if(op==='periods'){
     const cursor=+parts[8],end=Math.min(70,cursor+64);
     value={rows:Array.from({length:end-cursor},(_,i)=>({number:cursor+i+1,value:{entry:'2015-01-02',exit:'2015-02-02',names:holdingCount,portfolio:.1,spy:.05}})),cursor,next:end<70?end:null,total:70};
@@ -25,7 +26,7 @@ const ctx=vm.createContext({document,console,AbortController,Uint8Array,crypto:r
   if(deferred)return new Promise(resolve=>pending.push({url,resolve:()=>resolve(response(value))}));
   return response(value);
 }});
-for(const file of ['engine-controls.js','result-artifacts.js','backtest-comparison.js','contributions.js','result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),ctx);
+for(const file of ['engine-controls.js','result-artifacts.js','backtest-comparison.js','contributions.js','result-explorer.js','asset-curve.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),ctx);
 const run=code=>vm.runInContext(code,ctx),tick=()=>new Promise(resolve=>setImmediate(resolve));
 function artifact(id){return {version:3,kind:'custom',settings:{mode:'custom'},result:summary,catalog:{metrics:{},filters:{}},presentation:{periodLabel:'Original'},extension:{keep:null},evidence:{id:id.repeat(32),format_version:1,trials:1,periods:70,holdings:12600}};}
 (async()=>{

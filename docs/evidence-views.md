@@ -105,8 +105,8 @@ day it does not record. The statistics are separate for each day; they are not
 one portfolio. A result saved without curves returns `available: false`. The
 reader needs no financial inputs or calculation. Each request traverses the
 evidence from its start, as a sector request does. Period pages leave the
-curve out of their rows. A legacy eager result has no curve route. The website
-does not draw these curves yet.
+curve out of their rows. A legacy eager result has no curve route.
+`website/browser/asset-curve.js` draws the curves in Result review.
 
 ## Ownership
 

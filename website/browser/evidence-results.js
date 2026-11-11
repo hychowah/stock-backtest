@@ -135,6 +135,7 @@ const EvidenceResults=(()=>{
     node('schedule-results').hidden=false;node('schedule-rows').innerHTML='';node('schedule-stock-body').innerHTML='';node('schedule-chart').innerHTML='';node('schedule-period').innerHTML='';node('schedule-attribution').textContent='Reading stored evidence…';
     try{
       state.info=await state.reader.trial(trial);if(!valid(state))return;
+      void AssetCurve.trial(artifact,trial);
       if(artifact.kind!=='random')ResultExplorer.show(artifact,trial,state.info);
       const r=state.info.summary;
       node('schedule-sector-note').textContent=state.sector===undefined?'Original selected stocks; ranks and weights are unchanged.':'Sector filter: '+(state.sector===null?'Unknown':state.sector)+'. Ranks and weights remain those of the whole original book.';

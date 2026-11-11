@@ -139,6 +139,7 @@ const ResultArtifacts=(()=>{
       holdings:(number,period,cursor=0)=>request('page/holdings/'+number+'/'+period+'/'+cursor),
       sectorHoldings:(number,period,sector,cursor=0)=>request('sector-holdings/'+number+'/'+period+'/'+cursor+'/'+encodeURIComponent(JSON.stringify(sector))),
       sectors:(trial='all',options)=>request('sectors/'+trial,options),
+      curve:(trial,options)=>request('curve/'+trial,options),
       explore:(selection,options)=>request('explore/'+['trial','period_from','period_to','rank_from','rank_to'].map(key=>selection[key]).join('/'),options),
       download(kind,number=1){
         if(state.closed)throw Error('This result view was replaced.');

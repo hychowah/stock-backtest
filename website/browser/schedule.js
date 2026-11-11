@@ -111,8 +111,9 @@ const ScheduleView=(()=>{
     ResultExplorer.clear();
     EvidenceResults.showProducer(artifact);
     inspectedTrial=null;inspectedSector=undefined;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
+    AssetCurve.clear();
     if(artifact.kind==='random'){
-      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
+      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;void AssetCurve.all(artifact);
       ResultExplorer.show(artifact,'all',{summary:artifact.result,periods:artifact.result.trials[0]?.periods??0});
     }else{
       if([3,4].includes(artifact.version))EvidenceResults.show(artifact,1);else render();node('robustness-results').hidden=true;

@@ -19,13 +19,14 @@ const context=vm.createContext({console,document:{getElementById:node,createElem
   const parts=url.split('/'),operation=parts[6],cursor=+parts.at(-1);let value;
   if(operation==='screen'){if(screenWait){const pause=screenWait;screenWait=null;await pause();}value={rows:[{...holding,...recorded,symbol:cursor?'A0064':'A0000'}],cursor,next:cursor?null:64,total:70};}
   else if(operation==='trial')value={summary,short:0,empty:0};
+  else if(operation==='curve')value={available:false};
   else if(operation==='periods')value={rows:[{number:1,value:period},{number:2,value:{...period,entry:'2016-01-04',exit:'2016-01-05'}}],cursor:0,next:null,total:2};
   else if(operation==='holdings')value={rows:[{...holding,...recorded,symbol:parts[8]==='2'?'SECOND':'FIRST'}],cursor:0,next:null,total:1};
   else if(operation==='explanations'){if(explanationWait){const pause=explanationWait;explanationWait=null;await pause();}if(explanationFailure){explanationFailure=false;throw Error('Replaced explanation failure');}value={rows:[{scope:'s0',block:{results:[]}}],cursor,next:cursor?null:64,total:65};}
   else throw Error('Unexpected result route '+url);
   return {ok:true,headers:{get:()=>null},json:async()=>structuredClone({...value,identity:parts[3]})};
  }});
-for(const file of ['screener.js','contributions.js','result-artifacts.js','backtest-comparison.js','result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
+for(const file of ['screener.js','contributions.js','result-artifacts.js','backtest-comparison.js','result-explorer.js','asset-curve.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 function artifact(kind='latest',version=4,id=currentId){return {version,kind,settings:{mode:kind,strategy},result:{...summary,producer:{engine:'original',label:'Original'},configuration:{seed:42},trials:[],distribution:{}},catalog:{metrics:{},filters:{}},presentation:{},evidence:{id,format_version:version===4?2:1,trials:kind==='latest'?0:1,periods:kind==='latest'?0:1,holdings:kind==='latest'?70:1}};}
 async function show(value){context.artifact=value;run('{const completed=ResultArtifacts.publish(artifact);EvidenceResults.show(completed)}');await tick();await tick();}
