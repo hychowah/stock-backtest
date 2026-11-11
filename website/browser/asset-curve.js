@@ -4,7 +4,6 @@
    or an inline result, shows neither. */
 const AssetCurve=(()=>{
   const node=id=>document.getElementById(id);
-  const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const money=v=>'$'+(v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2));
   const time=day=>Date.parse(day+'T00:00:00Z');
   const STRATEGY='#20775e',SPY='#557ca5',WIDTH=1200,LEFT=86,RIGHT=1170,TOP=48,BOTTOM=312;
@@ -45,7 +44,7 @@ const AssetCurve=(()=>{
     if(band)out+=`<path d="${path(band.high)}L${days.map((_,i)=>x(times[days.length-1-i]).toFixed(1)+','+y(band.low[days.length-1-i]).toFixed(1)).join('L')}Z" fill="${STRATEGY}" opacity=".16"/>`;
     lines.forEach((line,j)=>{
       out+=`<path d="${path(line.values)}" fill="none" stroke="${line.color}" stroke-width="2.5"/>`;
-      out+=`<line x1="${LEFT+j*240}" x2="${LEFT+24+j*240}" y1="18" y2="18" stroke="${line.color}" stroke-width="3"/><text x="${LEFT+32+j*240}" y="24" font-size="17">${escape(line.label)}</text>`;
+      out+=`<line x1="${LEFT+j*240}" x2="${LEFT+24+j*240}" y1="18" y2="18" stroke="${line.color}" stroke-width="3"/><text x="${LEFT+32+j*240}" y="24" font-size="17">${line.label}</text>`;
     });
     if(band)out+=`<rect x="${LEFT+lines.length*240}" y="11" width="24" height="14" fill="${STRATEGY}" opacity=".16"/><text x="${LEFT+32+lines.length*240}" y="24" font-size="17">Lowest to highest trial</text>`;
     out+=`<line id="curve-${name}-marker" x1="${RIGHT}" x2="${RIGHT}" y1="${TOP}" y2="${BOTTOM}" stroke="#7a8a86" stroke-dasharray="3 3"/>`;

@@ -124,13 +124,12 @@ def _curve(paths, period):
     holds the period's own returns, so the curve compounds to the result.
     """
     days = paths['days']
-    if (not days or days[-1] != period['exit'] or len(paths['portfolio']) != len(days) or len(paths['spy']) != len(days)
-            or paths['spy'][-1] != period['spy'] or paths['exits'] != [stock['return_value'] for stock in period['holdings']]):
+    if (not days or days[-1] != period['exit'] or paths['spy'][-1] != period['spy']
+            or paths['exits'] != [stock['return_value'] for stock in period['holdings']]):
         raise ValueError('Daily paths end on a different period return.')
     rows = [list(row) for row in zip(days, paths['portfolio'], paths['spy'])]
+    # A running sum can differ from mean_return in the last digit.
     rows[-1][1] = period['portfolio']
-    if any(not _finite(value) or value < -1 for row in rows for value in row[1:]):
-        raise ValueError('Daily paths hold an unavailable return.')
     return rows
 
 

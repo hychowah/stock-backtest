@@ -34,11 +34,6 @@ and finite fractional SPY total return. Missing required fields, changed book
 identities, duplicate symbols, unordered ranks and malformed values fail. Empty
 holdings are valid. Checkpoint and provider errors propagate unchanged.
 
-The provider can add `curve`, the daily paths of the book: `{days, portfolio,
-spy, exits}`. The evaluator checks them and gives the period its
-[daily curve](#daily-curve). A provider without paths gives periods without a
-curve.
-
 The evaluator opens no files or databases. It starts no workers and acquires no
 locks. Its caller retains source and financial ownership. The ordinary schedule
 adapter keeps missing-book preparation and evaluation inside its transaction.
@@ -146,8 +141,8 @@ session after the period's entry day, through its exit day. A row is
 
 - `day` is the session date.
 - `portfolio` is the mean of the selected holdings' fractional returns from
-  their entry prices to that day, added in rank order. Weights do not reset
-  inside a period. An empty selection holds cash at 0.
+  their entry prices to that day. Weights do not reset inside a period. An
+  empty selection holds cash at 0.
 - `spy` is SPY's fractional return from the entry close to that day. Each day
   reads the close that the period's SPY return reads.
 
@@ -164,15 +159,12 @@ session after the period's entry day, through its exit day. A row is
 The last row is the exit day. It holds the period's own `portfolio` and `spy`.
 The evaluator refuses paths whose last day differs from a holding's
 `return_value` or from the SPY return. Thus the curve compounds to the saved
-`growth` and `spy_growth`, and no existing field changes. The engine holds one
-holding's path at a time.
+`growth` and `spy_growth`, and no existing field changes.
 
-`curves.py` is a reader. It binds no prepared-data identity, so an edit to it
-rebuilds no research record and drops no book. Results saved before this field
-have no curve. Explore does not recalculate a curve for a rank or period
-selection. `backtest/application/result_curves.py` reads the curves of
-evidence-backed results; see [asset curves](evidence-views.md#asset-curves). A
-legacy eager result keeps `curve` in its inline periods, and no route reads it.
+`curves.py` is a reader: an edit to it rebuilds no prepared data. Results saved
+before this field have no curve, and a legacy eager result keeps its curve
+unread. Explore does not recalculate a curve. See
+[asset curves](evidence-views.md#asset-curves) for the reader.
 
 ## Completed random trials
 

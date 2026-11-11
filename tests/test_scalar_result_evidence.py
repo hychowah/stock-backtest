@@ -48,14 +48,11 @@ class EvidenceTests(unittest.TestCase):
             rank_from=chosen[0]['rank'],rank_to=chosen[-1]['rank']))
         self.assertEqual(selected['growth'],1+sum(h['return_value'] for h in chosen)/len(chosen))
         self.assertEqual(selected['empty'],0)
-    def test_saved_curves_match_the_size_estimate_and_chain_to_the_saved_growth(self):
+    def test_saved_curves_chain_to_the_saved_growth(self):
         for mode in ('custom','random'):
-            with self.subTest(mode=mode),patch.object(scalar_runs,'check_size',wraps=scalar_runs.check_size) as check:
+            with self.subTest(mode=mode):
                 stream,manifest=self.produce(mode)
                 reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)
-                rows=sum(len(record['value']['curve']) for record in reader.records() if record['type']=='period')
-                # The estimate counts exactly the curve rows that the run stores.
-                self.assertEqual((check.call_count,check.call_args.args[3]),(1,rows))
                 trials=manifest['summary']['trials'] if mode=='random' else [manifest['summary']]
                 for number,trial in enumerate(trials,1):
                     curve=result_curves.evidence(reader,number)

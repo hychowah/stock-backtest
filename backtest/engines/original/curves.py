@@ -69,8 +69,8 @@ def book(db, book_facts, sessions, entry, exit_day, holdings, start_spy):
     sessions are the market's saved sessions and holdings the selected
     (symbol, start) pairs in rank order. days are the ISO days of days().
     portfolio is, on each day, the mean of the holdings' returns to date
-    (holding), added in rank order; an empty book holds cash at 0. Weights do
-    not reset inside the book. exits is each holding's return on the last
+    (holding); an empty book holds cash at 0. Weights do not reset inside the
+    book. exits is each holding's return on the last
     day, in rank order. Only one holding's path is held at a time.
     """
     found = days(sessions, entry, exit_day)

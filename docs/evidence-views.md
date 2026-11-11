@@ -89,24 +89,20 @@ whole original book. Filtering or paging the stock table does not change them.
 
 ## Asset curves
 
-A period saved by the current Original engine holds a
-[daily curve](portfolio-results.md#daily-curve). `backtest/application/result_curves.py`
-traverses acquired evidence once and chains the periods of each trial. A period
-compounds on the value at its entry, in the order and with the expression of
-the saved total growth. Thus the last value of a trial equals its saved
-`growth` and `spy_growth`. Both sides hold cash at 1 from the common start to
-the first trade.
+`backtest/application/result_curves.py` chains the saved
+[daily curves](portfolio-results.md#daily-curve) of each trial into the growth
+of 1, compounding as the saved total growth does. Both sides hold 1 in cash
+from the common start to the first trade.
 
 `GET /curve/<trial>` returns `days`, `strategy` and `spy`: the growth of 1 on
 each day of one trial. `GET /curve/all` returns, for each day of any trial, the
 `median`, `lowest` and `highest` strategy value across the trials, and the
 median of their paired SPY values as `spy`. A trial holds its last value on a
 day it does not record. The statistics are separate for each day; they are not
-one portfolio. A result saved without curves returns `available: false`. The
-reader needs no financial inputs or calculation. Each request traverses the
-evidence from its start, as a sector request does. Period pages leave the
-curve out of their rows. A legacy eager result has no curve route.
-`website/browser/asset-curve.js` draws the curves in Result review.
+one portfolio. A result saved without curves returns `available: false`. Each
+request traverses the evidence from its start, as a sector request does. Period
+pages leave the curve out of their rows. `website/browser/asset-curve.js` draws
+the curves in Result review.
 
 ## Ownership
 

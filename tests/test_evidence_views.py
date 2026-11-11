@@ -346,7 +346,7 @@ process.stdout.write(JSON.stringify(out));});"""
         self.assertEqual((curve['strategy'][-1],curve['spy'][-1]),(second['growth'],second['spy_growth']))
         status,_,body=request('GET',batch_base+'/curve/all')
         self.assertEqual(status,200);band=json.loads(body)
-        self.assertEqual((band['trials'],band['days'][0],band['days'][-1]),(3,'2000-01-01','2025-01-27'))
+        self.assertEqual((band['days'][0],band['days'][-1]),('2000-01-01','2025-01-27'))
         self.assertEqual(band['highest'][-1],max(trial['growth'] for trial in batch['trial_results']))
         self.assertEqual(request('GET',batch_base+'/curve/4')[0],400)
         status,_,body=request('GET',batch_base+'/page/periods/2/0')

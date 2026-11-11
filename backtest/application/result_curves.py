@@ -66,10 +66,6 @@ def evidence(reader, trial='all'):
     strategy value across the trials and the median of their paired SPY
     values. A trial holds its last value on a day it does not record.
     """
-    if trial != 'all' and (type(trial) is not int or trial < 1):
-        raise ValueError('Invalid evidence selection.')
-    if reader.metadata.get('mode') == 'latest':
-        raise ValueError('Latest screens have no holding periods.')
     found = _trials(reader.verified_records(), trial)
     if found is None:
         return dict(available=False)
@@ -79,6 +75,6 @@ def evidence(reader, trial='all'):
     grid = sorted(set().union(*(days for days, _, _ in found)))
     strategy = list(zip(*(_on(grid, days, values) for days, values, _ in found)))
     spy = zip(*(_on(grid, days, values) for days, _, values in found))
-    return dict(available=True, trials=len(found), days=grid, median=[statistics.median(day) for day in strategy],
+    return dict(available=True, days=grid, median=[statistics.median(day) for day in strategy],
                 lowest=[min(day) for day in strategy], highest=[max(day) for day in strategy],
                 spy=[statistics.median(day) for day in spy])

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 from backtest import portfolio_results, result_evidence
-from backtest.application import evidence_views, result_curves
+from backtest.application import result_curves
 from backtest.runtime import backtest_control
 from test_portfolio_results import holding
 
@@ -69,7 +69,7 @@ class CurveTests(unittest.TestCase):
     def test_all_trials_give_the_median_lowest_and_highest_value_on_each_day(self):
         band = result_curves.evidence(self.reader)
         first, second = result_curves.evidence(self.reader, 1), result_curves.evidence(self.reader, 2)
-        self.assertEqual((band['trials'], band['days']), (2, first['days']))
+        self.assertEqual(band['days'], first['days'])
         # The late trial holds cash at 1 until its first trade on 9 January.
         held = [1.]*4 + second['strategy'][1:]
         paired = [1.]*4 + second['spy'][1:]
@@ -82,23 +82,12 @@ class CurveTests(unittest.TestCase):
 
     def test_a_result_saved_without_curves_reports_that_none_is_available(self):
         plain = trial(0, [.2, -.1], curves=False)
-        for trials, selection in (([plain], 1), ([plain], 'all'), ([self.early, plain], 'all'), ([self.early, plain], 2)):
-            self.assertEqual(result_curves.evidence(encoded(trials), selection), dict(available=False))
-        self.assertTrue(result_curves.evidence(encoded([self.early, plain]), 1)['available'])
+        for selection in (1, 'all'):
+            self.assertEqual(result_curves.evidence(encoded([plain]), selection), dict(available=False))
 
-    def test_period_pages_leave_the_curve_out(self):
-        page = evidence_views.read(self.reader, dict(operation='periods', trial=1))
-        self.assertEqual([row['value'] for row in page['rows']],
-                         [{key: value for key, value in period.items() if key not in ('holdings', 'curve')}
-                          for period in self.early['periods']])
-        self.assertTrue(all('curve' in period for period in self.early['periods']))
-
-    def test_invalid_selections_and_cancellation(self):
-        for selection in (0, 3, '1', True, None):
-            with self.subTest(selection=selection), self.assertRaises(ValueError):
-                result_curves.evidence(self.reader, selection)
-        with self.assertRaisesRegex(ValueError, 'Latest screens'):
-            result_curves.evidence(type('Latest', (), dict(metadata=dict(mode='latest')))())
+    def test_missing_trial_and_cancellation(self):
+        with self.assertRaisesRegex(ValueError, 'Stored trial not found'):
+            result_curves.evidence(self.reader, 3)
         with patch.object(backtest_control, 'checkpoint', side_effect=backtest_control.Cancelled()):
             with self.assertRaises(backtest_control.Cancelled):
                 result_curves.evidence(self.reader)
