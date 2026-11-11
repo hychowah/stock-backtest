@@ -1,5 +1,5 @@
 /* The library stores complete results on the local service, never browser quota.
-   Its records are the Finished rows of Runs. The panel above the rows is derived
+   Its records are the Saved backtests rows of Runs. The panel above the rows is derived
    from the ticked rows and one description per ticked saved id. */
 const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
@@ -13,7 +13,7 @@ const SavedBacktests=(()=>{
   let loading=false,refocus=null;
   const headings={name:'Name',cagr:'CAGR',saved:'Saved'},directions={name:1,cagr:-1,saved:-1};
   let records=[],limit=100,sorting={key:'saved',direction:-1},renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
-  // Save reports beside its button in Result review. Every list action reports above the Finished rows.
+  // Save reports beside its button in Result review. Every list action reports above the Saved backtests rows.
   const say=id=>(text,error=false)=>{node(id).textContent=text;node(id).className=error?'backtest-failed':'hint';};
   const message=say('saved-status'),saveMessage=say('saved-message');
   const when=value=>new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
@@ -27,7 +27,7 @@ const SavedBacktests=(()=>{
     node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=limit;
     node('saved-count').textContent=records.length+' / '+limit;
     for(const [key,label] of Object.entries(headings))node('saved-sort-'+key).textContent=label+(sorting.key!==key?'':sorting.direction>0?' ↑':' ↓');
-    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a finished test in Runs to make room.':'Saves the original completed result and its submitted settings. Exploration summaries and pending settings are not included.';
+    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest in Runs & saved to make room.':'Saves the original completed result and its submitted settings. Exploration summaries and pending settings are not included.';
   }
   // List order uses stored summary values only. Names sort with their numbers in
   // number order. A missing CAGR stays last in both directions. Equal values show
@@ -56,9 +56,9 @@ const SavedBacktests=(()=>{
       const kind={january:'January',custom:'Fixed dates',random:'Random'+(record.trials?' · '+escape(record.trials)+' trials':' dates')}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const button=(key,label)=>'<button type="button" id="saved-do-'+key+'-'+id+'" data-'+key+'="'+id+'">'+label+'</button>';
-      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this finished test?</span>'+button('confirm','Delete test')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
-      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">Finished</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Actions for '+name+'" title="Actions">⋯</summary><div class="run-actions">'+actions+'</div></details></li>';
-    }).join('')||'<li class="run-empty">No finished tests yet.</li>';
+      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this saved backtest?</span>'+button('confirm','Delete record')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
+      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">Saved</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Actions for '+name+'" title="Actions">⋯</summary><div class="run-actions">'+actions+'</div></details></li>';
+    }).join('')||'<li class="run-empty">No saved backtests yet.</li>';
     // Ticks stay usable while a list action runs.
     list.querySelectorAll('button,input:not([type=checkbox])').forEach(control=>control.disabled=busy);
     renderPanel();
@@ -127,7 +127,7 @@ const SavedBacktests=(()=>{
   async function request(path='',options={}){
     const response=await fetch('/api/backtests'+path,options);
     let value;try{value=await response.json();}catch(_){throw Error('The saved-backtest service is unavailable. Start the updated website and reload this page.');}
-    if(!response.ok){const error=Error(value.error||'Could not access the finished tests.');error.requires_reader=value.requires_reader;throw error;}
+    if(!response.ok){const error=Error(value.error||'Could not access saved backtests.');error.requires_reader=value.requires_reader;throw error;}
     return value;
   }
   async function refresh(){
@@ -146,7 +146,7 @@ const SavedBacktests=(()=>{
   // Ignore stale reads and feedback if a newer library action has started.
   async function reconcile(success,ticket,report=message){
     try{await refresh();}
-    catch(_){if(ticket===feedback)report(success+' The Finished list could not be refreshed. Select Refresh in Runs to try again.');}
+    catch(_){if(ticket===feedback)report(success+' The saved list could not be refreshed. Select Refresh in Runs & saved to try again.');}
   }
   async function save(){
     const snapshot=current();
@@ -159,14 +159,14 @@ const SavedBacktests=(()=>{
       saveMessage('Saving complete backtest results…');
       const record=await request('',{method:'POST',headers:{'Content-Type':'application/json'},body});
       mutation++;records=[record,...records.filter(item=>item.id!==record.id)];render();node('saved-name').value='';
-      const success='Saved “'+record.name+'”. Its complete results are under Finished in Runs.';saveMessage(success);
+      const success='Saved “'+record.name+'”. Its complete results are under Saved backtests in Runs & saved.';saveMessage(success);
       void reconcile(success,ticket,saveMessage);
     },saveMessage);
   }
   async function open(id){
     const number=++operation,isCurrent=ResultArtifacts.opening();
     await perform(async()=>{
-      message('Opening the stored result…');
+      message('Opening saved backtest…');
       const used=await ResultArtifacts.use({kind:'saved',id},(artifact,record)=>openRecord(artifact,record?.name||records.find(row=>row.id===id)?.name),{current:()=>number===operation&&isCurrent()});
       if(used.consumed)message('Opened “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'” without rerunning it.');
     });
@@ -180,10 +180,10 @@ const SavedBacktests=(()=>{
   }
   async function remove(id){
     await perform(async ticket=>{
-      message('Deleting the finished test…');
+      message('Deleting saved record…');
       await request('/'+encodeURIComponent(id),{method:'DELETE'});
       mutation++;records=records.filter(record=>record.id!==id);pendingDelete=null;render();
-      const success='Finished test deleted. The displayed results remain available.';message(success);
+      const success='Saved backtest deleted. The displayed results remain available.';message(success);
       void reconcile(success,ticket);
     });
   }
@@ -208,8 +208,8 @@ const SavedBacktests=(()=>{
   function init(access){
     current=access.current;isRunning=access.isRunning;openRecord=access.open;copySettings=access.copy;
     node('save-backtest').addEventListener('click',save);
-    // The one Refresh of Runs also reads the Finished rows again.
-    node('queue-refresh').addEventListener('click',()=>available?perform(async()=>{await refresh();message('Finished tests refreshed.');}):undefined);
+    // The one Refresh of Runs also reads the Saved backtests rows again.
+    node('queue-refresh').addEventListener('click',()=>available?perform(async()=>{await refresh();message('Saved backtests refreshed.');}):undefined);
     node('saved-head').addEventListener('click',event=>{
       const key=event.target.dataset.sort;if(!key)return;
       sorting={key,direction:sorting.key===key?-sorting.direction:directions[key]};render();
@@ -244,7 +244,7 @@ const SavedBacktests=(()=>{
     });
     available=typeof fetch==='function' && typeof location!=='undefined' && location.protocol!=='file:';
     if(available)perform(refresh);
-    else message('Finished tests use the local website service opened by backtest-web.cmd.');
+    else message('Saved backtests use the local website service opened by backtest-web.cmd.');
     update();
   }
   return {init,update,changed};

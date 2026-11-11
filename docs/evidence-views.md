@@ -77,11 +77,11 @@ lists its tabs in `data-review-panel`; a `random-` or `fixed-` name limits the
 block to that kind of result.
 The bottom status bar consumes existing direct-run and queue state. Its dialog
 borrows the mounted queue panel, including the same controls and polling owner,
-and returns it to the top of Runs.
+and returns it to the top of Runs & saved.
 
-Runs shows two row groups with one column layout. `queue.js` draws the In
-progress rows and keeps the queue state. `saved-backtests.js` draws the Finished
-rows, their ticks, their sort order and the panel of the ticked tests. The two
+Runs & saved shows two row groups with one column layout. `queue.js` draws the In
+progress rows and keeps the queue state. `saved-backtests.js` draws the Saved
+backtests rows, their ticks, their sort order and the panel of the ticked tests. The two
 owners share the row styles and `BacktestComparison`, and call nothing new in
 each other. `saved-backtests.js` keeps one description for each ticked saved
 id. One loader reads them one at a time through `ResultArtifacts.use` and

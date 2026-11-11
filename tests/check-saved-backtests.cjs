@@ -41,7 +41,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const first=records[0];await node('saved-list').handlers.click({target:{dataset:{open:first.id}}});
  assert.deepStrictEqual(JSON.parse(JSON.stringify(loaded.settings)),snapshot);
  assert.equal(loaded.result.years[0].holdings[0].symbol,'SAVED');
- // Save reports beside its button in Result review. A list action reports above the Finished rows.
+ // Save reports beside its button in Result review. A list action reports above the Saved backtests rows.
  assert(node('saved-status').textContent.includes('without rerunning'));assert(node('saved-message').textContent.startsWith('Saved'));
  assert(node('saved-list').innerHTML.includes('>Tune<'));
  const storedBytes=JSON.stringify(first),displayed=loaded,beforeCopy=requests.length;
@@ -99,9 +99,9 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  node('saved-list').handlers.click({target:{dataset:{delete:acknowledged.id}}});
  await node('saved-list').handlers.click({target:{dataset:{confirm:acknowledged.id}}});await settle();
  assert.equal(records.length,1);assert.equal(node('saved-count').textContent,'1 / 100');
- assert(node('saved-status').textContent.startsWith('Finished test deleted.'));assert(node('saved-status').textContent.includes('could not be refreshed'));
- // The one Refresh of Runs reads the Finished rows again.
- failList=false;await node('queue-refresh').handlers.click();assert.equal(node('saved-status').textContent,'Finished tests refreshed.');
+ assert(node('saved-status').textContent.startsWith('Saved backtest deleted.'));assert(node('saved-status').textContent.includes('could not be refreshed'));
+ // The one Refresh of Runs reads the Saved backtests rows again.
+ failList=false;await node('queue-refresh').handlers.click();assert.equal(node('saved-status').textContent,'Saved backtests refreshed.');
  // A delayed older list must not revive a record deleted by a newer action.
  holdNextList=true;node('saved-name').value='Race';await node('save-backtest').handlers.click();
  assert(releaseList);const racing=records[1];
@@ -114,13 +114,13 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  await node('save-backtest').handlers.click();assert.equal(records.length,100);assert(node('saved-message').textContent.includes('100'));
  const beforeDelete=requests.length;
  node('saved-list').handlers.click({target:{dataset:{delete:first.id}}});
- assert(node('saved-list').innerHTML.includes('Delete this finished test?'));
+ assert(node('saved-list').innerHTML.includes('Delete this saved backtest?'));
  node('saved-list').handlers.click({target:{dataset:{keep:first.id}}});assert.equal(requests.length,beforeDelete);
  node('saved-list').handlers.click({target:{dataset:{delete:first.id}}});
  await node('saved-list').handlers.click({target:{dataset:{confirm:first.id}}});
  assert.equal(records.length,99);assert(!node('save-backtest').disabled);assert.equal(loaded.result.years[0].holdings[0].symbol,'SAVED');
  await node('save-backtest').handlers.click();assert.equal(records.length,100);
- // A heading sorts the Finished rows by stored values. A second click reverses the order. A missing
+ // A heading sorts the Saved backtests rows by stored values. A second click reverses the order. A missing
  // CAGR stays last in both directions. Equal values show the newest saved first, then the lower id.
  records=[{...first,id:'a'.repeat(32),name:'Low',cagr:-.2,created_at:'2026-10-01T00:00:00Z'},{...first,id:'b'.repeat(32),name:'High',cagr:.5,created_at:'2026-10-03T00:00:00Z'},
   {...first,id:'c'.repeat(32),name:'Missing',cagr:null,created_at:'2026-10-02T00:00:00Z'},{...first,id:'d'.repeat(32),name:'Tie',cagr:.5,created_at:'2026-10-03T00:00:00Z'}];

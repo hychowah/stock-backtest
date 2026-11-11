@@ -1,4 +1,4 @@
-/* Runs: In progress and Finished are two row groups with one column layout, so
+/* Runs: In progress and Saved backtests are two row groups with one column layout, so
    they read as one table. A row is one line; a long name takes two lines at most
    and shows in full as a tooltip. The other actions of a row wait in its row
    control, which opens below the row inside the page flow: no scroll box clips it.
@@ -8,7 +8,8 @@
 .run-counts>span{white-space:nowrap}
 .backtest-queue>.toolbar>div:last-child{display:flex;flex-wrap:wrap;gap:8px}
 .run-group{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#57716b;margin:16px 0 4px}
-#saved-panel>.run-group{margin-top:0}
+#saved-panel>.run-group{display:inline-block;margin:0 12px 4px 0}
+#saved-heading+.hint{display:inline}
 #queue-list,#saved-list{list-style:none;margin:0;padding:0}
 .run-empty{padding:12px 0;border-top:1px solid #e2e7df;font-size:13px;color:#617172}
 .run-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;min-height:48px;padding:4px 48px 4px 0;border-top:1px solid #e2e7df;font-size:13px;color:#536762}
@@ -30,7 +31,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 #workspace-direct-stop{margin-left:auto;min-height:36px;padding:4px 12px;border-color:#a93830;color:#a93830}
 #workspace-direct-run{padding-right:0}
 #workspace-direct-run:not([hidden])+#queue-list>.run-empty{display:none}
-/* The column headings show in the wide layout. In the narrow layout the Finished
+/* The column headings show in the wide layout. In the narrow layout the Saved backtests
    headings stay as a line of sort buttons. */
 .run-head{min-height:32px;border-top:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#6b7862}
 .run-head>span{display:none}
@@ -55,7 +56,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .saved-rename{flex:1 1 260px;font-size:12px}
 .saved-rename input{display:block;width:100%;margin-top:4px}
 .saved-id{font:11px ui-monospace,monospace;color:#617172;overflow-wrap:anywhere}
-/* The panel of the ticked finished tests sits above their rows. */
+/* The panel of the ticked saved backtests sits above their rows. */
 .saved-comparison{margin:4px 0 12px;padding:10px 14px;border:1px solid #d5dfcd;border-radius:8px;background:#f8faf5;font-size:13px}
 .saved-comparison>p{margin:0}
 .comparison-bar{display:flex;align-items:center;gap:12px;min-height:32px;margin-bottom:4px;color:#192b31}
@@ -84,7 +85,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .comparison-difference{margin-left:8px;font-size:11px;font-weight:700;color:#704d12}
 .saved-comparison details{margin-top:4px}
 /* Wide layout: both groups use the same columns. The first column holds the tick
-   box of a finished row; the last column holds the row control. */
+   box of a saved row; the last column holds the row control. */
 @media(min-width:1300px){
   /* The value columns are in ch, so a wider font cannot cut a date or a time. The
      heading row keeps the row font size on its box, so both resolve ch alike. */

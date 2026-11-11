@@ -41,9 +41,9 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. In latest mode, the offline picks table follows the builder, and the coverage and range notes of the displayed result show below that table. A latest screen from the local service shows below these notes. In backtest mode, the notes show below the builder. The results notice shows when the displayed results and the current settings differ, when the settings have no result, or while a backtest runs. Results that match the settings show no notice. A status line appears only when it has a message.
 
-The menu has **Build strategy**, **Runs** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank, then the other steps in step order. It adds the rebalance interval when that is not 12 months, and the market when that is not US, for example `Ranks 1–10 · EV / EBITDA yield · highest first · quarterly · Market cap ≥ $100M`. A name has 120 characters at most. The dates and the test type are columns in **Runs**. The line below these buttons shows the result of **Add to queue** and of a held edit, and tells you when Auto-run waits for the queue. [Runs](#save-and-reopen-completed-backtests) shows the waiting, running and finished tests in one table.
+The menu has **Build strategy**, **Runs & saved** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank, then the other steps in step order. It adds the rebalance interval when that is not 12 months, and the market when that is not US, for example `Ranks 1–10 · EV / EBITDA yield · highest first · quarterly · Market cap ≥ $100M`. A name has 120 characters at most. The dates and the test type are columns in **Runs & saved**. The line below these buttons shows the result of **Add to queue** and of a held edit, and tells you when Auto-run waits for the queue. [Runs & saved](#save-and-reopen-completed-backtests) shows the waiting and running tests and the saved backtests in one table.
 
-**Tune** on a queued or finished test, and **Tune this strategy** in Result review, copy the settings of that record to the builder and empty the test-name box. The strategy returns as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
+**Tune** on a queued test or a saved backtest, and **Tune this strategy** in Result review, copy the settings of that record to the builder and empty the test-name box. The strategy returns as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
 
 Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **original completed result**. Exploration selections do not change an export. Sector and exchange are cached company metadata, not historical classifications.
 
@@ -358,10 +358,11 @@ Range and SQL/browser parity checks use local output by default. To check the po
 
 ## Save and reopen completed backtests
 
-**Runs** shows every test in one table with two groups. **In progress** shows
+**Runs & saved** shows every test in one table with two groups. **In progress** shows
 the queue: the running test first, then the waiting tests in queue order, then
 failed tests, stopped tests and completed tests that are not moved yet.
-**Finished** shows the saved library, newest first. A row is one line: name,
+**Saved backtests** shows the saved library, newest first; a test that finishes
+is saved there automatically. A row is one line: name,
 status, test type and trials, date window, CAGR and the time when the test was
 added or saved. A long name takes two lines at most; point at it to read the
 full name. CAGR is the mean trial CAGR for random dates. A running row
@@ -371,15 +372,15 @@ a long reason adds lines to that row. One toolbar holds **Pause queue**,
 **Run backtest** shows as one line at the top of In progress while it runs,
 with **Stop backtest**. On a window narrower than 1300 px, and in the queue
 tray, a row shows its name first and its other values below the name. The
-Finished headings then show as a line of sort buttons.
+Saved backtests headings then show as a line of sort buttons.
 
-Completed queue tests move to Finished automatically. To keep a direct run,
+Completed queue tests move to Saved backtests automatically. To keep a direct run,
 use **Save original backtest** in the header of **Result review**. Give it a
 name if useful. The save keeps the submitted settings of the original result,
 all traded stocks, and all stock and period returns. Pending control edits are
 not included. A stopped or failed run does not replace the last completed result.
 
-Select the name of a finished test to reopen it. Opening restores its
+Select the name of a saved backtest to reopen it. Opening restores its
 settings, charts, stock tables and downloads without rerunning a calculation.
 Records stay available after browser and server restarts. They are stored on the
 server computer in `data/saved-backtests.sqlite`, outside the rebuildable caches.
@@ -389,7 +390,7 @@ needs the local service to use the library.
 Select **⋯** at the end of a row for its other actions. The row control opens
 below the row line. The lists have no scroll box of their own: the page
 scrolls, and the queue tray scrolls as one box, so an open control is not cut
-off. It stays open when the lists update. A finished row has **Tune**, **Rename** and **Delete**. An In
+off. It stays open when the lists update. A saved row has **Tune**, **Rename** and **Delete**. An In
 progress row has **Edit settings**, **Move up**, **Move down**, **Release
 hold**, **Stop test**, **Open result**, **Tune** and **Delete**, as its state
 allows. It lists every recorded setting in plain wording; **Exact recorded
@@ -398,7 +399,7 @@ list updates.
 Select **Rename**, edit the name, then **Save name** or **Cancel**. Renaming
 changes no settings or stored results.
 
-Select the **Name**, **CAGR** or **Saved** heading to sort the finished tests.
+Select the **Name**, **CAGR** or **Saved** heading to sort the saved backtests.
 Select it again to reverse the order. CAGR means CAGR for saved January and
 fixed tests and mean trial CAGR for random tests. Different test types and date
 windows can differ. A missing CAGR stays last in both directions. Equal values
@@ -416,8 +417,8 @@ when transfer recovery retries. Original queued submission receipts remain valid
 but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
-Tick finished tests to read them without opening a result or changing the
-form. A panel above the Finished rows shows the ticked tests. You can tick 8
+Tick saved backtests to read them without opening a result or changing the
+form. A panel above the Saved backtests rows shows the ticked tests. You can tick 8
 tests at most; **Clear** in the panel removes every tick. One tick shows
 the headline of that test, its saved ID (the stable UUID database ID) and its
 recorded settings. A setting reads in plain wording, such as
@@ -441,7 +442,7 @@ settings stay unchanged.
 
 The page reads a stored result when you tick its row, one result at a time and
 each result one time. It reads nothing for a row without a tick. A failed read
-removes the tick and shows the reason above the Finished rows; tick the row
+removes the tick and shows the reason above the Saved backtests rows; tick the row
 again to retry. During a read the panel keeps the tests that it shows, and its
 top line names the read. Sorting, renaming and refreshing keep the ticks, the
 open disclosure and the sideways scroll of the panel. A deleted test leaves the
@@ -469,7 +470,7 @@ Check with `python3 tests/test_saved_backtests.py`,
 `node tests/check-backtest-comparison.cjs`, `node tests/check-saved-comparison.cjs`,
 and the ordinary queue and range controls checks. These checks use a simulated
 page. They do not show the keyed queue rows, keyboard focus or layout; look at
-the Runs screen in a browser after a change to its rows.
+the Runs & saved screen in a browser after a change to its rows.
 Run the persistence checks with native Windows Python too.
 
 Random-date saves include every trial's exact trade dates, stock rows and period

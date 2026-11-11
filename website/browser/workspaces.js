@@ -1,6 +1,6 @@
 /* Navigation changes visibility, never the lifetime of the draft or result.
    The queue tray borrows the existing mounted queue panel and its owner, then
-   returns it to the top of Runs, above the Finished rows. */
+   returns it to the top of Runs, above the Saved backtests rows. */
 const Workspaces=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

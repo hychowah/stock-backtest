@@ -410,8 +410,8 @@ suppression, completion, reconnects and changes of view.
 
 Use **Add to queue** in Build strategy for fixed or random-date tests. Select the custom calendar,
 set parameters and add the current test. Change settings to add more tests.
-**Runs** shows the waiting and running tests under In progress and the saved
-results under Finished. The line below the Add to queue button shows the result
+**Runs & saved** shows the waiting and running tests under In progress and the saved
+results under Saved backtests. The line below the Add to queue button shows the result
 of each addition and of a held edit.
 Auto-run is suspended while waiting/running queue work exists. Adding, tuning
 or editing a queue item also turns it off so setup stays manual between fast

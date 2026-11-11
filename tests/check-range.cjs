@@ -382,7 +382,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(run('BacktestQueue.isEditing()'),false);assert(!legacyRow.options.strategy);
  assert.deepEqual({options:legacyRow.options,seed:legacyRow.seed,plan:legacyRow.plan},originalLegacy);
  el('date-testing').value='single';
- // Every copy into the builder leaves the test-name box empty: Tune on a queued test, Tune on a finished test and
+ // Every copy into the builder leaves the test-name box empty: Tune on a queued test, Tune on a saved backtest and
  // the button of the open result. A held edit loads its record name (above); a refused copy keeps it.
  for(const tune of [()=>run('BacktestQueue.action("copy",completedId)'),()=>el('saved-list').handlers.click({target:{dataset:{copy:'library-result'}}}),async()=>el('workspace-edit-copy').handlers.click()]){
    el('queue-name').value='Typed for other settings';el('auto-run').checked=true;stepEvent('input',rankId(),'rank_to','4321');await tune();

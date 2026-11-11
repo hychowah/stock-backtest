@@ -53,8 +53,8 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #latest-view .latest-facts>span{border:0;padding:0}
 #latest-view .latest-facts strong{display:inline;margin:0 0 0 7px;font-size:15px;font-weight:600}
 #latest-view th{white-space:nowrap}
-/* Runs: the queue panel and the Finished rows join into one card. The queue tray
-   can borrow the queue panel; the Finished rows then stand alone. */
+/* Runs: the queue panel and the Saved backtests rows join into one card. The queue
+   tray can borrow the queue panel; the Saved backtests rows then stand alone. */
 #workspace-runs>.backtest-queue{margin:0;padding-bottom:8px;border-bottom:0;border-radius:10px 10px 0 0}
 #workspace-runs>.backtest-queue>.hint{margin:6px 0 0}
 #workspace-runs>.saved-backtests{margin-top:0;padding-top:14px;border-top:0;border-radius:0 0 10px 10px}

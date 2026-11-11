@@ -23,7 +23,7 @@ node('rank-to').value='25';node('filter-value').value='17';node('strategy-form')
 run('Workspaces.init()');
 const form=node('strategy-form'),queue=node('queue-panel');
 for(const view of ['runs','review','builder'])run(`Workspaces.show('${view}')`);
-// The tray borrows the queue panel and returns it to the top of Runs, above the Finished rows.
+// The tray borrows the queue panel and returns it to the top of Runs, above the Saved backtests rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
 node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
 assert.equal(node('workspace-direct-run').hidden,true,'No direct run shows no line in In progress');

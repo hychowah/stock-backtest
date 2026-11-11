@@ -151,8 +151,8 @@ const BacktestQueue=(()=>{
       const detail=o.strategy?captured.map(row=>line(row.label+': '+row.display)):[`Requested engine: ${EngineControls.label(o.engine??'original')}`,`Minimum market cap: $${(o.min_cap??100e6)/1e6} million`,`Maximum market cap: ${o.max_cap==null?'no limit':'$'+o.max_cap/1e6+' million'}`,`Minimum EV: $${(o.min_ev??50e6)/1e6} million`,`Minimum yield: ${(o.min_yield??0)*100}%`,`Maximum multiple: ${o.max_multiple??'no limit'}`,`Sector: ${o.sector||'all'}`,`Exchange: ${o.exchange||'all'}`,...(o.filters||[]).map(condition=>callbacks.filterLabel(condition.field)+' '+(condition.op==='lt'?'<':'>')+' '+condition.value)].map(line);
       if(record.mode==='random')detail.push(line('Random date set: '+(o.seed??record.configuration?.seed??'fresh seed stored on the server')));
       const exact=captured.filter(row=>row.exact).map(row=>line(row.label+': '+row.exact)).join('');
-      const state=record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Finished':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state);
-      // One line per test in the columns that the Finished rows use. Other actions and the settings wait in the row control.
+      const state=record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Saved backtests':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state);
+      // One line per test in the columns that the Saved backtests rows use. Other actions and the settings wait in the row control.
       const html=`<li class="run-row" data-queue-id="${id}" data-state="${escape(record.state)}"><span class="run-name" title="${name}"><span>${name}</span></span><span class="run-status"><span class="queue-state">${state}</span><span class="queue-progress">${escape(note)}</span></span><span class="run-type">${record.mode==='random'?'Random · '+escape(o.trials??24)+' trials':'Fixed dates'}</span><span class="run-window">${escape(dates.start+' → '+dates.end)}</span><span class="run-cagr"${record.mode==='random'?' title="Mean trial CAGR"':''}>${cagr}</span><span class="run-time">${escape(when(record.created_at))}</span><details class="run-menu"><summary aria-label="Actions and settings of ${name}" title="Actions and settings">⋯</summary><div class="run-actions">${actions}</div>${line(parameters(record))}${detail.join('')}${exact&&'<details><summary>Exact recorded values</summary>'+exact+'</details>'}</details></li>`;
       return {id:record.id,html,progress:note,signature:JSON.stringify({record:{...record,progress:null},edges:waiting(record)?[index===0,index===waitingIds.length-1]:[],busy,deleting:pendingDelete===record.id})};
     });
@@ -177,7 +177,7 @@ const BacktestQueue=(()=>{
     mutation++;
     const value=await request(path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     mutation++;
-    if(value.state==='archived'){records=records.filter(record=>record.id!==value.id);callbacks.libraryChanged?.();success='This test already moved to Finished.';}
+    if(value.state==='archived'){records=records.filter(record=>record.id!==value.id);callbacks.libraryChanged?.();success='This test already moved to Saved backtests.';}
     else if(value.deleted)records=records.filter(record=>record.id!==value.id);
     else if(value.id)records=[...records.filter(record=>record.id!==value.id),value];
     else if(typeof value.paused==='boolean')paused=value.paused;
@@ -188,7 +188,7 @@ const BacktestQueue=(()=>{
     busy=true;render();
     try{
       await task();
-      try{await refresh();}catch(_){message(node(target).textContent+' The list could not be refreshed. Select Refresh in Runs to check progress.',false,target);}
+      try{await refresh();}catch(_){message(node(target).textContent+' The list could not be refreshed. Select Refresh in Runs & saved to check progress.',false,target);}
     }catch(error){
       const session=editing,loading=session?.loading;
       if(loading&&error.status>=400&&error.status<500){endEdit();message(error.message,true,target);return;}
@@ -240,7 +240,7 @@ const BacktestQueue=(()=>{
       if(action==='open'){
         const isCurrent=ResultArtifacts.opening();
         const used=await ResultArtifacts.use({kind:'queue',id},artifact=>callbacks.open(artifact,record.name),{current:isCurrent});
-        if(used.record?.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Finished. Open it there.');return;}
+        if(used.record?.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it there.');return;}
         if(used.consumed)message('Opened “'+record.name+'” from its stored results.');return;
       }
       if(action==='copy'){

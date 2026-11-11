@@ -212,13 +212,13 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   assert(!node('queue-list').innerHTML.includes('the server will retry'));
   assert(node('queue-list').innerHTML.includes('Open result'));
   records[0].transfer.state='reserved';await call('BacktestQueue.refresh()');
-  assert(node('queue-list').innerHTML.includes('Moving to Finished'));assert(!node('queue-list').innerHTML.includes('Saved backtests'));
+  assert(node('queue-list').innerHTML.includes('Moving to Saved backtests'));
   assert(!node('queue-list').innerHTML.includes('data-action="delete"'));
   // A stale Open click explains that transfer finished and refreshes the library.
   records[0].state='archived';records[0].transfer={state:'archived',saved_id:'d'.repeat(32)};
   const beforeMoved=libraryChanges;
   await call('BacktestQueue.action("open","'+records[0].id+'")');
-  assert(node('queue-status').textContent.includes('moved to Finished'));
+  assert(node('queue-status').textContent.includes('moved to Saved backtests'));
   assert(libraryChanges>beforeMoved);assert(!node('queue-list').innerHTML.includes('Waiting for slot'));
   // A lost enqueue acknowledgement retries the same archived receipt without
   // placing it back in the list, even when list reconciliation fails.
@@ -229,7 +229,7 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   accepted.transfer={state:'archived',saved_id:'e'.repeat(32)};failList=true;
   const beforeRetry=libraryChanges;await call('BacktestQueue.add()');
   assert(!storage.has('backtest-queue-submission'));assert(libraryChanges>beforeRetry);
-  assert(!node('queue-list').innerHTML.includes(accepted.id));assert(node('queue-add-status').textContent.includes('already moved to Finished'));
+  assert(!node('queue-list').innerHTML.includes(accepted.id));assert(node('queue-add-status').textContent.includes('already moved to Saved backtests'));
   failList=false;
   // Scalar preparation snapshots before awaiting, and finishes before identity.
   const scalar={format:'strategy-capture',version:1,pool:'legacy',bounds:{min_cap:100e6,max_cap:null,min_ev:50e6,sector:null,exchange:null},selection:{ranking:{source:{kind:'builtin',id:'filter:pe'},direction:'lowest'},rank_from:2,rank_to:8,selection_order:'rank_first',conditions:[]},builtins:[{id:'filter:pe',label:'Original P/E'}],variables:null};
