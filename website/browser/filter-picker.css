@@ -1,4 +1,4 @@
-/* Strategy steps: each step is one line with one searchable source list.
+/* Strategy steps: on a wide page each step is one line, with one searchable source list.
    Rows share the list's columns so Rank and Filter rows line up. Each control
    has its own accessible name, so a row needs no visible field labels. */
 #strategy-steps{display:grid;grid-template-columns:auto minmax(0,2.4fr) minmax(0,1fr) minmax(0,1.4fr) auto;column-gap:10px;list-style:none;margin:6px 0 0;padding:0}

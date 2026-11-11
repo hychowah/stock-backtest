@@ -248,8 +248,10 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   for(const text of ['Chain P/E (filter:pe) lowest first · ranks 1–200','Chain P/E (filter:pe) highest first · ranks 20–40','Market cap (USD) ≥ 100 usd_million (canonical 100000000 USD)'])
     assert(chainRow.includes('<small class="exact-setting">'+text+'</small>'),'Missing exact '+text);
   // A waiting test that names an engine this server does not run explains how to continue.
-  records.push({id:'f'.repeat(32),name:'Recorded experimental',mode:'custom',options:{start:'2015-01-01',end:'2016-12-30',months:3,engine:'experimental'},state:'queued',position:records.length+1,revision:1,cagr:null,edit:null});
+  records.push({id:'f'.repeat(32),name:'Recorded experimental',mode:'custom',options:{start:'2015-01-01',end:'2016-12-30',months:3,engine:'experimental',pool:'cached'},state:'queued',position:records.length+1,revision:1,cagr:null,edit:null});
   await call('BacktestQueue.refresh()');
+  // A flat record names its pool with the same words as a chain record.
+  assert(node('queue-list').innerHTML.includes(' · EV/EBITDA · All stocks with cached prices · '));assert(!node('queue-list').innerHTML.includes('All cached stocks'));
   assert(node('queue-list').innerHTML.includes('New engine — experimental cannot run on this server. Edit it to choose Original, or delete it.'));
   console.log('Passed: snapshots, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

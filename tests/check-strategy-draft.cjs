@@ -67,6 +67,27 @@ if(process.argv[2]==='--builtins-parity'){
  node('date-testing').value='random';node('calendar-custom').checked=true;run('StrategyDraft.render()');assert.deepEqual(shownInputs(),[false,false,true]);
  node('date-testing').value='single';node('calendar-custom').checked=false;run('StrategyDraft.render()');assert.deepEqual(shownInputs(),[true,true,false]);
  run("screeningMode='backtest'");
+ // The form stays valid after an out-of-range value is hidden: a hidden number
+ // input is disabled, and native validation skips a disabled input.
+ const ranges={'random-trials':[1,100],'random-seed':[0,4294967295],'calendar-count':[1,24]};
+ const blocking=()=>Object.entries(ranges).filter(([id,[low,high]])=>!node(id).disabled&&!(+node(id).value>=low&&+node(id).value<=high)).map(([id])=>id);
+ const choose=(testing,custom)=>{node('date-testing').value=testing;node('calendar-custom').checked=custom;run('StrategyDraft.render()');};
+ // Path A: 52 weeks, then months (at most 24), then the custom interval off.
+ node('calendar-count').value='52';choose('single',true);assert.deepEqual(blocking(),['calendar-count'],'A visible wrong value still asks for a correction');
+ choose('single',false);assert.deepEqual(blocking(),[]);
+ // Path B: 500 trials and a wrong repeated date set, then one fixed schedule.
+ node('random-trials').value='500';node('repeat-random').checked=true;node('random-seed').value='-1';choose('random',false);assert.deepEqual(blocking(),['random-trials','random-seed']);
+ choose('single',false);assert.deepEqual(blocking(),[]);assert(!('trials' in run('currentSettings()')));
+ // A choice turned on again enables its inputs and reads their kept values.
+ node('calendar-count').value='12';node('random-trials').value='6';node('random-seed').value='77';choose('random',true);assert.deepEqual(blocking(),[]);
+ assert.deepEqual(['random-trials','random-seed','calendar-count'].map(id=>node(id).disabled),[false,false,false]);
+ assert.deepEqual(['mode','trials','seed'].map(key=>run('currentSettings()')[key]),['random',6,77]);
+ // Latest mode hides the whole dates block, wrong values included.
+ node('random-trials').value='500';node('calendar-count').value='52';run("screeningMode='latest';StrategyDraft.render()");
+ assert.deepEqual(['trade-start','trade-end','calendar-count','random-trials','random-seed'].map(id=>node(id).disabled),[true,true,true,true,true]);assert.deepEqual(blocking(),[]);
+ run("screeningMode='backtest';StrategyDraft.render()");assert.deepEqual([node('trade-start').disabled,node('trade-end').disabled],[false,false]);assert.deepEqual(blocking(),['random-trials','calendar-count']);
+ node('repeat-random').checked=false;run('StrategyDraft.render()');assert.equal(node('random-seed').disabled,true,'A fresh date set keeps its number input off');
+ node('calendar-count').value='12';node('random-trials').value='24';node('random-seed').value='42';choose('single',false);
  const first=await submit();
  assert.deepEqual(requests.at(-1),{intent:{format:'strategy-intent',version:2,universe:{pool:'cached'},steps:[{kind:'filter',source:field('market_cap'),op:'ge',threshold:{value:'100',unit:'usd_million'}},{kind:'filter',source:field('enterprise_value'),op:'ge',threshold:{value:'50',unit:'usd_million'}},{kind:'rank',source:builtin('metric:ev_ebitda:yield'),direction:'highest',rank_from:1,rank_to:50}]}});
  assert.equal(first.mode,'custom');assert.equal(first.strategy.version,2);

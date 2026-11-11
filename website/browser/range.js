@@ -480,10 +480,13 @@ const StrategyDraft=(()=>{
     document.getElementById('auto-run').disabled=!offline;
     document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this chain. Select '+(screeningMode==='latest'?'Screen latest':'Run backtest')+' to calculate.';
     document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
-    // Random-date and custom-interval inputs show only while their choice is on.
-    const custom=document.getElementById('calendar-custom').checked;
-    document.getElementById('random-controls').hidden=document.getElementById('date-testing').value!=='random';
-    document.getElementById('calendar-interval').hidden=!custom;document.getElementById('rebalance-months').disabled=custom;
+    // Random-date and custom-interval inputs show only while their choice is on,
+    // and the dates block only in backtest mode. A hidden input with a range is
+    // disabled, so its value cannot block form validation.
+    const dated=screeningMode!=='latest',custom=document.getElementById('calendar-custom').checked,random=document.getElementById('date-testing').value==='random';
+    document.getElementById('random-controls').hidden=!random;document.getElementById('calendar-interval').hidden=!custom;
+    const enabled={'trade-start':dated,'trade-end':dated,'rebalance-months':!custom,'calendar-count':dated&&custom,'random-trials':dated&&random,'random-seed':dated&&random&&document.getElementById('repeat-random').checked};
+    for(const [id,on] of Object.entries(enabled))document.getElementById(id).disabled=!on;
   }
   function after(id){changed=id;touch();renderSteps();render();updateResultsState();return id;}
   function patch(change,expected){

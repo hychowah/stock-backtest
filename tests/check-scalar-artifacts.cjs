@@ -15,9 +15,9 @@ const artifact={version:4,kind:'custom',settings:{mode:'custom',strategy:capture
 context.artifact=artifact;
 (async()=>{
  assert.equal(run('ResultArtifacts.scalarValue({ranking_value:.08,ranking_display:"percent"})'),'8%');
- // A table rounds: 2 decimals, or 2 significant digits below 0.01. Evidence views keep 8 digits.
+ // A table rounds: 2 decimals; below 0.01, 2 significant digits; below 0.000001, 0.00. Evidence views keep 8 digits.
  assert.equal(run('ResultArtifacts.scalarValue({ranking_value:.33233461,ranking_display:"percent"})'),'33.233461%');
- assert.equal(run('[[.33233461,"percent"],[.08,"percent"],[.000082208838,"percent"],[12.345678,"multiple"],[-.004,"number"],[0,"percentage_points"]].map(([v,d])=>ResultArtifacts.scalarValue({ranking_value:v,ranking_display:d},true)).join(" | ")'),'33.23% | 8.00% | 0.0082% | 12.35× | -0.0040 | 0.00 pp');
+ assert.equal(run('[[.33233461,"percent"],[.08,"percent"],[.000082208838,"percent"],[12.345678,"multiple"],[-.004,"number"],[0,"percentage_points"],[5.55e-17,"percent"],[-3e-7,"number"]].map(([v,d])=>ResultArtifacts.scalarValue({ranking_value:v,ranking_display:d},true)).join(" | ")'),'33.23% | 8.00% | 0.0082% | 12.35× | -0.0040 | 0.00 pp | 0.00% | 0.00');
  const decoded=run('ResultArtifacts.decode(artifact)');assert.equal(decoded.version,4);assert(Object.isFrozen(decoded.settings.strategy));
  run('ResultArtifacts.publish(artifact)');assert.equal(run('ResultArtifacts.forView("custom").settings.strategy.selection.ranking.direction'),'lowest');
  const api=run('ResultArtifacts.reader(ResultArtifacts.forView("custom"))');

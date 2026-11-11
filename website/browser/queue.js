@@ -59,7 +59,7 @@ const BacktestQueue=(()=>{
   function parameters(record){
     const o=record.options,market=({us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'}[o.market??'us']||o.market)+' · USD · ';
     if(o.strategy)return market+`${record.mode==='random'?'Random dates':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · `+BacktestComparison.scalarRows(o.strategy).map(row=>row.label+': '+row.display).join(' · ');
-    return market+`${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · ${CalendarSettings.label(o)} · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All cached stocks':'Original candidate set'} · ${EngineControls.label(o.engine??'original')}`;
+    return market+`${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · ${CalendarSettings.label(o)} · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All stocks with cached prices':'Original candidate set'} · ${EngineControls.label(o.engine??'original')}`;
   }
   function renderRows(rows){
     const list=node('queue-list');

@@ -24,7 +24,7 @@ class RestoreTests(unittest.TestCase):
                 self.assertEqual(state,dict(previous='24',unit='week',count='104',max='104',valid=True,supported=True))
                 for width,height,label in [(1440,1000,'calendar-desktop'),(390,844,'calendar-mobile')]:
                     browser.viewport(width,height)
-                    browser.evaluate("document.querySelector('#calendar-controls').scrollIntoView({block:'center'})")
+                    browser.evaluate("document.querySelector('#calendar-count').scrollIntoView({block:'center'})")
                     self.assertTrue(browser.evaluate('document.documentElement.scrollWidth<=innerWidth'))
                     browser.screenshot(label)
                 self.assertEqual(browser.errors,[])

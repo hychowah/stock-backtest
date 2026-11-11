@@ -8,8 +8,9 @@ const BacktestComparison=(()=>{
   const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
   const stable=value=>value===undefined?'[not recorded]':JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
   const text=value=>value===undefined?'Not recorded':value===null?'None':typeof value==='object'?stable(value):String(value);
-  // On-screen numbers: 2 decimals; a value below 0.01 keeps 2 significant digits.
-  const rounded=value=>value!==0&&Math.abs(value)<.01?value.toPrecision(2):value.toFixed(2);
+  // On-screen numbers: 2 decimals; below 0.01, 2 significant digits; below 0.000001, 0.00.
+  // ResultArtifacts.scalarValue applies the same rule to table values.
+  const rounded=value=>{const size=Math.abs(value);return size<1e-6?'0.00':size<.01?value.toPrecision(2):value.toFixed(2);};
   const percent=value=>Number.isFinite(value)?rounded(value*100)+'%':'Unavailable';
   const labels={january:'January',custom:'Fixed dates',random:'Random dates'};
   const defaults={rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',selection_order:'filter_first',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};

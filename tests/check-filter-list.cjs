@@ -46,10 +46,13 @@ const rows=()=>JSON.parse(JSON.stringify(run('StrategyDraft.view()')));
 const ids=()=>rows().map(row=>row.id);
 (async()=>{
  const [cap,ev,rank]=ids();
- // A step is one line of controls: compact move and remove buttons keep their ids and full names.
- for(const text of ['id="step-up-'+cap+'" data-action="up" data-step="'+cap+'" aria-label="Move up step 1 · filter" title="Move up" disabled>↑</button>','id="step-down-'+ev+'" data-action="down" data-step="'+ev+'" aria-label="Move down step 2 · filter" title="Move down">↓</button>',
-   'id="step-remove-'+rank+'" data-action="remove" data-step="'+rank+'" aria-label="Remove step 3 · rank" title="Remove">✕</button>','aria-label="Step 3 · Rank order"','<label for="filter-search-'+rank+'">Rank by</label>'])assert(list.innerHTML.includes(text),text);
- assert(!/<label>(Comparison|Value|Order|Ranks)/.test(list.innerHTML),'A row has no stacked field labels');
+ // A step's compact buttons keep their ids and full accessible names, and
+ // selecting a rendered button still moves its step.
+ const rendered=id=>{const tag=list.innerHTML.match(new RegExp('<button[^>]*\\bid="'+id+'"[^>]*>'));assert(tag,'Missing button '+id);return Object.fromEntries([...tag[0].matchAll(/([\w-]+)="([^"]*)"/g)].map(([,key,value])=>[key,value]));};
+ const select=id=>{const tag=rendered(id);fire('click',button({action:tag['data-action'],step:tag['data-step']}));};
+ assert.deepEqual([rendered('step-down-'+cap)['aria-label'],rendered('step-up-'+ev)['aria-label'],rendered('step-remove-'+rank)['aria-label']],['Move down step 1 · filter','Move up step 2 · filter','Remove step 3 · rank']);
+ select('step-down-'+cap);assert.deepEqual(ids(),[ev,cap,rank]);assert.equal(rendered('step-up-'+cap)['aria-label'],'Move up step 2 · filter');
+ select('step-up-'+cap);assert.deepEqual(ids(),[cap,ev,rank]);
  // Without the local service, built-in sources remain and the list says why.
  add('filter');assert(list.innerHTML.includes('id="filter-search-new"'));assert(list.innerHTML.includes('New filter'));assert(list.innerHTML.includes('data-action="cancel"'));assert.equal(document.activeElement.id,'filter-search-new');
  fire('focusin',search('new'));assert.equal(node('filter-options-new').hidden,false);
@@ -108,9 +111,9 @@ const ids=()=>rows().map(row=>row.id);
  const sector=ids()[4];assert.equal(rows()[4].text,true);assert(list.innerHTML.includes('<option value="Finance" >Finance</option>'));assert.equal(document.activeElement.id,'step-value-'+sector);
  edit(sector,'value','Finance');assert.equal(rows()[4].value,'Finance');
  // Move buttons keep focus on the moved step; Remove clears the message.
- fire('click',button({action:'up',step:sector}));assert.equal(ids()[3],sector);assert.equal(document.activeElement.id,'step-up-'+sector);
- fire('click',button({action:'down',step:sector}));assert.equal(ids()[4],sector);assert.equal(document.activeElement.id,'step-down-'+sector);
- node('filter-message').textContent='old';fire('click',button({action:'remove',step:sector}));assert(!ids().includes(sector));assert.equal(node('filter-message').textContent,'');assert.equal(document.activeElement.id,'step-remove-'+rank);
+ select('step-up-'+sector);assert.equal(ids()[3],sector);assert.equal(document.activeElement.id,'step-up-'+sector);
+ select('step-down-'+sector);assert.equal(ids()[4],sector);assert.equal(document.activeElement.id,'step-down-'+sector);
+ node('filter-message').textContent='old';select('step-remove-'+sector);assert(!ids().includes(sector));assert.equal(node('filter-message').textContent,'');assert.equal(document.activeElement.id,'step-remove-'+rank);
  // A Rank uses the same list without size and listing fields, and keeps its own order and range.
  add('rank');assert(list.innerHTML.includes('New rank'));fire('focusin',search('new'));
  assert(!options('new').includes('Size and listing'));assert(options('new').includes('EV/EBITDA metrics'));assert(options('new').includes('Policy adapter'));

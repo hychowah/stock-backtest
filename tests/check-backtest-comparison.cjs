@@ -69,5 +69,7 @@ assert.deepEqual([shown('metric').display,shown('metric').exact],['Original EBIT
 assert.equal(flat.performance.find(row=>row.key==='growth').display,'2.35×');assert.equal(flat.performance.find(row=>row.key==='cagr').display,'12.00%');
 const spread=describe(artifact({trials:2},{completed:2,valid:2,incomplete:0,configuration:{seed:1},distributions:{cagr:{mean:.000082208838},excess_cagr:{mean:-.005837653252144099,min:-.00004},growth:{mean:1.23456}}},'random')).performance;
 assert.deepEqual(['cagr.mean','excess_cagr.mean','excess_cagr.min','growth.mean'].map(key=>spread.find(row=>row.key===key).display),['0.0082%','-0.58 pp','-0.0040 pp','1.23×']);
+// A value below 0.000001 in its unit shows 0.00, never exponent notation.
+const tiny=describe(artifact({},{cagr:5.55e-17,spy_cagr:-2e-9,growth:1.2e-6})).performance.map(row=>row.display);assert.deepEqual(tiny,['0.00%','0.00%','0.0000012×']);
 assert.equal(spread.find(row=>row.key==='excess_cagr.mean').value,-.005837653252144099);
 console.log('Passed: chain captures list the universe and ordered steps in plain wording with exact text kept, compare by step, the last Rank sets the recorded range, and on-screen values are rounded.');
