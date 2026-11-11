@@ -2,8 +2,8 @@
 // The actual navigation owner keeps existing draft and queue nodes mounted.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const nodes=new Map();
-const node=id=>{if(!nodes.has(id))nodes.set(id,{id,value:'',innerHTML:'',textContent:'',hidden:false,open:false,dataset:{},handlers:{},attributes:{},addEventListener(k,f){this.handlers[k]=f;},setAttribute(k,v){this.attributes[k]=v;},querySelectorAll:()=>[],append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();}});return nodes.get(id);};
-const nav=['builder','runs','library','review'].map(name=>{const n=node('nav-'+name);n.dataset.workspace=name;return n;});
+const node=id=>{if(!nodes.has(id))nodes.set(id,{id,value:'',innerHTML:'',textContent:'',hidden:false,open:false,dataset:{},handlers:{},attributes:{},addEventListener(k,f){this.handlers[k]=f;},setAttribute(k,v){this.attributes[k]=v;},querySelectorAll:()=>[],append(child){child.parentNode=this;},prepend(child){child.parentNode=this;this.first=child;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();}});return nodes.get(id);};
+const nav=['builder','runs','review'].map(name=>{const n=node('nav-'+name);n.dataset.workspace=name;return n;});
 const tabs=['overview','selection','returns','settings'].map(name=>{const n=node('tab-'+name);n.dataset.review=name;return n;});
 const queries=selector=>selector==='[data-workspace]'||selector.startsWith('#workspace-nav')?nav:selector==='[data-review]'?tabs:[];
 // Review blocks list their tabs; a random- or fixed- name limits a block to that kind of result.
@@ -22,9 +22,11 @@ const run=code=>vm.runInContext(code,context);
 node('rank-to').value='25';node('filter-value').value='17';node('strategy-form').innerHTML='Mounted draft';
 run('Workspaces.init()');
 const form=node('strategy-form'),queue=node('queue-panel');
-for(const view of ['runs','library','review','builder'])run(`Workspaces.show('${view}')`);
+for(const view of ['runs','review','builder'])run(`Workspaces.show('${view}')`);
+// The tray borrows the queue panel and returns it to the top of Runs, above the Finished rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
-node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));
+node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
+assert.equal(node('workspace-direct-run').hidden,true,'No direct run shows no line in In progress');
 context.queue={records:[{state:'running',name:'Existing run',progress:{completed:2,total:5}},{state:'held'}],paused:false,available:true};
 run('Workspaces.queueStatus(queue)');assert(node('workspace-run-detail').textContent.includes('2 / 5'));assert(node('workspace-waiting').textContent.includes('1 waiting'));
 assert.equal(node('rank-to').value,'25');assert.equal(node('filter-value').value,'17');assert.equal(node('strategy-form'),form);assert.equal(form.innerHTML,'Mounted draft');
@@ -74,5 +76,8 @@ run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-
 run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
 run("Workspaces.runStatus({detail:'Preparing original books',elapsed:'0:02'})");assert(node('workspace-run-detail').textContent.includes('Preparing original books'));
+// A direct run is one line in In progress, only while it runs.
+assert.equal(node('workspace-direct-run').hidden,false);assert(node('workspace-direct-status').textContent.includes('Preparing original books'));
+run("Workspaces.runStatus({running:false,detail:'Completed in 0:03'})");assert.equal(node('workspace-direct-run').hidden,true);assert.equal(node('workspace-direct-status').textContent,'');
 assert.equal(form.innerHTML,'Mounted draft');
-console.log('Passed: mounted draft/queue lifetimes, original recorded settings, the result headline and its tone, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, explicit copy, and independent background-status updates.');
+console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, the direct-run line, original recorded settings, the result headline and its tone, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, explicit copy, and independent background-status updates.');

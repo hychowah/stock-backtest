@@ -1,13 +1,22 @@
-/* The library stores complete results on the local service, never browser quota. */
+/* The library stores complete results on the local service, never browser quota.
+   Its records are the Finished rows of Runs. The panel above the rows is derived
+   from the ticked rows and one description per ticked saved id. */
 const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current=()=>null,isRunning=()=>false,openRecord=()=>{},copySettings=()=>{};
   let queueRefresh=false;
-  const disclosures=new Map();
-  let comparisonIds=['',''],comparison=null,comparisonLoading=false,comparisonGeneration=0;
-  let records=[],limit=100,sorting='newest',renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
-  function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
+  // Descriptions reuse stored-artifact descriptions and keep their rows only. They
+  // own no artifact, evidence reader, form or main-result lifetime. An id that
+  // leaves the list leaves the ticks and the descriptions.
+  const ticked=new Set(),descriptions=new Map();
+  let loading=false,refocus=null;
+  const headings={name:'Name',cagr:'CAGR',saved:'Saved'},directions={name:1,cagr:-1,saved:-1};
+  let records=[],limit=100,sorting={key:'saved',direction:-1},renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
+  // Save reports beside its button in Result review. Every list action reports above the Finished rows.
+  const say=id=>(text,error=false)=>{node(id).textContent=text;node(id).className=error?'backtest-failed':'hint';};
+  const message=say('saved-status'),saveMessage=say('saved-message');
+  const when=value=>new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   function defaultName(snapshot){
     if(snapshot.kind==='january')return 'January '+snapshot.settings.first+'–'+snapshot.settings.last;
     return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+(snapshot.settings.calendar?.start??snapshot.settings.start)+' → '+(snapshot.settings.calendar?.end??snapshot.settings.end);
@@ -17,105 +26,94 @@ const SavedBacktests=(()=>{
     const snapshot=current();
     node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=limit;
     node('saved-count').textContent=records.length+' / '+limit;
-    node('refresh-backtests').disabled=busy||!available;
-    node('saved-compare').disabled=busy||!available||comparisonLoading||comparisonIds.some(id=>!id)||comparisonIds[0]===comparisonIds[1];
-    node('saved-compare-clear').disabled=!comparisonLoading&&!comparison&&comparisonIds.every(id=>!id);
-    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest to make room.':'Saves the original completed result and its submitted settings. Exploration summaries and pending settings are not included.';
+    for(const [key,label] of Object.entries(headings))node('saved-sort-'+key).textContent=label+(sorting.key!==key?'':sorting.direction>0?' ↑':' ↓');
+    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a finished test in Runs to make room.':'Saves the original completed result and its submitted settings. Exploration summaries and pending settings are not included.';
   }
-  // List order uses stored summary values only. Missing performance stays last.
+  // List order uses stored summary values only. Names sort with their numbers in
+  // number order. A missing CAGR stays last in both directions. Equal values show
+  // the newest saved first, then the lower id.
   function ordered(){
-    const tie=(a,b)=>String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id);
+    const tie=(a,b)=>String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id),{key,direction}=sorting;
     return [...records].sort((a,b)=>{
-      if(sorting==='newest')return tie(a,b);
+      if(key==='saved')return -direction*tie(a,b);
+      if(key==='name')return direction*String(a.name).localeCompare(String(b.name),undefined,{numeric:true})||tie(a,b);
       const knownA=Number.isFinite(a.cagr),knownB=Number.isFinite(b.cagr);
       if(knownA!==knownB)return knownA?-1:1;
-      return (knownA?(a.cagr-b.cagr)*(sorting==='performance-asc'?1:-1):0)||tie(a,b);
+      return (knownA?(a.cagr-b.cagr)*direction:0)||tie(a,b);
     });
   }
+  // One line per test in the columns that the In progress rows use. The name opens
+  // the result; the other actions wait in the row control. Every control has a
+  // stable id, so the focus returns to it when the list is drawn again.
   function render(){
-    for(const id of disclosures.keys())if(!records.some(record=>record.id===id))disclosures.delete(id);
-    const focused=document.activeElement,focusId=focused?.id,start=focused?.selectionStart,end=focused?.selectionEnd;
-    node('saved-list').innerHTML=ordered().map(record=>{
-      const kind={january:'January',custom:'Fixed dates',random:'Random dates'}[record.kind]||'Backtest';
+    const list=node('saved-list'),known=new Set(records.map(record=>record.id));
+    for(const kept of [ticked,descriptions])for(const id of [...kept.keys()])if(!known.has(id))kept.delete(id);
+    const open=new Set([...list.querySelectorAll('details[open]')].map(control=>control.dataset.menu)),focused=document.activeElement;
+    if(focused?.id)refocus={id:focused.id,start:focused.selectionStart,end:focused.selectionEnd};
+    else if(focused&&focused!==document.body)refocus=null;
+    list.innerHTML=ordered().map(record=>{
+      const id=escape(record.id),name=escape(record.name);
+      const kind={january:'January',custom:'Fixed dates',random:'Random'+(record.trials?' · '+escape(record.trials)+' trials':' dates')}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
-      const description=kind+' · '+record.start+' → '+record.end+' · '+(record.kind==='random'?'Mean trial CAGR ':'CAGR ')+cagr;
-      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+escape(record.id)+'" data-rename-input="'+escape(record.id)+'" value="'+escape(renaming.name)+'" maxlength="120"></label><button type="button" data-save-name="'+escape(record.id)+'">Save name</button><button type="button" data-cancel-name="'+escape(record.id)+'">Cancel</button>':pendingDelete===record.id?'<span>Delete this saved backtest?</span> <button type="button" data-confirm="'+escape(record.id)+'">Delete record</button> <button type="button" data-keep="'+escape(record.id)+'">Keep</button>':'<button type="button" data-open="'+escape(record.id)+'">Open</button> <button type="button" data-copy="'+escape(record.id)+'">Copy settings</button> <button type="button" data-rename="'+escape(record.id)+'">Rename</button> <button type="button" data-delete="'+escape(record.id)+'">Delete</button>';
-      return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small><small class="saved-id">ID: '+escape(record.id)+'</small>'+parameterDisclosure(record.id)+'</div><div class="saved-actions">'+actions+'</div></li>';
-    }).join('')||'<li>No saved backtests yet.</li>';
-    node('saved-list').querySelectorAll('button,input').forEach(control=>control.disabled=busy);
-    renderComparison();
-    if(focusId&&!busy){const restored=node(focusId);restored?.focus?.({preventScroll:true});if(start!==null&&start!==undefined)restored?.setSelectionRange?.(start,end);}
+      const button=(key,label)=>'<button type="button" id="saved-do-'+key+'-'+id+'" data-'+key+'="'+id+'">'+label+'</button>';
+      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this saved backtest?</span>'+button('confirm','Delete record')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
+      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Compare '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'">'+name+'</button><span class="run-status"><span class="queue-state">Finished</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)||renaming?.id===record.id||pendingDelete===record.id?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Actions for '+name+'" title="Actions">⋯</summary><div class="run-actions">'+actions+'</div></details></li>';
+    }).join('')||'<li class="run-empty">No finished tests yet.</li>';
+    // Ticks stay usable while a list action runs.
+    list.querySelectorAll('button,input:not([type=checkbox])').forEach(control=>control.disabled=busy);
+    renderPanel();
+    // A control that is disabled while the list is busy gets its focus back afterwards.
+    const target=refocus&&node(refocus.id);
+    if(!target)refocus=null;
+    else if(!target.disabled){target.focus?.({preventScroll:true});if(refocus.start!==null&&refocus.start!==undefined)target.setSelectionRange?.(refocus.start,refocus.end);refocus=null;}
     update();
   }
-  // Disclosures reuse stored-artifact descriptions and retain parameter rows
-  // only. They own no artifact, evidence reader, form or main-result lifetime.
-  // A row's exact recorded text follows its plain wording.
-  function parameterDisclosure(id){
-    const state=disclosures.get(id);
-    const content=state?.rows?'<dl>'+state.rows.map(row=>'<dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+(row.exact?'<small class="exact-setting">'+escape(row.exact)+'</small>':'')+'</dd>').join('')+'</dl>':
-      state?.loading?'<p role="status">Loading recorded parameters…</p>':state?.error?'<p role="status">'+escape(state.error)+'</p><button type="button" data-parameters-retry="'+escape(id)+'">Retry parameters</button>':'<p>Expand to read the settings and filters used for this saved test.</p>';
-    return '<details class="saved-parameters" data-parameters-id="'+escape(id)+'"'+(state?.open?' open':'')+'><summary id="saved-parameters-toggle-'+escape(id)+'">All parameters</summary>'+content+'</details>';
+  const menu=id=>node('saved-menu-'+id)?.focus?.({preventScroll:true});
+  // One tick shows that test: its headline, its saved ID and every setting in plain
+  // wording, with the exact recorded text in a closed disclosure. More ticks show
+  // one column per test in list order: the settings that differ, then the
+  // headlines, then every measure and setting in a closed disclosure. Only
+  // setting rows carry the difference marker.
+  function renderPanel(){
+    const panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),all=panel.querySelectorAll('details[open]').length>0;
+    panel.hidden=!chosen.length;
+    if(!chosen.length){panel.innerHTML='';return;}
+    if(chosen.some(record=>!descriptions.has(record.id))){panel.innerHTML='<p role="status">Reading the stored '+(chosen.length>1?'results of '+chosen.length+' tests':'result')+'…</p>';return;}
+    const described=chosen.map(record=>descriptions.get(record.id)),notes=notices=>notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('');
+    if(chosen.length===1){
+      const list=(name,rows,key='display')=>'<dl class="'+name+'">'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>',exact=described[0].parameters.filter(row=>row.exact);
+      panel.innerHTML='<h4>'+escape(chosen[0].name)+'<small class="saved-id">Saved ID: '+escape(chosen[0].id)+'</small></h4>'+list('comparison-headline',described[0].headline)+notes(described[0].notices)+list('comparison-settings',described[0].parameters)+
+        (exact.length?'<details'+(all?' open':'')+'><summary>Exact recorded values</summary>'+list('comparison-settings',exact,'exact')+'</details>':'');
+      return;
+    }
+    const compared=BacktestComparison.compare(described),differing=compared.parameters.filter(row=>row.different);
+    const group=(title,rows,marked)=>'<tbody><tr class="comparison-group"><th scope="rowgroup" colspan="'+(chosen.length+1)+'">'+title+'</th></tr>'+rows.map(row=>'<tr'+(marked&&row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(marked&&row.different?'<span class="comparison-difference">Different</span>':'')+'</th>'+row.cells.map(cell=>'<td>'+escape(cell)+'</td>').join('')+'</tr>').join('')+'</tbody>';
+    // Each table keeps the same column widths; many ticked tests scroll sideways inside the panel.
+    const table=(caption,groups)=>'<div class="comparison-scroll"><table style="min-width:'+(170+140*chosen.length)+'px"><caption>'+caption+'</caption><thead><tr><td></td>'+chosen.map(record=>'<th scope="col">'+escape(record.name)+'</th>').join('')+'</tr></thead>'+groups+'</table></div>';
+    panel.innerHTML=notes(compared.notices)+table('Comparison of '+chosen.length+' ticked tests',group(differing.length?'Settings that differ':'These tests have the same settings',differing)+group('Headline',compared.headline))+
+      '<details'+(all?' open':'')+'><summary>All measures and settings</summary>'+table('All measures and settings of the ticked tests',group('Measures',compared.performance)+group('Settings',[{label:'Saved ID',cells:chosen.map(record=>record.id)},...compared.parameters],true))+'</details>';
   }
-  async function loadParameters(id){
-    const state=disclosures.get(id);
-    if(!state||state.loading)return;
-    const generation=state.generation=(state.generation||0)+1;
-    state.loading=true;state.error=null;render();
+  // One loader reads the descriptions of the ticked rows, one at a time. A row
+  // that nobody ticked is never read. A failed read is not kept: the row loses
+  // its tick and the status line gives the reason. The temporary evidence reader
+  // closes when the description is read.
+  async function load(){
+    if(loading)return;
+    loading=true;
     try{
-      const description=await describeSaved(id,()=>disclosures.get(id)===state&&state.generation===generation);
-      if(disclosures.get(id)===state&&state.generation===generation)state.rows=description?.parameters;
-    }catch(error){
-      if(disclosures.get(id)===state&&state.generation===generation)state.error=error.message||'Could not load recorded parameters. Retry when the service is available.';
-    }finally{
-      if(disclosures.get(id)===state&&state.generation===generation){state.loading=false;render();}
-    }
-  }
-  function comparisonMessage(text,error=false){
-    node('saved-compare-message').textContent=text;node('saved-compare-message').className=error?'backtest-failed':'hint';
-  }
-  function renderComparison(){
-    if(comparisonIds.some(id=>id&&!records.some(record=>record.id===id))){
-      comparisonGeneration++;comparisonLoading=false;comparison=null;
-      comparisonIds=comparisonIds.map(id=>records.some(record=>record.id===id)?id:'');
-      comparisonMessage('A selected saved test was deleted. Choose two saved tests again.');
-    }
-    for(const [index,id] of ['saved-compare-left','saved-compare-right'].entries()){
-      const select=node(id);
-      select.innerHTML='<option value="">Choose a saved test</option>'+ordered().map(record=>'<option value="'+escape(record.id)+'">'+escape(record.name)+' · '+escape(record.id)+'</option>').join('');
-      select.value=comparisonIds[index];select.disabled=busy||!available;
-    }
-    const panel=node('saved-comparison');panel.hidden=!comparison;
-    if(!comparison){panel.innerHTML='';return;}
-    const selected=comparisonIds.map(id=>records.find(record=>record.id===id));
-    const table=(title,rows)=>'<h3>'+title+'</h3><table><caption>'+title+' for the two selected saved tests</caption><thead><tr><th scope="col">Measure / parameter</th>'+selected.map((record,index)=>'<th scope="col">Test '+(index+1)+': '+escape(record.name)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr'+(row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(row.different?'<span class="comparison-difference">Different</span>':'')+'</th><td>'+escape(row.left)+'</td><td>'+escape(row.right)+'</td></tr>').join('')+'</tbody></table>';
-    panel.innerHTML='<div class="comparison-identities">'+selected.map((record,index)=>'<div><strong>Test '+(index+1)+': '+escape(record.name)+'</strong><small>ID: '+escape(record.id)+'</small></div>').join('')+'</div>'+comparison.notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('')+'<div class="saved-comparison-scroll" tabindex="0" role="region" aria-label="Saved test comparison">'+table('Recorded performance',comparison.performance)+table('Parameters',comparison.parameters)+'</div>';
-  }
-  function chooseComparison(index,value){
-    comparisonIds[index]=value;comparisonGeneration++;comparison=null;comparisonLoading=false;
-    comparisonMessage(comparisonIds[0]&&comparisonIds[0]===comparisonIds[1]?'Choose two different saved tests.':'Choose two saved tests, then select Compare.');
-    render();
-  }
-  async function describeSaved(id,current=()=>true){
-    const used=await ResultArtifacts.use({kind:'saved',id},artifact=>BacktestComparison.describe(artifact),{current});
-    return used.value;
-  }
-  async function compareSelected(){
-    if(busy||comparisonIds.some(id=>!id)||comparisonIds[0]===comparisonIds[1])return;
-    const generation=++comparisonGeneration,ids=[...comparisonIds],descriptions=[];
-    comparisonLoading=true;comparison=null;comparisonMessage('Loading the two saved tests…');render();
-    try{
-      for(const id of ids){
-        descriptions.push(await describeSaved(id,()=>generation===comparisonGeneration));
-        if(generation!==comparisonGeneration)return;
+      for(let id;(id=[...ticked].find(id=>!descriptions.has(id)));){
+        try{
+          const used=await ResultArtifacts.use({kind:'saved',id},artifact=>BacktestComparison.describe(artifact));
+          if(!used.consumed)throw Error('Its stored result was not read.');
+          if(records.some(record=>record.id===id))descriptions.set(id,used.value);else ticked.delete(id);
+          renderPanel();
+        }catch(error){
+          const record=records.find(record=>record.id===id);
+          if(ticked.delete(id)&&record)message('Could not read “'+record.name+'”. '+(error.message||'Tick it again when the service is available.'),true);
+          render();
+        }
       }
-      comparison=BacktestComparison.compare(...descriptions);
-      comparisonMessage('Comparison ready. Highlighted rows marked Different show recorded differences. The main results are unchanged.');
-    }catch(error){if(generation===comparisonGeneration)comparisonMessage(error.message||'Could not compare these saved tests. Their records were kept.',true);}
-    finally{if(generation===comparisonGeneration){comparisonLoading=false;render();}}
-  }
-  function clearComparison(){
-    comparisonGeneration++;comparisonIds=['',''];comparison=null;comparisonLoading=false;
-    comparisonMessage('Comparison cleared. The main results are unchanged.');render();
+    }finally{loading=false;}
   }
   async function request(path='',options={}){
     const response=await fetch('/api/backtests'+path,options);
@@ -129,17 +127,17 @@ const SavedBacktests=(()=>{
     if(!Array.isArray(value.records))throw Error('The saved-list response is invalid.');
     if(number===refreshNumber&&revision===mutation){records=value.records;if(Number.isInteger(value.limit)&&value.limit>0)limit=value.limit;render();}
   }
-  async function perform(action){
+  async function perform(action,report=message){
     if(busy)return;
     const ticket=++feedback;busy=true;render();
-    try{await action(ticket);}catch(error){message(error.message||'Could not reach the local service. Your saved records were kept.',true);}
+    try{await action(ticket);}catch(error){report(error.message||'Could not reach the local service. Your saved records were kept.',true);}
     finally{busy=false;render();if(queueRefresh)changed();}
   }
   // Reconciliation cannot turn an acknowledged mutation into a failed mutation.
   // Ignore stale reads and feedback if a newer library action has started.
-  async function reconcile(success,ticket){
+  async function reconcile(success,ticket,report=message){
     try{await refresh();}
-    catch(_){if(ticket===feedback)message(success+' The saved list could not be refreshed. Select Refresh saved list to try again.');}
+    catch(_){if(ticket===feedback)report(success+' The saved list could not be refreshed. Select Refresh in Runs to try again.');}
   }
   async function save(){
     const snapshot=current();
@@ -149,12 +147,12 @@ const SavedBacktests=(()=>{
     // A saved January result is saved again as its stored record.
     const body=JSON.stringify([3,4].includes(snapshot.version)?{name,reader:snapshot.evidence.id}:{name,snapshot:snapshot.record??snapshot});
     await perform(async ticket=>{
-      message('Saving complete backtest results…');
+      saveMessage('Saving complete backtest results…');
       const record=await request('',{method:'POST',headers:{'Content-Type':'application/json'},body});
       mutation++;records=[record,...records.filter(item=>item.id!==record.id)];render();node('saved-name').value='';
-      const success='Saved “'+record.name+'”. Its complete results are available below.';message(success);
-      void reconcile(success,ticket);
-    });
+      const success='Saved “'+record.name+'”. Its complete results are under Finished in Runs.';saveMessage(success);
+      void reconcile(success,ticket,saveMessage);
+    },saveMessage);
   }
   async function open(id){
     const number=++operation,isCurrent=ResultArtifacts.opening();
@@ -168,7 +166,7 @@ const SavedBacktests=(()=>{
     await perform(async()=>{
       message('Loading saved settings…');
       const used=await ResultArtifacts.use({kind:'saved',id},artifact=>copySettings(artifact));
-      if(used.consumed)message('Copied settings from “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'”. Adjust the strategy controls, then select Run backtest. Auto-run is off.');
+      if(used.consumed)message('Copied settings from “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'”. Adjust the strategy controls, then select Run backtest or Add to queue. Auto-run is off.');
     });
   }
   async function remove(id){
@@ -186,7 +184,7 @@ const SavedBacktests=(()=>{
     if(!name||name.length>120){message('Use a backtest name with 1–120 characters.',true);return;}
     await perform(async ticket=>{
       const record=await request('/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-      mutation++;records=records.map(item=>item.id===id?record:item);renaming=null;render();
+      mutation++;records=records.map(item=>item.id===id?record:item);renaming=null;render();menu(id);
       const success='Renamed to “'+record.name+'”. Its ID and stored results are unchanged.';message(success);
       void reconcile(success,ticket);
     });
@@ -200,47 +198,41 @@ const SavedBacktests=(()=>{
   }
   function init(access){
     current=access.current;isRunning=access.isRunning;openRecord=access.open;copySettings=access.copy;
-    node('saved-compare-left').addEventListener('change',()=>chooseComparison(0,node('saved-compare-left').value));
-    node('saved-compare-right').addEventListener('change',()=>chooseComparison(1,node('saved-compare-right').value));
-    node('saved-compare').addEventListener('click',compareSelected);
-    node('saved-compare-clear').addEventListener('click',clearComparison);
     node('save-backtest').addEventListener('click',save);
-    node('refresh-backtests').addEventListener('click',()=>perform(async()=>{await refresh();message('Saved list refreshed.');}));
-    node('saved-sort').addEventListener('change',()=>{sorting=node('saved-sort').value;render();});
-    // Native toggle does not bubble. Capture it on the persistent list. An open
-    // disclosure recreated by rendering cannot restart a pending/cached load.
-    node('saved-list').addEventListener('toggle',event=>{
-      const id=event.target.dataset?.parametersId;
-      if(!id||!records.some(record=>record.id===id))return;
-      let state=disclosures.get(id);
-      if(!state){state={open:false,loading:false,rows:null,error:null};disclosures.set(id,state);}
-      state.open=event.target.open;
-      if(state.open&&!state.loading&&!state.rows&&!state.error)return loadParameters(id);
-    },true);
+    // The one Refresh of Runs also reads the Finished rows again.
+    node('queue-refresh').addEventListener('click',()=>available?perform(async()=>{await refresh();message('Finished tests refreshed.');}):undefined);
+    node('saved-head').addEventListener('click',event=>{
+      const key=event.target.dataset.sort;if(!key)return;
+      sorting={key,direction:sorting.key===key?-sorting.direction:directions[key]};render();
+    });
+    node('saved-list').addEventListener('change',event=>{
+      const id=event.target.dataset.tick;if(!id)return;
+      if(event.target.checked)ticked.add(id);else ticked.delete(id);
+      renderPanel();return load();
+    });
     node('saved-list').addEventListener('input',event=>{
-      if(renaming?.id===event.target.dataset.renameInput)renaming.name=event.target.value;
+      if(renaming&&renaming.id===event.target.dataset.renameInput)renaming.name=event.target.value;
     });
     node('saved-list').addEventListener('keydown',event=>{
       if(!renaming||renaming.id!==event.target.dataset.renameInput)return;
       if(event.key==='Enter'){event.preventDefault();return rename(renaming.id);}
-      if(event.key==='Escape'){event.preventDefault();renaming=null;render();if(queueRefresh)changed();}
+      if(event.key==='Escape'){event.preventDefault();const id=renaming.id;renaming=null;render();menu(id);if(queueRefresh)changed();}
     });
     node('saved-list').addEventListener('click',event=>{
       if(busy)return;
       const data=event.target.dataset;
-      if(data.parametersRetry)return loadParameters(data.parametersRetry);
       if(data.saveName)return rename(data.saveName);
       if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
-      if(data.cancelName){renaming=null;render();if(queueRefresh)changed();return;}
+      if(data.cancelName){renaming=null;render();menu(data.cancelName);if(queueRefresh)changed();return;}
       if(data.open)return open(data.open);
       if(data.copy)return copy(data.copy);
       if(data.confirm)return remove(data.confirm);
       if(data.delete){pendingDelete=data.delete;render();}
-      if(data.keep){pendingDelete=null;render();}
+      if(data.keep){pendingDelete=null;render();menu(data.keep);}
     });
     available=typeof fetch==='function' && typeof location!=='undefined' && location.protocol!=='file:';
     if(available)perform(refresh);
-    else message('Saved backtests use the local website service opened by backtest-web.cmd.');
+    else message('Finished tests use the local website service opened by backtest-web.cmd.');
     update();
   }
   return {init,update,changed};

@@ -1,18 +1,100 @@
-.queue-add{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:20px 0}
-.queue-add label{flex:1 1 260px;font-size:13px}
-.queue-add input{display:block;width:100%;margin-top:7px}
-#queue-count{font:14px system-ui,sans-serif;color:#617172;white-space:nowrap}
-#queue-list{list-style:none;padding:0;max-height:min(560px,65vh);overflow:auto;scrollbar-gutter:stable}
-#queue-list:focus-visible{outline:3px solid #20775e;outline-offset:3px}
-#queue-list>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:20px 0;border-top:1px solid #dce3da}
-.queue-title{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
-.queue-title strong{font-size:17px;overflow-wrap:anywhere}
-.queue-state{font-size:12px;border:1px solid #cad7ce;border-radius:20px;padding:4px 9px;background:#edf4ef}
-.queue-summary,.queue-progress{display:block;color:#536762;font-size:13px;margin:8px 0;overflow-wrap:anywhere}
-.queue-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-content:flex-start;gap:8px;max-width:360px}
-#queue-list details{font-size:13px;color:#536762}
-#queue-list details p{margin:8px 0;overflow-wrap:anywhere}
-@media(max-width:700px){#queue-list>li{grid-template-columns:minmax(0,1fr)}.queue-actions{max-width:100%;justify-content:flex-start}.queue-add>button{flex:1 1 100%}}
+/* Runs: In progress and Finished are two row groups with one column layout, so
+   they read as one table. A row is one line. Its other actions wait in the row
+   control, which opens below the row inside the page flow: no scroll box clips it.
+   The base rules give the narrow layout, which the queue tray also uses: the name,
+   then the other values on a second line. */
+.run-counts{font:14px system-ui,sans-serif;color:#617172}
+.run-counts>span{white-space:nowrap}
+.backtest-queue>.toolbar>div:last-child{display:flex;flex-wrap:wrap;gap:8px}
+.run-group{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#57716b;margin:16px 0 4px}
+#saved-panel>.run-group{margin-top:0}
+#queue-list,#saved-list{list-style:none;margin:0;padding:0}
+.run-empty{padding:12px 0;border-top:1px solid #e2e7df;font-size:13px;color:#617172}
+.run-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;min-height:48px;padding:4px 48px 4px 0;border-top:1px solid #e2e7df;font-size:13px;color:#536762}
+.run-row>input[type=checkbox]{flex:none;width:20px;height:20px;min-height:0;margin:0;padding:0;accent-color:#20775e}
+.run-name{flex:1 1 calc(100% - 32px);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;color:#192b31}
+button.run-name{border:0;border-radius:4px;background:none;padding:0;text-align:left;color:#1d5a49}
+button.run-name:hover{text-decoration:underline}
+.run-status{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0}
+.queue-state{font-size:12px;line-height:18px;border:1px solid #cad7ce;border-radius:20px;padding:0 9px;background:#edf4ef;color:#33493f;white-space:nowrap}
+[data-state=running] .queue-state,[data-state=stopping] .queue-state,#workspace-direct-run .queue-state{background:#20775e;border-color:#20775e;color:#fff}
+[data-state=held] .queue-state{background:#fff5de;border-color:#e3c98f;color:#78561b}
+[data-state=failed] .queue-state,[data-state=cancelled] .queue-state{background:#fbeceb;border-color:#e5b9b5;color:#8f2f28}
+.queue-progress{font-size:11px;line-height:1.35;overflow-wrap:anywhere}
+.queue-progress:empty,li>.run-cagr:empty{display:none}
+.run-type,.run-window,.run-time{white-space:nowrap}
+.run-cagr{color:#192b31}
+li>.run-cagr::before{content:'CAGR ';color:#536762}
+#workspace-direct-stop{margin-left:auto;min-height:36px;padding:4px 12px;border-color:#a93830;color:#a93830}
+#workspace-direct-run{padding-right:0}
+/* The column headings show in the wide layout. In the narrow layout the Finished
+   headings stay as a line of sort buttons. */
+.run-head{min-height:32px;border-top:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#6b7862}
+.run-head>span{display:none}
+.run-head:not(:has(button)){display:none}
+.run-head:has(~ol>.run-empty,~ul>.run-empty){display:none}
+.run-head button{border:0;border-radius:4px;background:none;min-height:32px;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;text-align:left;color:#1d5a49;white-space:nowrap}
+.run-head button:hover{text-decoration:underline}
+.run-head>span.run-cagr{color:inherit}
+.run-head::before{content:'Sort'}
+/* The row control: a compact button at the end of the row line. */
+.run-menu{flex:1 1 100%;min-width:0;font-size:13px}
+.run-menu>summary{position:absolute;top:2px;right:0;display:grid;place-items:center;width:44px;height:44px;list-style:none;border:1px solid transparent;border-radius:6px;font-size:20px;line-height:1;color:#536762;cursor:pointer}
+.run-menu>summary::-webkit-details-marker{display:none}
+.run-menu>summary:hover,.run-menu[open]>summary{background:#edf2e5;border-color:#dce5d1}
+.run-menu>summary:focus-visible{outline:2px solid #20775e;outline-offset:-2px}
+.run-menu[open]{padding:6px 0 12px}
+.run-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.run-menu p{margin:8px 0 0;overflow-wrap:anywhere}
+.saved-rename{flex:1 1 260px;font-size:12px}
+.saved-rename input{display:block;width:100%;margin-top:4px}
+.saved-id{font:11px ui-monospace,monospace;color:#617172;overflow-wrap:anywhere}
+/* The panel of the ticked finished tests sits above their rows. */
+.saved-comparison{margin:4px 0 12px;padding:10px 14px;border:1px solid #d5dfcd;border-radius:8px;background:#f8faf5;font-size:13px}
+.saved-comparison>p{margin:0}
+.saved-comparison h4{margin:0 0 8px;font-size:14px;color:#192b31}
+.saved-comparison h4>small{margin-left:12px;font-weight:400}
+.comparison-notice{font-size:12px;line-height:1.5;color:#78561b}
+.comparison-headline,.comparison-settings{display:grid;gap:6px 18px;margin:0}
+.comparison-headline{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin-bottom:8px}
+.comparison-settings{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));padding-top:8px;border-top:1px solid #dfe5d8}
+.saved-comparison details>.comparison-settings{padding:0 0 4px;border-top:0}
+.saved-comparison dt{font-size:11px;color:#617172}
+.saved-comparison dd{margin:1px 0 0;color:#192b31;overflow-wrap:anywhere}
+.comparison-headline dd{font-size:18px;font-weight:500;color:#244f43}
+.comparison-scroll{max-width:100%;overflow-x:auto}
+.saved-comparison table{width:100%;table-layout:fixed;font-size:13px}
+.saved-comparison thead td{width:170px}
+.saved-comparison caption{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.saved-comparison th,.saved-comparison td{position:static;padding:4px 10px;border-bottom:1px solid #e8ece5;background:none;text-align:left;vertical-align:top;white-space:normal;overflow-wrap:anywhere;font-weight:400}
+.saved-comparison thead th{font-weight:600;color:#192b31;border-bottom-color:#cfd8cc}
+.saved-comparison tbody th{color:#536762}
+.saved-comparison .comparison-group th{padding-top:8px;border-bottom:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#6b7862}
+.saved-comparison td{color:#192b31}
+.saved-comparison .comparison-different>*{background:#fff2ce}
+.comparison-difference{margin-left:8px;font-size:11px;font-weight:700;color:#704d12}
+.saved-comparison details{margin-top:4px}
+.saved-comparison summary{width:fit-content;min-height:32px;padding:7px 0;cursor:pointer;color:#536762}
+/* Wide layout: both groups use the same columns. The first column holds the tick
+   box of a finished row; the last column holds the row control. */
+@media(min-width:1300px){
+  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,1.6fr) minmax(0,1fr) 126px 172px 64px 104px 44px;grid-template-rows:minmax(48px,auto);gap:0 12px;padding:0}
+  #workspace-runs .run-head{grid-template-rows:auto}
+  #workspace-runs .run-row>.run-name,#workspace-runs .run-head>:first-child{grid-column:2}
+  #workspace-runs .run-status{flex-direction:column;flex-wrap:nowrap;align-items:flex-start;padding:5px 0}
+  #workspace-runs .run-type,#workspace-runs .run-window,#workspace-runs .run-time{overflow:hidden;text-overflow:ellipsis}
+  #workspace-runs .run-cagr{text-align:right}
+  #workspace-runs li>.run-cagr::before,#workspace-runs .run-head::before{content:none}
+  #workspace-runs li>.run-cagr:empty{display:block}
+  #workspace-runs .run-head>span{display:block}
+  #workspace-runs .run-head:has(~ol>.run-empty,~ul>.run-empty){display:none}
+  #workspace-runs .run-menu{grid-column:1/-1}
+  #workspace-runs .run-menu[open]{padding-left:32px}
+  #workspace-runs #workspace-direct-run>.run-status{grid-column:3/7}
+  #workspace-runs #workspace-direct-stop{grid-column:7/-1;justify-self:end}
+}
+/* Builder: the test name sits beside Add to queue. */
 .strategy-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.strategy-actions #queue-name{flex:0 1 210px;width:auto;min-width:120px}
 .strategy-actions #queue-add{border:2px solid #20775e;color:#193e36;font-weight:600;min-height:44px}
 .strategy-actions #queue-link{display:inline-flex;align-items:center;min-height:44px;padding:0 8px;color:#20775e}

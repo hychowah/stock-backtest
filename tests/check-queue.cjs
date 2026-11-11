@@ -69,7 +69,10 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
 (async()=>{
   call('BacktestQueue.init(config)');await settle();assert(!node('queue-add').disabled);
   node('queue-name').value='<First & strategy>';await call('BacktestQueue.add()');
-  settings.rank_to=25;settings.selection_order='filter_first';node('queue-name').value='Second';await call('BacktestQueue.add()');
+  // The name box sits in the strategy form: typing a name is not a settings change, and Enter adds the test.
+  let stopped=0,prevented=0;for(const type of ['input','change'])node('queue-name').handlers[type]({stopPropagation(){stopped++}});assert.equal(stopped,2);
+  await node('queue-name').handlers.keydown({key:'a',preventDefault(){prevented++}});assert.equal(records.length,1);
+  settings.rank_to=25;settings.selection_order='filter_first';node('queue-name').value='Second';await node('queue-name').handlers.keydown({key:'Enter',preventDefault(){prevented++}});assert.equal(prevented,1);
   assert.equal(records.length,2);assert.equal(records[0].options.rank_to,50);assert.equal(records[1].options.rank_to,25);
   assert.equal(records[0].options.selection_order,'rank_first');assert.equal(records[1].options.selection_order,'filter_first');
   assert.equal(preparations,2,'Queue additions keep parameter setup manual between fast cached tests');
@@ -82,6 +85,7 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   // unchanged original selection. Here the draft returns the flat settings.
   const prepareNew=context.config.prepareSubmission;let heldRequest;context.config.prepareSubmission=async request=>{heldRequest=request;return copy(settings);};
   await call('BacktestQueue.add()');assert.equal(records.find(item=>item.id===first).options.rank_to,10);assert.equal(call('BacktestQueue.isEditing()'),false);
+  assert.equal(records.find(item=>item.id===first).name,'<First & strategy>','A held edit keeps a typed name');
   context.config.prepareSubmission=prepareNew;assert.deepEqual(JSON.parse(JSON.stringify(heldRequest)),{held:true});assert(!('strategy' in records.find(item=>item.id===first).options));
   assert.equal(endedEdits,1,'A confirmed save ends the form session');
   await call('BacktestQueue.action("edit",first)');settings.rank_to=99;
@@ -90,13 +94,15 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   await call('BacktestQueue.action("up",second)');assert(records.find(item=>item.id===second).position<records.find(item=>item.id===first).position);
   await node('queue-pause').handlers.click();assert(paused);assert.equal(node('queue-pause').textContent,'Resume queue');
   await node('queue-pause').handlers.click();assert(!paused);
-  await call('BacktestQueue.action("copy",first)');assert.equal(loaded.rank_to,10);assert(node('queue-name').value.endsWith('copy'));
+  node('queue-name').value='Left from before';await call('BacktestQueue.action("copy",first)');assert.equal(loaded.rank_to,10);assert.equal(node('queue-name').value,'','Tune leaves the name box empty');
   const beforeDelete=requests.length;await call('BacktestQueue.action("delete",second)');assert.equal(requests.length,beforeDelete);
   assert(node('queue-list').innerHTML.includes('Delete this test and its result?'));
   await call('BacktestQueue.action("keep",second)');assert.equal(records.length,2);
   await call('BacktestQueue.action("confirm",second)');assert.equal(records.length,1);assert.equal(records[0].id,first);
 
-  records[0].state='running';await call('BacktestQueue.refresh()');await call('BacktestQueue.action("stop",first)');assert.equal(records[0].state,'stopping');
+  records[0].state='running';records[0].progress={type:'trial',completed:3,total:24,calculated_books:5,total_new_books:12};await call('BacktestQueue.refresh()');
+  assert(node('queue-list').innerHTML.includes('3/24 trials · 5/12 new books'),'A running row shows its progress');
+  await call('BacktestQueue.action("stop",first)');assert.equal(records[0].state,'stopping');
   records[0].state='complete';records[0].cagr=.125;await call('BacktestQueue.refresh()');
   const beforeOpen=requests.length;await call('BacktestQueue.action("open",first)');assert.equal(opened.settings.rank_to,50);
   assert.equal(requests[beforeOpen].method,undefined);assert(node('queue-list').innerHTML.includes('12.50%'));
@@ -233,25 +239,45 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const abandoned=call('BacktestQueue.add()');await settle();
   scalarRecord.state='running';scalarRecord.edit.state='cancelled';await call('BacktestQueue.refresh()');assert.equal(endedEdits,endedBefore+1);
   releaseCapture();await abandoned;assert.equal(requests.filter(request=>request.url.endsWith('/update')).length,updatesBefore);assert.equal(settings.strategy.selection.rank_to,4);
-  // A chain capture names its last Rank in the default title and lists every step.
+  // An empty name describes the last Rank, then the filters, in plain wording: the columns show the dates and the test type.
   const chain={format:'strategy-capture',version:2,universe:{pool:'cached'},steps:[{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'lowest',rank_from:1,rank_to:200},
     {kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'highest',rank_from:20,rank_to:40},
     {kind:'filter',source:{kind:'field',field:'market_cap'},op:'ge',threshold:{value:'100000000',unit:'USD'},submitted_threshold:{value:'100',unit:'usd_million'},comparison_value:100e6,storage_comparison_value:100e6}],builtins:[{id:'filter:pe',label:'Chain P/E'}],variables:null};
   settings={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,strategy:chain};context.config.prepareSubmission=async()=>copy(settings);
   node('queue-name').value='';await call('BacktestQueue.add()');
-  const chainRecord=records.at(-1);assert.equal(chainRecord.name,'Fixed dates · 2015-01-02 → 2015-01-05 · ranks 20–40');
-  // The row summary reads plain wording. All parameters adds the exact recorded text.
-  const chainRow=node('queue-list').innerHTML.slice(node('queue-list').innerHTML.indexOf('data-queue-id="'+chainRecord.id+'"')),chainSummary=chainRow.slice(chainRow.indexOf('class="queue-summary"'),chainRow.indexOf('<details>'));
+  const chainRecord=records.at(-1);assert.equal(chainRecord.name,'Ranks 20–40 · Chain P/E · highest first · Sector = Energy · Market cap ≥ $100M');
+  // The row line shows the name, state, test type and dates only. The row control lists every
+  // setting in plain wording, each with its exact recorded text.
+  const listed=node('queue-list').innerHTML,rowStart=listed.indexOf('data-queue-id="'+chainRecord.id+'"'),chainRow=listed.slice(rowStart,listed.indexOf('</li>',rowStart));
+  const chainLine=chainRow.slice(0,chainRow.indexOf('<details')),chainControl=chainRow.slice(chainLine.length);
+  for(const text of ['Waiting','Fixed dates','2015-01-02 → 2015-01-05'])assert(chainLine.includes(text),'Missing '+text);
+  for(const text of ['Stock pool','Step 1','usd_million','canonical','filter:pe'])assert(!chainLine.includes(text),'The row line shows '+text);
   for(const text of ['Stock pool: All stocks with cached prices','Step 1 · Rank: Chain P/E · lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy','Step 3 · Rank: Chain P/E · highest first · ranks 20–40','Step 4 · Filter: Market cap ≥ $100M'])
-    assert(chainSummary.includes(text),'Missing '+text);
-  for(const text of ['usd_million','canonical','filter:pe'])assert(!chainSummary.includes(text),'The summary shows '+text);
+    assert(chainControl.includes('<p>'+text),'Missing '+text);
+  assert(chainControl.includes('US · USD · Fixed dates · 2015-01-02 → 2015-01-05 · every 12 month(s)'),'The control names the market, the test type, the dates and the interval');
   for(const text of ['Chain P/E (filter:pe) lowest first · ranks 1–200','Chain P/E (filter:pe) highest first · ranks 20–40','Market cap (USD) ≥ 100 usd_million (canonical 100000000 USD)'])
     assert(chainRow.includes('<small class="exact-setting">'+text+'</small>'),'Missing exact '+text);
+  // A held edit loads the name. A name that is still the default of the old settings follows the new
+  // settings; a typed name stays.
+  context.chainId=chainRecord.id;await call('BacktestQueue.action("edit",chainId)');assert.equal(node('queue-name').value,chainRecord.name);
+  settings.strategy.steps[2].rank_to=30;await call('BacktestQueue.add()');
+  assert.equal(chainRecord.name,'Ranks 20–30 · Chain P/E · highest first · Sector = Energy · Market cap ≥ $100M');assert.equal(chainRecord.options.strategy.steps[2].rank_to,30);
+  await call('BacktestQueue.action("edit",chainId)');node('queue-name').value='Energy, my name';settings.strategy.steps[2].rank_to=25;await call('BacktestQueue.add()');
+  assert.equal(chainRecord.name,'Energy, my name');assert.equal(chainRecord.options.strategy.steps[2].rank_to,25);
+  // A capture/1 record and a flat record get the same form of default name.
+  assert.equal(scalarRecord.name,'Captured name');scalar.selection.rank_to=8;settings={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,strategy:scalar};node('queue-name').value='';await call('BacktestQueue.add()');
+  assert.equal(records.at(-1).name,'Ranks 2–8 · Original P/E · lowest first');
+  settings={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,rank_to:25,metric:'ev_ebitda'};await call('BacktestQueue.add()');assert.equal(records.at(-1).name,'Ranks 1–25 · EV/EBITDA');
   // A waiting test that names an engine this server does not run explains how to continue.
   records.push({id:'f'.repeat(32),name:'Recorded experimental',mode:'custom',options:{start:'2015-01-01',end:'2016-12-30',months:3,engine:'experimental',pool:'cached'},state:'queued',position:records.length+1,revision:1,cagr:null,edit:null});
   await call('BacktestQueue.refresh()');
   // A flat record names its pool with the same words as a chain record.
   assert(node('queue-list').innerHTML.includes(' · EV/EBITDA · All stocks with cached prices · '));assert(!node('queue-list').innerHTML.includes('All cached stocks'));
   assert(node('queue-list').innerHTML.includes('New engine — experimental cannot run on this server. Edit it to choose Original, or delete it.'));
-  console.log('Passed: snapshots, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
+  // In progress shows the running test first, then the waiting tests in queue order, then the others.
+  const row=(letter,state,position)=>({id:letter.repeat(32),name:'Order '+letter,mode:'custom',options:copy(snapshot.settings),state,position,revision:1,cagr:null,edit:null});
+  records=[row('a','failed',1),row('b','queued',2),row('c','complete',3),row('d','running',4),row('e','held',5),row('1','queued',6)];await call('BacktestQueue.refresh()');
+  assert.deepEqual([...node('queue-list').innerHTML.matchAll(/data-queue-id="(.)/g)].map(match=>match[1]),['d','b','e','1','a','c']);
+  await call('BacktestQueue.action("up","'+'e'.repeat(32)+'")');assert(records.find(item=>item.id[0]==='e').position<records.find(item=>item.id[0]==='b').position,'Move up still follows the waiting order');
+  console.log('Passed: snapshots, default and held-edit names, one-line rows in In progress order, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

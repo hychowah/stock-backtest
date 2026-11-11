@@ -37,7 +37,7 @@ const BacktestQueue=(()=>{
   async function acquireEdit(){
     const session=editing;
     await mutate('/'+session.id+'/hold',{revision:session.baseRevision,edit_id:session.token},
-      {success:'Test held. Edit the strategy controls above, then select Save queued test.'});
+      {success:'Test held. Edit the strategy controls, then select Save queued test.'});
     reconcileEdit();
   }
   async function finishEdit(action){
@@ -55,15 +55,23 @@ const BacktestQueue=(()=>{
     }
     if(editing===session)endEdit(true);
   }
-  function title(settings){const rank=BacktestComparison.finalRank(settings);return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+rank.rank_from+'–'+rank.rank_to;}
+  // The default name says what the row columns do not: the final rank, then the filters, in plain wording.
+  function title(settings){
+    const capture=settings.strategy,rank=BacktestComparison.finalRank(settings);
+    const source=capture?BacktestComparison.plainName(capture,rank.source)+' · '+rank.direction+' first':callbacks.metricLabel(settings.metric??'ev_ebitda');
+    const filters=capture?BacktestComparison.scalarRows(capture).filter(row=>row.value?.kind==='filter'||row.key.startsWith('condition.')).map(row=>row.display):[];
+    return ['Ranks '+rank.rank_from+'–'+rank.rank_to,source,...filters].join(' · ').slice(0,120);
+  }
+  const when=value=>value?new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+  // The first line of an open row control. A captured strategy lists its pool and steps below it.
   function parameters(record){
-    const o=record.options,market=({us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'}[o.market??'us']||o.market)+' · USD · ';
-    if(o.strategy)return market+`${record.mode==='random'?'Random dates':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · `+BacktestComparison.scalarRows(o.strategy).map(row=>row.label+': '+row.display).join(' · ');
-    return market+`${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · ${CalendarSettings.label(o)} · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All stocks with cached prices':'Original candidate set'} · ${EngineControls.label(o.engine??'original')}`;
+    const o=record.options,dates=CalendarSettings.decode(o);
+    return ({us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'}[o.market??'us']||o.market)+` · USD · ${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${dates.start} → ${dates.end} · ${CalendarSettings.label(o)}`+
+      (o.strategy?'':` · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All stocks with cached prices':'Original candidate set'} · ${EngineControls.label(o.engine??'original')}`);
   }
   function renderRows(rows){
     const list=node('queue-list');
-    if(!rows.length){list.innerHTML='<li>No queued tests yet. Add the current test settings above.</li>';rendered.clear();return;}
+    if(!rows.length){list.innerHTML='<li class="run-empty">No test is waiting or running. Select Add to queue in Build strategy.</li>';rendered.clear();return;}
     if(!list.insertBefore){list.innerHTML=rows.map(row=>row.html).join('');return;}
     const existing=new Map([...list.querySelectorAll(':scope > li[data-queue-id]')].map(row=>[row.dataset.queueId,row]));
     for(const [index,item] of rows.entries()){
@@ -72,7 +80,12 @@ const BacktestQueue=(()=>{
       else{
         const template=document.createElement('template');template.innerHTML=item.html;
         const next=template.content.firstElementChild;
-        if(row){next.querySelector('details').open=row.querySelector('details').open;row.replaceWith(next);}
+        if(row){
+          // A replaced row keeps its open control and the keyboard focus on the same control.
+          const focused=row.contains(document.activeElement)?document.activeElement:null;
+          next.querySelector('details').open=row.querySelector('details').open;row.replaceWith(next);
+          if(focused)(next.querySelector('[data-action="'+focused.dataset.action+'"]:enabled')||next.querySelector('summary')).focus({preventScroll:true});
+        }
         row=next;rendered.set(item.id,item.signature);
       }
       if(list.children[index]!==row)list.insertBefore(row,list.children[index]||null);
@@ -86,10 +99,8 @@ const BacktestQueue=(()=>{
     node('queue-pause').textContent=paused?'Resume queue':'Pause queue';
     node('queue-pause').disabled=busy||!available;
     node('queue-refresh').disabled=busy;
-    for(const id of ['queue-add','queue-add-next']){
-      node(id).textContent=editing?(editing.loading?'Retry edit request':editing.pending?.action==='update'?'Retry save':'Save queued test'):pending?'Retry queue submission':'Add to queue';
-      node(id).disabled=busy||!available||editing?.pending?.action==='release'||(!editing&&!pending&&records.length>=limit);
-    }
+    node('queue-add').textContent=editing?(editing.loading?'Retry edit request':editing.pending?.action==='update'?'Retry save':'Save queued test'):pending?'Retry queue submission':'Add to queue';
+    node('queue-add').disabled=busy||!available||editing?.pending?.action==='release'||(!editing&&!pending&&records.length>=limit);
     node('queue-cancel-edit').hidden=!editing;node('queue-cancel-edit').disabled=busy||editing?.pending?.action==='update';
     node('queue-cancel-edit').textContent=editing?.pending?.action==='release'?'Retry cancel':'Cancel edit';
     node('queue-edit-note').hidden=!isManaging();
@@ -97,28 +108,34 @@ const BacktestQueue=(()=>{
     const states={queued:'Waiting',held:'Held for editing',running:'Running',stopping:'Stopping',complete:'Complete',failed:'Failed',cancelled:'Stopped'};
     records=records.slice().sort((a,b)=>a.position-b.position);
     const waitingIds=records.filter(waiting).map(record=>record.id);
-    const rows=records.map(record=>{
-      const o=record.options,id=escape(record.id),index=waitingIds.indexOf(record.id);
+    // Running first, then waiting in queue order, then failed, stopped and not yet moved.
+    const group=record=>['running','stopping'].includes(record.state)?0:waiting(record)?1:2;
+    const rows=[...records].sort((a,b)=>group(a)-group(b)).map(record=>{
+      const o=record.options,id=escape(record.id),name=escape(record.name),index=waitingIds.indexOf(record.id),dates=CalendarSettings.decode(o);
       const button=(action,label,disabled=false)=>`<button type="button" data-action="${action}" data-id="${id}" ${busy||disabled?'disabled':''}>${label}</button>`;
       let actions='';
       if(waiting(record))actions+=button('edit','Edit settings')+button('up','Move up',index===0)+button('down','Move down',index===waitingIds.length-1);
       if(record.state==='held')actions+=button('release','Release hold');
       if(['running','stopping'].includes(record.state))actions+=button('stop','Stop test',record.state==='stopping');
       if(record.state==='complete')actions+=button('open','Open result');
-      actions+=button('copy','Copy settings');
+      actions+=button('copy','Tune');
       if(!['running','stopping'].includes(record.state)&&record.transfer?.state!=='reserved')actions+=pendingDelete===record.id?'<span>Delete this test and its result?</span>'+button('confirm','Delete test')+button('keep','Keep'):button('delete','Delete');
       const event=record.progress;
-      const progress=record.state==='running'&&event?(event.type==='waiting'?event.message:`${event.completed}/${event.total} trials complete`+(event.total_new_books>0?` · ${event.calculated_books}/${event.total_new_books} new books prepared`:'')):'';
+      const progress=record.state==='running'&&event?(event.type==='waiting'?event.message:`${event.completed}/${event.total} trials`+(event.total_new_books>0?` · ${event.calculated_books}/${event.total_new_books} new books`:'')):'';
       // A waiting test that names an engine this server does not run never starts.
       const blocked=record.state==='queued'&&!EngineControls.runnable(o.engine??'original')?EngineControls.label(o.engine??'original')+' cannot run on this server. Edit it to choose Original, or delete it.':'';
-      const result=(record.state==='complete'&&record.transfer?.error==='too_large'?'This inline backtest exceeds the 128 MiB save and open limit. The result stays in the queue. ':record.state==='complete'&&record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry. ':'')+(record.state==='complete'?(record.mode==='random'?'Mean trial CAGR: ':'CAGR: ')+(Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'unavailable'):record.error||progress||blocked);
-      // All parameters adds each row's exact recorded text under its plain wording.
+      // The note below the state: progress, a failure, or why a completed result is still here.
+      const note=record.state==='complete'?(record.transfer?.error==='too_large'?'This inline backtest exceeds the 128 MiB save and open limit. The result stays in the queue.':record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry.':''):record.error||progress||blocked;
+      const cagr=record.state!=='complete'?'':Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'—';
+      // The open row control lists every setting: each row's exact recorded text follows its plain wording.
       const line=(text,exact)=>'<p>'+escape(text)+(exact?'<small class="exact-setting">'+escape(exact)+'</small>':'')+'</p>';
       const detail=[`Requested engine: ${EngineControls.label(o.engine??'original')}`,`Minimum market cap: $${(o.min_cap??100e6)/1e6} million`,`Maximum market cap: ${o.max_cap==null?'no limit':'$'+o.max_cap/1e6+' million'}`,`Minimum EV: $${(o.min_ev??50e6)/1e6} million`,`Minimum yield: ${(o.min_yield??0)*100}%`,`Maximum multiple: ${o.max_multiple??'no limit'}`,`Sector: ${o.sector||'all'}`,`Exchange: ${o.exchange||'all'}`,...(o.filters||[]).map(condition=>callbacks.filterLabel(condition.field)+' '+(condition.op==='lt'?'<':'>')+' '+condition.value)].map(text=>line(text));
       if(o.strategy)detail.splice(0,detail.length,...BacktestComparison.scalarRows(o.strategy).map(row=>line(row.label+': '+row.display,row.exact)));
       if(record.mode==='random')detail.push(line('Random date set: '+(o.seed??record.configuration?.seed??'fresh seed stored on the server')));
-      const html=`<li data-queue-id="${id}"><div><div class="queue-title"><strong>${escape(record.name)}</strong><span class="queue-state">${record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Saved backtests':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state)}</span></div><span class="queue-summary">${escape(parameters(record))}</span><span class="queue-progress">${escape(result)}</span><details><summary>All parameters</summary>${detail.join('')}</details></div><div class="queue-actions">${actions}</div></li>`;
-      return {id:record.id,html,progress:result,signature:JSON.stringify({record:{...record,progress:null},edges:waiting(record)?[index===0,index===waitingIds.length-1]:[],busy,deleting:pendingDelete===record.id})};
+      const state=record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Saved backtests':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state);
+      // One line per test in the columns that the Finished rows use. Other actions and the settings wait in the row control.
+      const html=`<li class="run-row" data-queue-id="${id}" data-state="${escape(record.state)}"><span class="run-name" title="${name}">${name}</span><span class="run-status"><span class="queue-state">${state}</span><span class="queue-progress">${escape(note)}</span></span><span class="run-type">${record.mode==='random'?'Random · '+escape(o.trials??24)+' trials':'Fixed dates'}</span><span class="run-window">${escape(dates.start+' → '+dates.end)}</span><span class="run-cagr"${record.mode==='random'?' title="Mean trial CAGR"':''}>${cagr}</span><span class="run-time">${escape(when(record.created_at))}</span><details class="run-menu"><summary aria-label="Actions and settings of ${name}" title="Actions and settings">⋯</summary><div class="run-actions">${actions}</div><p class="queue-summary">${escape(parameters(record))}</p>${detail.join('')}</details></li>`;
+      return {id:record.id,html,progress:note,signature:JSON.stringify({record:{...record,progress:null},edges:waiting(record)?[index===0,index===waitingIds.length-1]:[],busy,deleting:pendingDelete===record.id})};
     });
     renderRows(rows);
   }
@@ -152,7 +169,7 @@ const BacktestQueue=(()=>{
     busy=true;render();
     try{
       await task();
-      try{await refresh();}catch(_){message(node('queue-status').textContent+' The list could not be refreshed. Select Refresh queue to check progress.');}
+      try{await refresh();}catch(_){message(node('queue-status').textContent+' The list could not be refreshed. Select Refresh to check progress.');}
     }catch(error){
       const session=editing,loading=session?.loading;
       if(loading&&error.status>=400&&error.status<500){endEdit();message(error.message,true);return;}
@@ -167,12 +184,14 @@ const BacktestQueue=(()=>{
   }
   async function specification(){
     if(node('strategy-form').reportValidity&&!node('strategy-form').reportValidity())throw Error('Complete the highlighted strategy settings before adding this test.');
-    const submittedName=node('queue-name').value.trim();
+    const submittedName=node('queue-name').value.trim(),held=editing&&records.find(record=>record.id===editing.id);
     // The draft keeps an unchanged held record's original selection.
     const settings=await callbacks.prepareSubmission({held:!!editing});
     if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest to queue a fixed or random-date test.');
     const {mode,...options}=settings;
-    return {mode,options,catalog:callbacks.catalog(),presentation:callbacks.presentation(settings),name:submittedName||title(settings).slice(0,120)};
+    // A held edit keeps a typed name. A name that is still the default of the old settings follows the new settings.
+    const typed=submittedName&&!(held&&submittedName===title({mode:held.mode,...held.options}));
+    return {mode,options,catalog:callbacks.catalog(),presentation:callbacks.presentation(settings),name:typed?submittedName:title(settings)};
   }
   async function add(){
     await perform(async()=>{
@@ -201,11 +220,11 @@ const BacktestQueue=(()=>{
       if(action==='open'){
         const isCurrent=ResultArtifacts.opening();
         const used=await ResultArtifacts.use({kind:'queue',id},artifact=>callbacks.open(artifact,record.name),{current:isCurrent});
-        if(used.record?.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it from the saved list.');return;}
+        if(used.record?.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it under Finished.');return;}
         if(used.consumed)message('Opened “'+record.name+'” from its stored results.');return;
       }
       if(action==='copy'){
-        callbacks.prepare?.();callbacks.restore({mode:record.mode,...record.options});node('queue-name').value=(record.name+' copy').slice(0,120);
+        callbacks.prepare?.();callbacks.restore({mode:record.mode,...record.options});node('queue-name').value='';
         message('Settings copied to the strategy controls. Change them and add a new test.');return;
       }
       if(action==='edit'){
@@ -224,7 +243,10 @@ const BacktestQueue=(()=>{
   }
   function init(config){
     callbacks=config;
-    for(const id of ['queue-add','queue-add-next'])node(id).addEventListener('click',add);
+    node('queue-add').addEventListener('click',add);
+    // The name box sits in the strategy form. Its typing is not a settings change, and Enter adds the test.
+    for(const type of ['input','change'])node('queue-name').addEventListener(type,event=>event.stopPropagation());
+    node('queue-name').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();return add();}});
     node('queue-refresh').addEventListener('click',()=>perform(refresh));
     node('queue-pause').addEventListener('click',()=>perform(()=>mutate('/pause',{paused:!paused},{success:paused?'Queue resumed.':'Queue paused. The active test can finish.'})));
     node('queue-cancel-edit').addEventListener('click',()=>editing?action('release',editing.id):undefined);

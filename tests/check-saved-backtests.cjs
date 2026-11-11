@@ -41,24 +41,26 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const first=records[0];await node('saved-list').handlers.click({target:{dataset:{open:first.id}}});
  assert.deepStrictEqual(JSON.parse(JSON.stringify(loaded.settings)),snapshot);
  assert.equal(loaded.result.years[0].holdings[0].symbol,'SAVED');
- assert(node('saved-message').textContent.includes('without rerunning'));
- assert(node('saved-list').innerHTML.includes('data-copy="'+first.id+'">Copy settings'));
+ // Save reports beside its button in Result review. A list action reports above the Finished rows.
+ assert(node('saved-status').textContent.includes('without rerunning'));assert(node('saved-message').textContent.startsWith('Saved'));
+ assert(node('saved-list').innerHTML.includes('>Tune<'));
  const storedBytes=JSON.stringify(first),displayed=loaded,beforeCopy=requests.length;
  await node('saved-list').handlers.click({target:{dataset:{copy:first.id}}});
  assert.deepStrictEqual(copied.settings,snapshot);assert.strictEqual(loaded,displayed);
  assert.equal(JSON.stringify(first),storedBytes);assert(requests.slice(beforeCopy).every(r=>!r.method));
- assert(node('saved-message').textContent.includes('Copied settings'));assert(node('saved-message').textContent.includes('Auto-run is off'));
+ assert(node('saved-status').textContent.includes('Copied settings'));assert(node('saved-status').textContent.includes('Auto-run is off'));
  refuseCopy=true;copied=null;
  await node('saved-list').handlers.click({target:{dataset:{copy:first.id}}});
- assert.equal(copied,null);assert(node('saved-message').textContent.includes('Save or cancel'));refuseCopy=false;
- // Full IDs, inline rename, cancellation and acknowledgment survive list failure.
- assert(node('saved-list').innerHTML.includes('ID: '+first.id));
+ assert.equal(copied,null);assert(node('saved-status').textContent.includes('Save or cancel'));refuseCopy=false;
+ // A tick box also sends input events; without a rename they change nothing.
+ node('saved-list').handlers.input({target:{dataset:{tick:first.id},value:'on'}});
+ // Inline rename, cancellation and acknowledgment survive list failure.
  node('saved-list').handlers.click({target:{dataset:{rename:first.id}}});
  assert(node('saved-list').innerHTML.includes('data-rename-input'));
  node('saved-list').handlers.input({target:{dataset:{renameInput:first.id},value:'  Renamed <book>  '}});
  failList=true;await node('saved-list').handlers.click({target:{dataset:{saveName:first.id}}});await settle();
  assert.equal(records[0].name,'Renamed <book>');assert.equal(records[0].snapshot.result.years[0].holdings[0].symbol,'SAVED');
- assert(node('saved-message').textContent.startsWith('Renamed'));assert(node('saved-message').textContent.includes('could not be refreshed'));
+ assert(node('saved-status').textContent.startsWith('Renamed'));assert(node('saved-status').textContent.includes('could not be refreshed'));
  assert(node('saved-list').innerHTML.includes('Renamed &lt;book&gt;'));
  failList=false;
  node('saved-list').handlers.click({target:{dataset:{rename:first.id}}});
@@ -97,8 +99,9 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  node('saved-list').handlers.click({target:{dataset:{delete:acknowledged.id}}});
  await node('saved-list').handlers.click({target:{dataset:{confirm:acknowledged.id}}});await settle();
  assert.equal(records.length,1);assert.equal(node('saved-count').textContent,'1 / 100');
- assert(node('saved-message').textContent.startsWith('Saved backtest deleted.'));assert(node('saved-message').textContent.includes('could not be refreshed'));
- failList=false;await node('refresh-backtests').handlers.click();assert.equal(node('saved-message').textContent,'Saved list refreshed.');
+ assert(node('saved-status').textContent.startsWith('Saved backtest deleted.'));assert(node('saved-status').textContent.includes('could not be refreshed'));
+ // The one Refresh of Runs reads the Finished rows again.
+ failList=false;await node('queue-refresh').handlers.click();assert.equal(node('saved-status').textContent,'Finished tests refreshed.');
  // A delayed older list must not revive a record deleted by a newer action.
  holdNextList=true;node('saved-name').value='Race';await node('save-backtest').handlers.click();
  assert(releaseList);const racing=records[1];
@@ -107,7 +110,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  releaseList();await settle();
  assert.equal(node('saved-count').textContent,'1 / 100');assert(!node('saved-list').innerHTML.includes(racing.id));
  for(let i=1;i<100;i++)records.push({...first,id:String(++next).padStart(32,'0'),name:'Book '+i});
- await node('refresh-backtests').handlers.click();assert.equal(node('saved-count').textContent,'100 / 100');assert(node('save-backtest').disabled);
+ await node('queue-refresh').handlers.click();assert.equal(node('saved-count').textContent,'100 / 100');assert(node('save-backtest').disabled);
  await node('save-backtest').handlers.click();assert.equal(records.length,100);assert(node('saved-message').textContent.includes('100'));
  const beforeDelete=requests.length;
  node('saved-list').handlers.click({target:{dataset:{delete:first.id}}});
@@ -117,19 +120,33 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  await node('saved-list').handlers.click({target:{dataset:{confirm:first.id}}});
  assert.equal(records.length,99);assert(!node('save-backtest').disabled);assert.equal(loaded.result.years[0].holdings[0].symbol,'SAVED');
  await node('save-backtest').handlers.click();assert.equal(records.length,100);
- // Stored performance sorting handles negative, missing and tied values.
- records=[{...first,id:'a'.repeat(32),name:'Low',cagr:-.2},{...first,id:'b'.repeat(32),name:'High',cagr:.5},{...first,id:'c'.repeat(32),name:'Missing',cagr:null},{...first,id:'d'.repeat(32),name:'Tie',cagr:.5}];
- await node('refresh-backtests').handlers.click();
- node('saved-sort').value='performance-desc';node('saved-sort').handlers.change();
- let html=node('saved-list').innerHTML;assert(html.indexOf('<strong>High')<html.indexOf('<strong>Tie'));assert(html.indexOf('<strong>Tie')<html.indexOf('<strong>Low'));assert(html.indexOf('<strong>Low')<html.indexOf('<strong>Missing'));
- node('saved-sort').value='performance-asc';node('saved-sort').handlers.change();
- html=node('saved-list').innerHTML;assert(html.indexOf('<strong>Low')<html.indexOf('<strong>High'));assert(html.indexOf('<strong>Tie')<html.indexOf('<strong>Missing'));
+ // A heading sorts the Finished rows by stored values. A second click reverses the order. A missing
+ // CAGR stays last in both directions. Equal values show the newest saved first, then the lower id.
+ records=[{...first,id:'a'.repeat(32),name:'Low',cagr:-.2,created_at:'2026-10-01T00:00:00Z'},{...first,id:'b'.repeat(32),name:'High',cagr:.5,created_at:'2026-10-03T00:00:00Z'},
+  {...first,id:'c'.repeat(32),name:'Missing',cagr:null,created_at:'2026-10-02T00:00:00Z'},{...first,id:'d'.repeat(32),name:'Tie',cagr:.5,created_at:'2026-10-03T00:00:00Z'}];
+ await node('queue-refresh').handlers.click();
+ const order=()=>['Low','High','Missing','Tie'].map(name=>[node('saved-list').innerHTML.indexOf('>'+name+'<'),name]).sort((a,b)=>a[0]-b[0]).map(pair=>pair[1]).join(' ');
+ const sort=key=>{node('saved-head').handlers.click({target:{dataset:{sort:key}}});return order();};
+ assert.equal(order(),'High Tie Missing Low','Newest saved first');assert.equal(node('saved-sort-saved').textContent,'Saved ↓');
+ assert.equal(sort('cagr'),'High Tie Low Missing');assert.equal(node('saved-sort-cagr').textContent,'CAGR ↓');assert.equal(node('saved-sort-saved').textContent,'Saved');
+ assert.equal(sort('cagr'),'Low High Tie Missing');assert.equal(node('saved-sort-cagr').textContent,'CAGR ↑');
+ assert.equal(sort('name'),'High Low Missing Tie');assert.equal(sort('name'),'Tie Missing Low High');
+ assert.equal(sort('saved'),'High Tie Missing Low');assert.equal(sort('saved'),'Low Missing Tie High');
+ node('saved-head').handlers.click({target:{dataset:{}}});assert.equal(order(),'Low Missing Tie High','A heading without a sort keeps the order');
+ // Names sort with their numbers in number order.
+ const numbered=records;records=['Ranks 1–10','Ranks 1–6','Ranks 1–20'].map((name,index)=>({...first,id:String(index).repeat(32),name}));await node('queue-refresh').handlers.click();
+ node('saved-head').handlers.click({target:{dataset:{sort:'name'}}});
+ assert.deepEqual(records.map(record=>node('saved-list').innerHTML.indexOf('>'+record.name+'<')).map((at,index,all)=>all.filter(other=>other<at).length),[1,0,2]);
+ records=numbered;node('saved-head').handlers.click({target:{dataset:{sort:'saved'}}});node('saved-head').handlers.click({target:{dataset:{sort:'saved'}}});await node('queue-refresh').handlers.click();
+ // The focus returns to the control with the same id when the list is drawn again.
+ let refocused=0;const tickId='saved-tick-'+'a'.repeat(32);node(tickId).focus=()=>refocused++;ctx.document.activeElement={id:tickId};
+ await node('queue-refresh').handlers.click();assert(refocused>0);ctx.document.activeElement=undefined;
  // Read the advertised capacity, including an older server's smaller limit.
  const oldFetch=ctx.fetch;ctx.fetch=async(...args)=>{const response=await oldFetch(...args);return {...response,json:async()=>({...await response.json(),limit:4})}};
- await node('refresh-backtests').handlers.click();assert.equal(node('saved-count').textContent,'4 / 4');assert(node('save-backtest').disabled);ctx.fetch=oldFetch;
+ await node('queue-refresh').handlers.click();assert.equal(node('saved-count').textContent,'4 / 4');assert(node('save-backtest').disabled);ctx.fetch=oldFetch;
  // Queue notification during an active library operation must get its own
  // reconciliation after that operation; the older list omits the new record.
- holdNextList=true;const refreshing=node('refresh-backtests').handlers.click();await settle();
+ holdNextList=true;const refreshing=node('queue-refresh').handlers.click();await settle();
  records.push({...first,id:'e'.repeat(32),name:'Transferred externally'});
  call('SavedBacktests.changed()');releaseList();await refreshing;await settle();
  assert(node('saved-list').innerHTML.includes('Transferred externally'));
@@ -150,5 +167,5 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
   if(finish==='save')assert.equal(records.find(record=>record.id===renameTarget).name,'Typing save');
  }
  view='latest';call('SavedBacktests.update()');assert(node('save-backtest').disabled);
- console.log('Passed: complete snapshot saving/opening, 100-record cap, explicit deletion, acknowledged save/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
+ console.log('Passed: complete snapshot saving/opening, separate save and list status lines, heading sorts, focus kept by id, 100-record cap, explicit deletion, acknowledged save/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -62,7 +62,7 @@ creates no saved format or durable preference.
 
 `website/browser/workspaces.js` changes workspace visibility without replacing
 the mounted strategy form. Opening a result publishes its artifact without
-restoring draft settings. Copy settings and Edit a copy retain the existing
+restoring draft settings. Tune and Edit a copy retain the existing
 held-edit protection. Recorded parameter rows reuse `BacktestComparison.describe`.
 Desktop review shows them in a side column; phones have a Settings section.
 The same description supplies `headline`, the short answer that review prints
@@ -76,7 +76,21 @@ Unavailable; for random dates it stays with the inspected trial. A review block
 lists its tabs in `data-review-panel`; a `random-` or `fixed-` name limits the
 block to that kind of result.
 The bottom status bar consumes existing direct-run and queue state. Its dialog
-borrows the mounted queue panel, including the same controls and polling owner.
+borrows the mounted queue panel, including the same controls and polling owner,
+and returns it to the top of Runs.
+
+Runs shows two row groups with one column layout. `queue.js` draws the In
+progress rows and keeps the queue state. `saved-backtests.js` draws the Finished
+rows, their ticks, their sort order and the panel of the ticked tests. The two
+owners share the row styles and `BacktestComparison`, and call nothing new in
+each other. `saved-backtests.js` keeps one description for each ticked saved
+id. One loader reads them one at a time through `ResultArtifacts.use` and
+`describe`, so each temporary reader closes after its read. A failed read is
+not kept, and an id that leaves the list leaves the ticks and the descriptions.
+`BacktestComparison.compare` takes a list of descriptions and returns one cell
+for each test in every row. A row whose values differ behind the same plain
+wording prints the exact text. The panel is derived from the ticks and the
+descriptions each time it is drawn.
 
 ## Sector selections
 

@@ -408,17 +408,19 @@ suppression, completion, reconnects and changes of view.
 
 ### Overnight queue
 
-Use **Backtest queue** for fixed or random-date tests. Select the custom calendar,
+Use **Add to queue** in Build strategy for fixed or random-date tests. Select the custom calendar,
 set parameters and add the current test. Change settings to add more tests.
-Auto-run is suspended while waiting/running queue work exists. Adding, copying
+**Runs** shows the waiting and running tests under In progress and the saved
+results under Finished.
+Auto-run is suspended while waiting/running queue work exists. Adding, tuning
 or editing a queue item also turns it off so setup stays manual between fast
 cached tests. Explicit Run still starts an immediate test. Queue tests run one at a time. Browser closure
 does not affect them. Keep the server computer awake and its terminal open.
 
 Edit holds a waiting item so it cannot start with incomplete edits. Save changes
 to release it. Cancel keeps the original parameters. Held edits survive page and
-server restarts. Move up/down changes waiting order. Copy settings creates a new
-test without changing the original. Pause lets the active item finish but does
+server restarts. Move up/down changes waiting order. Tune copies the settings to
+the builder for a new test without changing the original. Pause lets the active item finish but does
 not claim another item. Stop cancels the selected item and waits for normal
 worker cleanup. Failed items remain visible; the consumer continues to the next.
 

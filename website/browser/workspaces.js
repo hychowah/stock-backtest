@@ -1,5 +1,6 @@
 /* Navigation changes visibility, never the lifetime of the draft or result.
-   The queue tray borrows the existing mounted queue panel and its owner. */
+   The queue tray borrows the existing mounted queue panel and its owner, then
+   returns it to the top of Runs, above the Finished rows. */
 const Workspaces=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -7,7 +8,7 @@ const Workspaces=(()=>{
   function closeQueue(){if(node('workspace-queue-tray').open)node('workspace-queue-tray').close();}
   function show(view){
     closeQueue();active=view;
-    for(const name of ['builder','runs','library','review'])node('workspace-'+name).hidden=name!==view;
+    for(const name of ['builder','runs','review'])node('workspace-'+name).hidden=name!==view;
     document.querySelectorAll('#workspace-nav [data-workspace]').forEach(button=>button.setAttribute('aria-current',button.dataset.workspace===view?'page':'false'));
     // Scalar latest screens and dated evidence share the existing explanation
     // presenter. Restore its artifact when returning to the other workspace.
@@ -87,8 +88,8 @@ const Workspaces=(()=>{
     node('workspace-run-state').textContent=title;node('workspace-run-detail').textContent=detail;
     node('workspace-waiting').textContent=(queue.paused?'Queue paused · ':'')+waiting+' waiting';
     node('workspace-queue-count').textContent=String(queue.records.filter(row=>['queued','held','running','stopping'].includes(row.state)).length);
-    node('workspace-direct-status').textContent=direct?detail:lastDirect?.detail||'No direct backtest is running. Completed results open in Result review.';
-    node('workspace-direct-stop').hidden=!direct;
+    // The direct run is one line at the top of In progress, only while it runs.
+    node('workspace-direct-run').hidden=!direct;node('workspace-direct-status').textContent=direct?detail:'';
   }
   function init(){
     document.querySelectorAll('[data-workspace]').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();show(button.dataset.workspace);}));
@@ -102,7 +103,7 @@ const Workspaces=(()=>{
     const tray=node('workspace-queue-tray');
     node('workspace-queue-open').addEventListener('click',()=>{node('workspace-queue-content').append(node('queue-panel'));tray.showModal();});
     node('workspace-queue-close').addEventListener('click',()=>tray.close());
-    tray.addEventListener('close',()=>node('workspace-runs').append(node('queue-panel')));
+    tray.addEventListener('close',()=>node('workspace-runs').prepend(node('queue-panel')));
     const scalar=node('scalar-evidence-view');if(scalar)node('workspace-builder').append(scalar);
     SectorView.init(()=>active==='review'&&section==='selection');show('builder');status();
   }

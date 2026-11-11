@@ -41,7 +41,9 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 Each builder section shows one help line. Open **How this works** under the steps, the dates or the latest picks to read the other explanations. In latest mode, the offline picks table follows the builder, and the coverage and range notes of the displayed result show below that table. A latest screen from the local service shows below these notes. In backtest mode, the notes show below the builder. The results notice shows when the displayed results and the current settings differ, when the settings have no result, or while a backtest runs. Results that match the settings show no notice. A status line appears only when it has a message.
 
-Copying a saved result, queued test or older record restores its strategy as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
+The menu has **Build strategy**, **Runs** and **Result review**. To run several variants, select **Add to queue** for each one. You can type a test name in the box beside that button; Enter in the box also adds the test. An empty name describes the final Rank and the filters, for example `Ranks 1–20 · EV / EBITDA yield · highest first · Market cap ≥ $100M`. The dates and the test type are columns in **Runs**. [Runs](#save-and-reopen-completed-backtests) shows the waiting, running and finished tests in one table.
+
+**Tune** on a queued or finished test, and **Edit a copy** in Result review, copy the settings of that record to the builder. The strategy returns as steps: filter-first records become filters → Rank, rank-first records become Rank → filters. Ranges such as 20–40, thresholds, units, labels and exact formula revisions are kept. Opening a result never changes the steps. A held queue edit that is saved unchanged keeps its original request; other submissions record the steps.
 
 Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **original completed result**. Exploration selections do not change an export. Sector and exchange are cached company metadata, not historical classifications.
 
@@ -356,28 +358,51 @@ Range and SQL/browser parity checks use local output by default. To check the po
 
 ## Save and reopen completed backtests
 
-Use **Save original backtest** after a historical run. Give it a name if useful.
-The save keeps the submitted settings of the original result, all traded stocks,
-and all stock and period returns. Pending control edits are not included.
-A stopped or failed run does not replace the last completed result.
+**Runs** shows every test in one table with two groups. **In progress** shows
+the queue: the running test first, then the waiting tests in queue order, then
+failed tests, stopped tests and completed tests that are not moved yet.
+**Finished** shows the saved library, newest first. A row is one line: name,
+status, test type and trials, date window, CAGR and the time when the test was
+added or saved. CAGR is the mean trial CAGR for random dates. A running row
+shows its progress with its status, and a failed row shows the reason there;
+a long reason adds lines to that row. One toolbar holds **Pause queue**,
+**Refresh** and the two counts. **Refresh** reads both groups again. A direct
+**Run backtest** shows as one line at the top of In progress while it runs,
+with **Stop backtest**. On a window narrower than 1300 px, and in the queue
+tray, a row shows its name first and its other values below the name. The
+Finished headings then show as a line of sort buttons.
 
-Open **Manage saved backtests** to reopen a record. Opening restores its
+Completed queue tests move to Finished automatically. To keep a direct run,
+use **Save original backtest** in the header of **Result review**. Give it a
+name if useful. The save keeps the submitted settings of the original result,
+all traded stocks, and all stock and period returns. Pending control edits are
+not included. A stopped or failed run does not replace the last completed result.
+
+Select the name of a finished test to reopen it. Opening restores its
 settings, charts, stock tables and downloads without rerunning a calculation.
 Records stay available after browser and server restarts. They are stored on the
 server computer in `data/saved-backtests.sqlite`, outside the rebuildable caches.
 The library is shared by browser sessions using that runtime. A saved HTML file
 needs the local service to use the library.
 
-Each row shows its stable UUID database ID. Select **Rename**, edit the name,
-then **Save name** or **Cancel**. Renaming changes no settings or stored results.
-Use **Sort saved backtests** for newest saved or performance in either direction.
-Performance means CAGR for saved January and fixed tests and mean trial CAGR for random
-tests. Different test types and date windows can differ. Missing values stay last.
-The queue and library lists scroll inside their sections. Their controls remain
-outside the scrolling list. Keyboard users can focus each list and scroll it.
+Select **⋯** at the end of a row for its other actions. The row control opens
+below the row line. The lists have no scroll box of their own: the page
+scrolls, and the queue tray scrolls as one box, so an open control is not cut
+off. It stays open when the lists update. A finished row has **Tune**, **Rename** and **Delete**. An In
+progress row has **Edit settings**, **Move up**, **Move down**, **Release
+hold**, **Stop test**, **Open result**, **Tune** and **Delete**, as its state
+allows, and lists every recorded setting with its exact recorded text.
+Select **Rename**, edit the name, then **Save name** or **Cancel**. Renaming
+changes no settings or stored results.
 
-Completed queue tests move into this library automatically. The server saves a
-complete independent result before removing it from the visible queue. This also
+Select the **Name**, **CAGR** or **Saved** heading to sort the finished tests.
+Select it again to reverse the order. CAGR means CAGR for saved January and
+fixed tests and mean trial CAGR for random tests. Different test types and date
+windows can differ. A missing CAGR stays last in both directions. Equal values
+show the newest saved test first.
+
+The server saves a complete independent result before it removes a completed
+test from the queue. This also
 runs while the execution queue is paused or its engine is unavailable. A full
 library shows **Completed — waiting for saved slot** in the queue. Other save
 failures retain the result and show a retry notice. Free a saved slot to let the
@@ -388,22 +413,32 @@ when transfer recovery retries. Original queued submission receipts remain valid
 but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
-Each saved row has **All parameters**. Expand it to read that test's recorded
-settings and selected filters without opening its results or changing the form.
-A setting reads in plain wording, such as `Market cap ≥ $100M`. When that wording
-leaves out a recorded id, unit, canonical value or variable revision, the exact
-recorded text follows in smaller type. A queue row's **All parameters** and
+Tick finished tests to read them without opening a result or changing the
+form. A panel above the Finished rows shows the ticked tests. One tick shows
+the headline of that test, its saved ID (the stable UUID database ID) and its
+recorded settings. A setting reads in plain wording, such as
+`Market cap ≥ $100M`. When that wording leaves out a recorded id, unit,
+canonical value or variable revision, **Exact recorded values** below the
+settings shows the exact recorded text. An open In progress row control and
 **Exact recorded values** under the settings of an open result show the same
-exact text. Row summaries and comparison tables show the plain wording only.
-The first expansion loads only that record. Sorting, renaming and refreshing keep
-its expansion. A failed load shows **Retry parameters** inside the row. Temporary
-evidence readers close after the parameter description is read.
+exact text.
 
-Choose **First saved test** and **Second saved test**, then **Compare**. The two
-IDs must differ. Recorded performance and parameter rows appear in the library.
-Amber rows also say **Different**. Sort or rename records without losing the
-selection. Deleting a selected record clears its comparison. **Clear comparison**
-clears both selected IDs. The main results and strategy settings stay unchanged.
+Two or more ticks show one column for each test, in list order. The first rows
+are the settings that differ. The headline rows follow. A closed **All measures
+and settings** disclosure contains every recorded measure and setting. In that
+list, an amber row that also says **Different** marks a setting that differs;
+measures have no mark. When two tests differ in a setting that reads the same
+in plain wording, for example one variable at two revisions, that row shows the
+exact text. Tests of different types share the first three headline rows. A
+measure that a test does not have shows a dash. The main results and strategy
+settings stay unchanged.
+
+The page reads a stored result when you tick its row, one result at a time and
+each result one time. It reads nothing for a row without a tick. A failed read
+removes the tick and shows the reason above the Finished rows; tick the row
+again to retry. Sorting, renaming and refreshing keep the ticks. A deleted test
+leaves the panel. Temporary evidence readers close after each description is
+read.
 
 Comparison reads saved results without recalculation. Legacy/current calendars
 and documented defaults compare consistently. Reordered AND conditions and
@@ -415,8 +450,7 @@ below 0.000001 shows 0.00. Requested engine
 and recorded producer are separate. Older results without producer evidence are
 unidentified. Random comparisons show requested date policy, recorded seed and
 stored trial distributions. Mean trial CAGR is not one portfolio return.
-Different test types or requested/recorded windows receive a notice. Temporary
-version-3 readers are released after their compact descriptions are read.
+Different test types or requested/recorded windows receive a one-line notice.
 
 The maximum is 100 records. When full, delete a chosen record before saving
 another. Deletion asks for confirmation and removes only that record. It does
@@ -425,7 +459,9 @@ not remove the result currently displayed in the page.
 Check with `python3 tests/test_saved_backtests.py`,
 `node tests/check-saved-backtests.cjs`, `python3 tests/test_queue_transfer.py`,
 `node tests/check-backtest-comparison.cjs`, `node tests/check-saved-comparison.cjs`,
-and the ordinary queue and range controls checks.
+and the ordinary queue and range controls checks. These checks use a simulated
+page. They do not show the keyed queue rows, keyboard focus or layout; look at
+the Runs screen in a browser after a change to its rows.
 Run the persistence checks with native Windows Python too.
 
 Random-date saves include every trial's exact trade dates, stock rows and period

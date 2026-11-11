@@ -165,20 +165,28 @@ const BacktestComparison=(()=>{
     }
     add('observed_start','Recorded observation start',observationWindow.start);
     add('observed_end','Recorded observation end',observationWindow.end);
-    return {kind,parameters,performance,headline,requestedWindow,observationWindow,notices:kind==='random'?['Random results are trial distributions. Mean trial CAGR is not one portfolio return. Percentiles are not confidence intervals.']:[]};
+    return {kind,parameters,performance,headline,requestedWindow,observationWindow,notices:kind==='random'?['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.']:[]};
   }
-  // Inputs are compact descriptions, not stored artifacts. Values determine
-  // differences; labels retain each record's original catalog wording.
-  function compare(left,right){
-    function align(a,b){
-      const l=new Map(a.map(row=>[row.key,row])),r=new Map(b.map(row=>[row.key,row]));
-      return [...new Set([...l.keys(),...r.keys()])].map(key=>({key,label:l.get(key)?.label||r.get(key).label,left:l.get(key)?.display??'Not recorded',right:r.get(key)?.display??'Not recorded',different:stable(l.get(key)?.value)!==stable(r.get(key)?.value)}));
+  // Inputs are compact descriptions, not stored artifacts, one cell of text per
+  // description in each row. Values determine differences; a label keeps each
+  // record's original wording. When two values differ behind the same plain
+  // text, the cells of that row print the exact text. A setting that a test
+  // lacks reads Not recorded; a measure that it lacks shows a dash.
+  function compare(descriptions){
+    const distinct=values=>new Set(values).size>1;
+    function align(lists,missing){
+      const maps=lists.map(rows=>new Map(rows.map(row=>[row.key,row])));
+      return [...new Set(maps.flatMap(map=>[...map.keys()]))].map(key=>{
+        const rows=maps.map(map=>map.get(key)),values=rows.map(row=>stable(row?.value));
+        const hidden=rows.some((row,i)=>row&&rows.some((other,j)=>j>i&&other&&values[i]!==values[j]&&row.display===other.display));
+        return {key,label:[...new Set(rows.filter(Boolean).map(row=>row.label))].join(' / '),cells:rows.map(row=>row?hidden?row.exact??row.display:row.display:missing),different:distinct(values)};
+      });
     }
-    const notices=[...new Set([...left.notices,...right.notices])];
-    if(left.kind!==right.kind)notices.push('These tests use different test types. Their performance measures can differ.');
-    if(stable(left.requestedWindow)!==stable(right.requestedWindow))notices.push('These tests use different requested date windows.');
-    if(stable(left.observationWindow)!==stable(right.observationWindow))notices.push('These tests use different recorded observation windows.');
-    return {parameters:align(left.parameters,right.parameters),performance:align(left.performance,right.performance),notices};
+    const of=key=>descriptions.map(description=>description[key]),notices=[...new Set(of('notices').flat())];
+    if(distinct(of('kind')))notices.push('These tests use different test types; their measures can differ.');
+    const windows=[['requested date windows','requestedWindow'],['recorded observation windows','observationWindow']].filter(([,key])=>distinct(of(key).map(stable))).map(([name])=>name);
+    if(windows.length)notices.push('These tests use different '+windows.join(' and ')+'.');
+    return {parameters:align(of('parameters'),'Not recorded'),headline:align(of('headline'),'—'),performance:align(of('performance'),'—'),notices};
   }
   return {describe,compare,scalarRows,finalRank,plainName};
 })();

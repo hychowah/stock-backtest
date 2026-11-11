@@ -344,9 +344,9 @@ console.log('Passed: a saved January result opens independently of its draft wit
  await run('BacktestQueue.action("open",completedId)');assert(el('queue-status').textContent.includes('Opened'));
  await run('BacktestQueue.action("copy",completedId)');assert(el('queue-status').textContent.includes('Save or cancel'));
  await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});
- assert(el('saved-message').textContent.includes('Opened'));
+ assert(el('saved-status').textContent.includes('Opened'));
  await el('saved-list').handlers.click({target:{dataset:{copy:'library-result'}}});
- assert(el('saved-message').textContent.includes('Save or cancel'));
+ assert(el('saved-status').textContent.includes('Save or cancel'));
  assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(el('queue-name').value,'Edit this test');
  const realPending=run('BacktestRuns.pending'),realRecover=run('BacktestRuns.recover');
  ctx.manualRun={mode:'custom',options:savedFixed.settings};
@@ -407,7 +407,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  }
  const queuedRank=rankId();stepEvent('input',queuedRank,'rank_to','12');for(let i=steps().length;i>1;i--)stepButton('up',queuedRank);
  assert.equal(stepIds()[0],queuedRank);assert.equal(submissions,0);
- await el('queue-add-next').handlers.click();assert.equal(submissions,1);
+ await el('queue-add').handlers.click();assert.equal(submissions,1);
  assert.equal(queueRows[0].options.strategy.steps[0].rank_to,12);assert.equal(queueRows[0].mode,'custom');
  assert.equal(queueRows[0].options.strategy.steps[0].kind,'rank','Rank first is the first step');assert(!('rank_to' in queueRows[0].options));
  assert.equal(el('queue-add').textContent,'Add to queue');

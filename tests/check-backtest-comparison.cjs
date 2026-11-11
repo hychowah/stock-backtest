@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),Comparison=require('../website/browser/backtest-comparison.js');
 const artifact=(settings={},result={},kind='custom')=>({version:2,kind,settings:{mode:kind,start:'2015-01-01',end:'2020-12-31',months:12,...settings},result:{start:'2015-01-02',end:'2020-12-31',cagr:.12,spy_cagr:.08,growth:2,...result},catalog:{metrics:{ev_ebitda:{label:'Original EBITDA multiple'}},filters:{fcf:{label:'Original free cash flow'}}}});
-const describe=Comparison.describe,compare=(a,b)=>Comparison.compare(describe(a),describe(b));
+const describe=Comparison.describe,compare=(...artifacts)=>Comparison.compare(artifacts.map(describe));
 const a=artifact(),legacy=JSON.stringify(a);Object.freeze(a.settings);Object.freeze(a);
 const b=artifact({calendar:{version:1,start:'2015-01-01',end:'2020-12-31',interval:{unit:'month',count:12}},selection_order:'filter_first',engine:'original'});delete b.settings.start;delete b.settings.end;delete b.settings.months;
 assert(compare(a,b).parameters.every(row=>!row.different),'Legacy and current calendar/defaults should compare equal');assert.equal(JSON.stringify(a),legacy);
@@ -92,3 +92,23 @@ assert.deepEqual(describe(trials).headline.map(row=>row.value),[.15,.08,.07,2,-.
 assert.deepEqual(lines(randomDescription).map(line=>line.split('|')[2]),['15.00%','8.00%','Unavailable','Unavailable','Unavailable','Unavailable']);
 assert.deepEqual(describe(a).headline.slice(0,3).map(row=>row.key),describe(trials).headline.slice(0,3).map(row=>row.key));
 console.log('Passed: one headline per result with shared keys, stored trial statistics and counts, and unavailable values left unavailable.');
+// A comparison takes any number of tests. Each row has one cell per test, in the order given.
+const top=rank_to=>artifact({strategy:{...structuredClone(chain),steps:chain.steps.map((step,i)=>i===3?{...step,rank_to}:step)}});
+const three=compare(top(20),top(30),top(20)),lastStep=three.parameters.find(row=>row.key==='step.3');
+assert.deepEqual(three.parameters.filter(row=>row.different).map(row=>row.key),['step.3']);
+assert.deepEqual(lastStep.cells,['Recorded EBITDA yield · highest first · ranks 20–20','Recorded EBITDA yield · highest first · ranks 20–30','Recorded EBITDA yield · highest first · ranks 20–20']);
+assert(compare(top(20),top(20),top(20)).parameters.every(row=>!row.different));
+// One variable at two revisions reads the same in plain wording. The cells of that row then print the exact text.
+const revised=structuredClone(left),revision='sha256:'+'b'.repeat(64);revised.settings.strategy.steps[0].source.revision=revision;revised.settings.strategy.variables.presentation[0].revision=revision;
+const revisions=compare(left,revised).parameters.find(row=>row.key==='step.0');
+assert(revisions.different);assert.deepEqual(revisions.cells,['Recorded margin @ sha256:'+'a'.repeat(64)+' lowest first · ranks 1–200','Recorded margin @ '+revision+' lowest first · ranks 1–200']);
+assert.equal(compare(left,right).parameters.find(row=>row.key==='step.0').cells[0],'Recorded margin · lowest first · ranks 1–200','Equal settings keep their plain wording');
+// Tests of different types line up on the shared headline keys. A measure that a test lacks shows a dash; a setting reads Not recorded.
+const mixed=compare(a,trials);
+assert.deepEqual(mixed.headline.map(row=>[row.key,row.label,...row.cells]),[['cagr','Strategy CAGR / Mean strategy CAGR','12.00%','15.00%'],['spy_cagr','SPY CAGR / Mean SPY CAGR','8.00%','8.00%'],
+ ['difference','Difference vs SPY / Mean difference vs SPY','+4.00 pp','+7.00 pp'],['growth','Growth of $1','$2.00','—'],['beat_spy','Trials beating SPY','—','2/5 complete'],['worst','Worst trial CAGR','—','-2.00%'],['best','Best trial CAGR','—','31.00%']]);
+assert.deepEqual(mixed.parameters.find(row=>row.key==='trials').cells,['Not recorded','6']);assert.deepEqual(mixed.performance.find(row=>row.key==='growth').cells,['2.00×','—']);
+// Each notice is one short line. Two different windows share a line.
+assert.deepEqual(compare(a,changedWindow).notices,['These tests use different requested date windows and recorded observation windows.']);
+assert.deepEqual(compare(a,random).notices,['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.','These tests use different test types; their measures can differ.']);
+console.log('Passed: a comparison of any number of tests, exact text where plain wording is equal, shared headline keys across test types and one-line notices.');
