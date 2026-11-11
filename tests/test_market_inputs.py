@@ -215,11 +215,10 @@ class MarketInputsTests(unittest.TestCase):
                 self.assertEqual(change['companies'],{'0001.HK':['hk','us'],'2000.T':['jp',None]})
                 self.assertEqual(change['annual']['1000.T'],'2015-07-31')
             incremental,rebuilt=snapshot(source),snapshot(cold)
-            # Research keeps the moved company's native closes, which US books never read;
-            # the valuation sums equal the cold build.
+            # Every research table, the moved company's native closes and the valuation sums
+            # included, equals the cold build.
             self.assertIn('valuation_sums',incremental[0])
-            self.assertLessEqual({name for name,rows in incremental[0].items() if rows!=rebuilt[0][name]},{'stock_native'})
-            self.assertEqual(incremental[1:],rebuilt[1:])
+            self.assertEqual(incremental,rebuilt)
             self.assertEqual(cache_snapshot(store,source),cache_snapshot(cold_store,cold))
             self.assertEqual(sums(source,('0001.HK','1000.T','2000.T')),
                              {'0001.HK':['2015-07-01','2015-07-20','2015-08-04'],'1000.T':before['1000.T']})

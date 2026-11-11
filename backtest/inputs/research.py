@@ -379,6 +379,9 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
                 changed,content=source_bytes(market.native_path(RAW,symbol),symbol,'native-price',decode=context_changed)
                 if changed:
                     facts.store_native(db,RAW,symbol,backtest_control.checkpoint,content=content)
+            elif context_changed:
+                # A company that moved to the US keeps no native closes, as in a cold build.
+                facts.reconcile(db,'stock_native',('symbol','day'),[],symbol=symbol)
             annual={}
             for endpoint in annual_endpoints:
                 changed,content=source_bytes(financial_inputs.asset_path(RAW,symbol,endpoint),symbol,endpoint,decode=context_changed)
