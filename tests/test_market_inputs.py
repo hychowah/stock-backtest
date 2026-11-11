@@ -115,7 +115,11 @@ class MarketInputsTests(unittest.TestCase):
                 records.append(dict(records[0],symbol=symbol))
                 (raw/'px'/f'{symbol}.json').write_bytes((raw/'px/TEST.json').read_bytes())
             metrics.write_text(''.join(json.dumps(row)+'\n' for row in records))
+            # Annual values give TEST valuation sums, so its new price day below
+            # continues from the sums stored before its cutoff.
+            financial_inputs.publish(raw,'TEST','income-statement',[dict(date='2014-12-31',reportedCurrency='USD',netIncome=1e6,revenue=10e6)],{},raw/'coverage.json')
             research.prepare(source,force=True)
+            self.assertEqual(sums(source,('TEST',)),{'TEST':['2015-07-01','2015-07-30']})
             cache_snapshot(store,source)
             with closing(sqlite3.connect(source)) as reader:
                 base=json.loads(reader.execute("SELECT value FROM metadata WHERE key='identity'").fetchone()[0])['content']
@@ -131,6 +135,7 @@ class MarketInputsTests(unittest.TestCase):
                 self.assertEqual(change['base'],base)
                 self.assertEqual(set(change['prices'].values()),{'2015-08-04'})
                 self.assertEqual(change['companies'],{})
+            self.assertEqual(sums(source,('TEST',)),{'TEST':['2015-07-01','2015-07-30','2015-08-04']})
             cold=source.with_name('cold.sqlite');cold_store=store.with_name('cold-daily.sqlite');research.prepare(cold)
             self.assertEqual(snapshot(source),snapshot(cold))
             self.assertEqual(cache_snapshot(store,source),cache_snapshot(cold_store,cold))

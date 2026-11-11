@@ -30,8 +30,10 @@ One rule gives a day its value: equal admissible values agree, and a
 conflicting, non-USD or invalid value gives no value and a reason. A stock
 series with an isolated price spike keeps no close (stock()). Books
 (books.book) and admission (books.Screen) read the valid values through
-BookFacts. Every reader reads the facts through the 'research' schema that a
-daily connection attaches (daily.attach). The book store of the daily cache
+BookFacts. Every reader reads the facts through the 'research' schema: a daily
+connection attaches it read-only (daily.attach), and the research build
+connection (research.prepare) attaches its build file so that the valuation
+fold reads that transaction's facts. The book store of the daily cache
 (backtest/inputs/book_store.py) holds the latest and dated books; the formula
 view (backtest/inputs/fact_view.py) reads the facts for formulas.
 """
@@ -324,7 +326,12 @@ def store_valuations(db, changes, checkpoint):
                 if symbol not in cutoffs or day<cutoffs[symbol]:cutoffs[symbol]=day
     for number,(symbol,cutoff) in enumerate(sorted(cutoffs.items()),1):
         checkpoint()
-        refold(db,symbol,owners.get(symbol),cutoff)
+        port=owners.get(symbol)
+        refold(db,symbol,port,cutoff)
+        if port is not None:
+            # Each company folds once, and its fold caches only its own annual
+            # values and metadata: release them. reports() stays shared.
+            port._annual.clear();port._metadata.clear()
         if number%500==0 or number==len(cutoffs):
             print(f'Valuation sums for {number}/{len(cutoffs)} companies',flush=True)
 
