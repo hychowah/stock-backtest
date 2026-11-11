@@ -55,12 +55,10 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #latest-view .latest-facts>span{border:0;padding:0}
 #latest-view .latest-facts strong{display:inline;margin:0 0 0 7px;font-size:15px;font-weight:600}
 #latest-view th{white-space:nowrap}
-/* Runs: the queue panel and the Saved backtests rows join into one card. The queue
-   tray can borrow the queue panel; the Saved backtests rows then stand alone. */
+/* Runs: the queue panel and the Saved backtests rows join into one card. */
 #workspace-runs>.backtest-queue{margin:0;padding-bottom:8px;border-bottom:0;border-radius:10px 10px 0 0}
 #workspace-runs>.backtest-queue>.hint{margin:6px 0 0}
 #workspace-runs>.saved-backtests{margin-top:0;padding-top:14px;border-top:0;border-radius:0 0 10px 10px}
-#workspace-runs>.saved-backtests:first-child{border-top:1px solid #dfe5d8;border-radius:10px}
 #saved-status{margin:0 0 4px}
 #workspace-review{padding-top:25px}
 .workspace-review-layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:24px;align-items:start}

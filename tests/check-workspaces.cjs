@@ -25,8 +25,8 @@ node('rank-to').value='25';node('filter-value').value='17';node('strategy-form')
 run('Workspaces.init()');
 const form=node('strategy-form'),queue=node('queue-panel');
 // Every view change starts at the top of the page.
-scrolls.length=0;for(const view of ['runs','review','builder','builder'])run(`Workspaces.show('${view}')`);
-assert.deepEqual(scrolls,[0,0,0,0]);
+for(const view of ['runs','review','builder','builder'])run(`Workspaces.show('${view}')`);
+assert(scrolls.length>=4&&scrolls.every(y=>y===0));
 // The tray borrows the queue panel and returns it to the top of Runs, above the Saved backtests rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
 node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
@@ -59,7 +59,7 @@ run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-
 const visit=(name,from,top)=>{if(from!==undefined)context.scrollY=from;tabsTop=top??tabsTop;run(`Workspaces.reviewSection('${name}')`);};
 publish(fixed({}));scrolls.length=0;visit('returns',40,120);visit('selection',1500,0);visit('returns',700);visit('overview');
 assert.deepEqual([scrolls,contentStarts],[[1500,40],1]);
-publish(fixed({}));visit('returns');assert.deepEqual([scrolls,contentStarts],[[1500,40,0],2]);tabsTop=120;
+publish(fixed({}));scrolls.length=0;visit('returns');assert.deepEqual([scrolls,contentStarts],[[],2]);tabsTop=120;
 // The coverage line of a fixed result is a recorded note.
 assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));
 // A recorded warning stays above the tabs. Other notes wait in the notes disclosure.

@@ -27,7 +27,7 @@ const Workspaces=(()=>{
     if(view==='review')reviewSection(section);
   }
   function reviewSection(next){
-    const tabs=node('workspace-review-tabs'),stuck=tabs.getBoundingClientRect().top<1,changed=next!==section;
+    const tabs=node('workspace-review-tabs'),stuck=tabs.getBoundingClientRect().top<1;
     positions[section]=scrollY;
     section=next;node('workspace-review').dataset.section=next;
     // A block lists its tabs. A name such as random-returns or fixed-overview
@@ -39,8 +39,8 @@ const Workspaces=(()=>{
     if(next==='returns'&&random)ScheduleView.inspectOriginal();
     // A tab that was shown before returns to its position. A first visit shows the start of the tab under the
     // tab row when that row is stuck at the top of the window; otherwise the page does not move.
-    if(changed&&next in positions)scrollTo(0,positions[next]);
-    else if(changed&&stuck){let first=tabs.nextElementSibling;while(first&&!first.getClientRects().length)first=first.nextElementSibling;first?.scrollIntoView();}
+    if(next in positions)scrollTo(0,positions[next]);
+    else if(stuck){let first=tabs.nextElementSibling;while(first&&!first.getClientRects().length)first=first.nextElementSibling;first?.scrollIntoView();}
   }
   function published(artifact,name){
     const scalar=node('scalar-evidence-view');

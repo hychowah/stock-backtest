@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, 'dist/index.html'), 'utf8');
 const checkedDates = [...html.matchAll(/Checked(?: against the project on)? (\d{1,2} [A-Z][a-z]+ \d{4})/g)].map(x => x[1]);
-assert(html.includes('Explore this result') && html.includes('backtest/application/result_exploration.py') && html.includes('website/browser/result-explorer.js') && html.includes('The trial table shows empty-period counts.') && html.includes('A complete empty selection holds cash at 0% until the next rebalance.') && html.includes('Explore all trials') && html.includes('Holding details, downloads, comparisons and saving use the original result.'), 'Explain temporary saved-period/rank summaries and original-result actions');
+assert(html.includes('Explore this result') && html.includes('backtest/application/result_exploration.py') && html.includes('website/browser/result-explorer.js') && html.includes('The trial table shows empty-period counts.') && html.includes('A complete empty selection holds cash at 0% until the next rebalance.') && html.includes('Explore all trials') && html.includes('Holding details, downloads and comparisons use the original result.'), 'Explain temporary saved-period/rank summaries and original-result actions');
 assert.equal(checkedDates.length, 2, 'Both checked dates must be present');
 assert.equal(new Set(checkedDates).size, 1, 'Guide sidebar and footer checked dates must agree');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(x => x[1]);

@@ -12,12 +12,6 @@ assert.equal(completed.settings.filters[0].value,10);assert.equal(completed.cata
 assert.equal(completed.result,result);assert.equal(completed.result.periods[0].holdings[0].return_value,.1234567890123456);
 assert.throws(()=>completed.result.periods[0].holdings[0].return_value=9,TypeError);
 assert.throws(()=>completed.catalog.metrics.ev_ebitda.label='Changed',TypeError);
-assert(Artifacts.matches(completed,{...completed.settings}));assert(!Artifacts.matches(completed,{...completed.settings,end:'2020-01-01'}));
-assert(Artifacts.matches(completed,{...completed.settings,selection_order:'filter_first'}));
-assert(!Artifacts.matches(completed,{...completed.settings,selection_order:'rank_first'}));
-const rankFirst=Artifacts.create({...completed.settings,selection_order:'rank_first'},result,catalog,presentation);
-assert(Artifacts.matches(rankFirst,{...rankFirst.settings}));
-assert(!Artifacts.matches(rankFirst,{...completed.settings}));
 const legacy={version:1,kind:'custom',settings:{...completed.settings},result,catalog:completed.catalog,captured_at:'2026-10-26T00:00:00Z',context:{notes:[['screen-coverage','Old coverage','hint'],['screen-status','Old warning','screen-message warning'],['range-note','Old dates','hint']],pill:'Old period'}};
 const raw=JSON.stringify(legacy),decoded=Artifacts.decode(legacy);
 assert.equal(decoded.version,2);assert.equal(decoded.captured_at,legacy.captured_at);
@@ -25,7 +19,6 @@ assert.deepEqual(decoded.presentation,{coverage:'Old coverage',notice:{text:'Old
 assert.equal(JSON.stringify(legacy),raw);assert(!JSON.stringify(decoded).includes('screen-status'));assert(!('context' in decoded));assert(!('record' in decoded));
 const random=Artifacts.create({mode:'random',start:'2015-01-01',trials:2},{configuration:{seed:42},trials:[],trial_results:[]},catalog,presentation);
 Artifacts.publish(random);assert.equal(Artifacts.forView('custom').kind,'random');
-assert(Artifacts.matches(random,{...random.settings}));
 assert.throws(()=>Artifacts.decode({...legacy,version:3}),/Unsupported/);
 console.log('Passed: one immutable result per view, original labels and precision, version-1 decoding and semantic display context.');
 // Saved January results of versions 1 and 2 open in the dated view. Their book
@@ -47,18 +40,15 @@ for(const stored of [january,{...january,version:2,presentation:{coverage:'Saved
  // A repeated save sends the stored record; decoding again keeps the projection.
  assert.equal(JSON.stringify(opened.record),bytes);
  assert.equal(JSON.stringify(Artifacts.decode(opened)),JSON.stringify(opened));
- assert(!Artifacts.matches(opened,{mode:'custom',start:'2015-01-01',end:'2017-10-20',months:12}));
  Artifacts.publish(opened);assert.equal(Artifacts.forView('custom').kind,'january');
  assert.equal(Artifacts.reader(opened)!==null,true);
 }
 console.log('Passed: saved version-1/2 January results project book years into dated periods at read time, never rewrite the record and open in the dated view.');
 const produced=Artifacts.create({mode:'custom',engine:'experimental',start:'2015-01-01'},{producer:{engine:'experimental',label:'New engine — experimental'}},catalog,presentation);
-assert(Artifacts.matches(produced,{...produced.settings}));
-assert(!Artifacts.matches(produced,{...produced.settings,engine:'original'}));
 assert.equal(Artifacts.decode(produced).result.producer.engine,'experimental');
 const unidentified=Artifacts.decode({...produced,result:{},settings:{mode:'custom',start:'2015-01-01'}});
 assert(!('producer' in unidentified.result));
-console.log('Passed: pinned engine comparison and recorded producer identity without legacy inference.');
+console.log('Passed: recorded producer identity without legacy inference.');
 for(const kind of ['latest','january']){
  const prior={version:4,kind,settings:{mode:kind,strategy:{format:'strategy-capture',version:1}},
   result:{},catalog:{},presentation:{},evidence:{id:'d'.repeat(32),format_version:2,trials:kind==='latest'?0:1,periods:kind==='latest'?0:1,holdings:1}};

@@ -64,9 +64,10 @@ function scheduledPresentation(settings){
 // stored record: no draft setting makes it stale. Picks that match the settings
 // need no line.
 function updateResultsState(){
-  const latest=screeningMode==='latest',saved=ResultArtifacts.forView('latest'),state=document.getElementById('results-state');
+  if(screeningMode!=='latest')return;
+  const saved=ResultArtifacts.forView('latest'),state=document.getElementById('results-state');
   let matches=false;try{matches=ResultArtifacts.matches(saved,currentSettings());}catch(_){}
-  const stale=latest&&!!saved&&!matches,missing=latest&&!saved;
+  const stale=!!saved&&!matches,missing=!saved;
   state.className='screen-message'+(stale||missing?' warning':'');
   state.textContent=stale?'Settings changed — displayed results do not match the current settings. Select Screen latest to update them. Downloads still use the displayed results.':missing?'No results for these settings yet. Select Screen latest.':'';
   document.getElementById('latest-view').setAttribute('data-results-stale',String(stale));
@@ -89,6 +90,7 @@ function initializeFilters(){
   document.getElementById('date-testing').value='random';
   document.getElementById('random-trials').value='24';
   document.getElementById('random-seed').value='42';
+  document.getElementById('repeat-random').checked=false;
   StrategyDraft.reset();
 }
 const comparisons=[['gt','More than (>)'],['lt','Less than (<)'],['ge','At least (≥)'],['le','At most (≤)']];
@@ -178,9 +180,9 @@ function setModeVisibility(){
   // Latest stock picks has Screen latest and Auto-run. Historical backtest has the test name and Add to queue.
   for(const id of ['run-screen','auto-run-controls'])document.getElementById(id).hidden=!latest;
   document.getElementById('queue-controls').hidden=latest;
-  // The results line and the notes of the displayed picks belong to Latest stock picks.
-  for(const id of ['results-state','screen-coverage','range-note'])document.getElementById(id).hidden=!latest;
-  const artifact=currentArtifact(),scalar=document.getElementById('scalar-evidence-view');
+  // The status line, the results line and the notes of the displayed picks belong to Latest stock picks.
+  for(const id of ['screen-status','results-state','screen-coverage','range-note'])document.getElementById(id).hidden=!latest;
+  const artifact=ResultArtifacts.forView('latest'),scalar=document.getElementById('scalar-evidence-view');
   applyPresentation(artifact?.presentation);renderSteps();
   // A server latest panel in the builder belongs to latest mode only.
   if(!latest&&scalar?.parentNode?.id==='workspace-builder')scalar.hidden=true;
@@ -253,7 +255,6 @@ function copySavedBacktestSettings(snapshot){
   const artifact=ResultArtifacts.decode(snapshot);
   if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
   restoreBacktestSettings(artifact.settings,artifact.catalog,artifact.result.configuration?.seed);
-  updateResultsState();
   Workspaces.show('builder');
   document.getElementById('queue-add').focus?.({preventScroll:true});
 }
@@ -549,7 +550,7 @@ const StrategyDraft=(()=>{
       set('date-testing',settings.mode==='random'?'random':'single');
       if(settings.mode==='random'){
         set('random-trials',settings.trials);set('random-seed',seed??42);
-        document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
+        document.getElementById('repeat-random').checked=seed!==undefined;
       }
     }
     restored={content:content(),selection:settings.strategy?{strategy:copy(settings.strategy)}:Object.fromEntries(Object.entries(settings).filter(([key])=>flatKeys.has(key)))};

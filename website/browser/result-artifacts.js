@@ -150,16 +150,10 @@ const ResultArtifacts=(()=>{
   if(typeof addEventListener==='function')addEventListener('pagehide',()=>{for(const scope of acquisitions.values())scope.cancelled=true;const ids=new Set([...readers.keys(),...acquisitions.keys()]);for(const id of ids)releaseId(id);});
   function matches(artifact,settings){
     if(!artifact)return false;
-    let submitted=artifact.settings;
-    const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
-    // Older saved records used filter-first selection. Compare that default
-    // without adding fields to, or rewriting, the stored artifact.
-    submitted=calendar?calendar.normalize(submitted):submitted;
-    settings=calendar?calendar.normalize(settings):settings;
     // Phase 6 scalar latest/January settings omitted engine and mean Original.
     // This comparison default establishes no historical producer evidence.
     const defaults=artifact.settings.strategy?{engine:'original',selection_order:'filter_first',market:'us'}:{selection_order:'filter_first',market:'us'};
-    return signature({...defaults,...submitted})===signature({...defaults,...settings});
+    return signature({...defaults,...artifact.settings})===signature({...defaults,...settings});
   }
   // Evidence views keep 8 significant digits. A table shows 2 decimals; below
   // 0.01, 2 significant digits; below 0.000001, 0.00. BacktestComparison applies

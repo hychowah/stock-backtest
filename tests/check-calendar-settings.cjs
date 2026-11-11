@@ -10,7 +10,7 @@ assert.notDeepEqual(Calendar.normalize(week),Calendar.normalize({...old,months:2
 for(const version of [1,2]){
  const snapshot={version,kind:'custom',settings:old,result:{months:12},catalog:{metrics:{old:{label:'Original label'}},filters:{}},presentation:{},context:{pill:'Original period'}};
  const raw=JSON.stringify(snapshot),artifact=Artifacts.decode(snapshot);
- assert(Artifacts.matches(artifact,canonical));assert.equal(JSON.stringify(snapshot),raw);
+ assert.equal(JSON.stringify(snapshot),raw);
  assert.equal(artifact.catalog.metrics.old.label,'Original label');
  const next=Artifacts.create(week,{calendar:week.calendar},snapshot.catalog,{});
  assert(Artifacts.matches(next,week));assert(!Artifacts.matches(next,old));

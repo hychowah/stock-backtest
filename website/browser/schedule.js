@@ -81,7 +81,6 @@ const ScheduleView=(()=>{
   }
   function init(readContext){
     CalendarSettings.init();void EngineControls.init(readContext);
-    node('repeat-random').checked=false;
     // A trial opens in Returns, where its period returns and stocks show.
     RobustnessView.init(index=>{inspect(index);Workspaces.reviewSection('returns');},
       ()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});

@@ -62,8 +62,8 @@ The source archive is ready before the old child receives its private stop
 marker. `website/serve.py` observes the marker even during startup preparation.
 It performs normal Ctrl+C cleanup. Publication waits for complete process exit,
 then uses the existing source-before-financial lock order. A timeout preserves
-ownership and retries. No forced process kill bypasses cleanup. Active manual
-runs stop. Interrupted queued tests return to waiting and retain their recorded
+ownership and retries. No forced process kill bypasses cleanup. A latest screen
+in progress stops. Interrupted queued tests return to waiting and retain their recorded
 dates. Saved results and user data survive. A missing Git observation keeps the
 installed revision; the scheduled data refresh still runs. A failed source
 publication retries automatically; pending journals stay in

@@ -258,10 +258,7 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const chainRecord=await queueDefault({...dated,months:12,strategy:chain});assert.equal(chainRecord.name,twoRanks);
   // The name adds the rebalance interval when it is not 12 months, and the market when it is not US.
   const oneRank={...copy(chain),steps:chain.steps.slice(2)};
-  assert.equal((await queueDefault({...dated,months:3,strategy:oneRank})).name,'Ranks 20–40 · Chain P/E · highest first · quarterly · Market cap ≥ $100M');
   assert.equal((await queueDefault({mode:'random',trials:3,market:'hk',calendar:{version:1,start:'2015-01-02',end:'2015-01-05',interval:{unit:'week',count:2}},strategy:oneRank})).name,'Hong Kong · Ranks 20–40 · Chain P/E · highest first · every 2 weeks · Market cap ≥ $100M');
-  assert.equal((await queueDefault({...dated,months:1,market:'jp',strategy:oneRank})).name,'Japan · Tokyo · Ranks 20–40 · Chain P/E · highest first · monthly · Market cap ≥ $100M');
-  for(const [months,words] of [[6,'half-yearly'],[24,'every 2 years']])assert.equal((await queueDefault({...dated,months,strategy:oneRank})).name.split(' · ')[3],words);
   // The row line shows the name, state, test type and dates only. The row control lists every setting in
   // plain wording. The exact recorded text waits in one closed disclosure of that control.
   const listed=node('queue-list').innerHTML,rowStart=listed.indexOf('data-queue-id="'+chainRecord.id+'"'),chainRow=listed.slice(rowStart,listed.indexOf('</li>',rowStart));

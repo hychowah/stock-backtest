@@ -70,16 +70,6 @@ or `fixed-` name limits the block to that kind of result.
 The bottom status bar consumes queue state. Its dialog
 borrows the mounted queue panel, including the same controls and polling owner.
 
-Runs & saved has two owners. `queue.js` draws the In progress rows.
-`saved-backtests.js` draws the Saved backtests rows and the panel of the ticked
-tests. It reads one description for each saved id that the user ticked or
-opened with Details, through `ResultArtifacts.use` and `describe`.
-`BacktestComparison.compare` takes a list of descriptions and returns one cell
-for each test in every row. A row of recorded facts keeps a `recorded` mark, so
-the first block of the panel lists requested settings only. The
-[website guide](../website/README.md#save-and-reopen-completed-backtests)
-describes the screen.
-
 ## Sector selections
 
 Selection reads sectors only when opened. `backtest/application/result_sectors.py`

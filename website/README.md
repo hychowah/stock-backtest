@@ -24,7 +24,7 @@ Refresh the browser page after the server reports it is ready. Subsequent
 restarts do not open another tab.
 
 The archive is staged before shutdown. Server cleanup finishes before source
-replacement. An active manual run stops; interrupted queued work returns to
+replacement. A latest screen in progress stops; interrupted queued work returns to
 waiting with its recorded dates. Saved backtests and raw data are preserved.
 Unavailable Git keeps the installed source revision; data refresh still runs.
 A failed source publication retries automatically.
@@ -52,12 +52,9 @@ If fewer stocks match than requested, the available picks receive equal weights 
 ## Read a completed result
 
 A completed backtest opens in **Result review**. The headline below the title
-shows the original result on every tab. For a fixed schedule or a saved January
-result, it gives strategy CAGR, SPY CAGR, their difference in percentage points
-and growth of $1. For random dates, it gives the mean strategy CAGR, the mean
-SPY CAGR, the mean difference, the number of complete trials that beat paired
-SPY, and the worst and best trial CAGR. A value that the result did not store
-shows **Unavailable**.
+shows the original result on every tab: CAGR against SPY for a fixed schedule,
+or the trial statistics for random dates. A value that the result did not
+store shows **Unavailable**.
 
 **Overview** shows the main chart and its table: returns by holding period for
 a fixed schedule, or the return distribution, the statistics of complete trials
@@ -351,13 +348,9 @@ The library is shared by browser sessions using that runtime. A saved HTML file
 needs the local service to use the library.
 
 Select **Details** at the end of a row to read the settings of that test in
-place and to find its other actions. A saved row shows its settings in plain
-wording, such as `Market cap ≥ $100M`, its headline and its saved ID, with
-**Tune**, **Rename** and **Delete**. An In progress row shows its settings with
-**Edit settings**, **Move up**, **Move down**, **Release hold**, **Stop test**,
-**Open result**, **Tune** and **Delete**, as its state allows. A closed **Exact
-recorded values** lists every recorded row with its exact text. Renaming
-changes no settings or stored results.
+plain wording, such as `Market cap ≥ $100M`, and to find its other actions. A
+closed **Exact recorded values** lists every recorded row with its exact text.
+Renaming changes no settings or stored results.
 
 Select the **Name**, **CAGR** or **Saved** heading to sort the saved backtests;
 select it again to reverse the order. Test types and date windows can differ.

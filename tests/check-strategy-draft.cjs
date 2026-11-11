@@ -83,16 +83,7 @@ if(process.argv[2]==='--builtins-parity'){
  // Path B: 500 trials and a wrong repeated date set, then one fixed schedule.
  node('random-trials').value='500';node('repeat-random').checked=true;node('random-seed').value='-1';choose('random',false);assert.deepEqual(blocking(),['random-trials','random-seed']);
  choose('single',false);assert.deepEqual(blocking(),[]);assert(!('trials' in run('currentSettings()')));
- // A choice turned on again enables its inputs and reads their kept values.
- node('calendar-count').value='12';node('random-trials').value='6';node('random-seed').value='77';choose('random',true);assert.deepEqual(blocking(),[]);
- assert.deepEqual(['random-trials','random-seed','calendar-count'].map(id=>node(id).disabled),[false,false,false]);
- assert.deepEqual(['mode','trials','seed'].map(key=>run('currentSettings()')[key]),['random',6,77]);
- // Latest mode hides the whole dates block, wrong values included.
- node('random-trials').value='500';node('calendar-count').value='52';run("screeningMode='latest';StrategyDraft.render()");
- assert.deepEqual(['trade-start','trade-end','calendar-count','random-trials','random-seed'].map(id=>node(id).disabled),[true,true,true,true,true]);assert.deepEqual(blocking(),[]);
- run("screeningMode='backtest';StrategyDraft.render()");assert.deepEqual([node('trade-start').disabled,node('trade-end').disabled],[false,false]);assert.deepEqual(blocking(),['random-trials','calendar-count']);
- node('repeat-random').checked=false;run('StrategyDraft.render()');assert.equal(node('random-seed').disabled,true,'A fresh date set keeps its number input off');
- node('calendar-count').value='12';node('random-trials').value='24';node('random-seed').value='42';choose('single',false);
+ node('calendar-count').value='12';node('random-trials').value='24';node('random-seed').value='42';node('repeat-random').checked=false;choose('single',false);
  const first=await submit();
  assert.deepEqual(requests.at(-1),{intent:{format:'strategy-intent',version:2,universe:{pool:'cached'},steps:[{kind:'filter',source:field('market_cap'),op:'ge',threshold:{value:'100',unit:'usd_million'}},{kind:'filter',source:field('enterprise_value'),op:'ge',threshold:{value:'50',unit:'usd_million'}},{kind:'rank',source:builtin('metric:ev_ebitda:yield'),direction:'highest',rank_from:1,rank_to:50}]}});
  assert.equal(first.mode,'custom');assert.equal(first.strategy.version,2);
@@ -320,13 +311,13 @@ if(process.argv[2]==='--builtins-parity'){
   assert.equal(requests.at(-1).submitted.length,9);assert.equal(requests.at(-1).labels.length,9);assert(!('detached' in requests.at(-1)));assert(!('original' in requests.at(-1)));
  }
  // The results line under the builder speaks for the latest picks, and only when it has something to say:
- // no picks for the settings, or changed settings. Historical backtest mode shows no line.
+ // no picks for the settings, or changed settings. Historical backtest mode hides the line.
  const resultsLine=()=>{run('updateResultsState()');return node('results-state').textContent;};
  const stubs={...context.ResultArtifacts};
  run("screeningMode='latest'");assert.equal(resultsLine(),'No results for these settings yet. Select Screen latest.');
  Object.assign(context.ResultArtifacts,{forView:()=>({kind:'latest'}),matches:()=>true});assert.equal(resultsLine(),'','Results that match the settings need no line');
  context.ResultArtifacts.matches=()=>false;assert(resultsLine().startsWith('Settings changed — displayed results do not match the current settings.'));
- run("screeningMode='backtest'");assert.equal(resultsLine(),'');
+ run("screeningMode='backtest';setModeVisibility()");assert.equal(node('results-state').hidden,true);
  Object.assign(context.ResultArtifacts,stubs);
  console.log('Passed: default chain and offline shape, both example chains, repeated Ranks, keyboard moves, stale replies, units and equality, flat/capture-1/capture-2 restore with ranks 20–40 and exact spellings, 50-step refusal, held save/cancel, snapshot-before-await, capture-before-ID and copy without calculation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
