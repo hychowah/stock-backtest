@@ -20,8 +20,10 @@ saved returns without screening, formulas, preparation or market inputs.
 Random results have **Explore all trials** in the same position. One
 selection updates every trial, combined statistics and the distribution chart.
 The panel shows the mean and median strategy CAGR and the mean paired SPY CAGR
-of the selection. A notice above the chart gives the applied window and ranks.
-The result headline keeps the original result.
+of the selection. A notice above the chart gives the window and ranks of an
+applied selection that differs from the original. The full original window and
+ranks need no notice, unless Apply derived totals that the original did not
+record. The result headline keeps the original result.
 Selectors name saved entry and exit blocks. The actual shared window runs from
 the earliest selected entry to the latest selected exit. A selection beginning
 with the first period keeps the original common start. Strategy and paired SPY
@@ -67,7 +69,10 @@ The same description supplies `headline`, the short answer that review prints
 below the title: `cagr`, `spy_cagr` and `difference` for every test type, then
 `growth` for a fixed schedule or a January result, or `beat_spy`, `worst` and
 `best` for random dates. Random values are the stored trial statistics and
-counts. A value that the result did not store reads Unavailable. A review block
+counts. A value that the result did not store reads Unavailable. The sign of
+`difference` follows its rounded display. The coverage line of a fixed result
+sits with the recorded notes, or below the headline when a headline value is
+Unavailable; for random dates it stays with the inspected trial. A review block
 lists its tabs in `data-review-panel`; a `random-` or `fixed-` name limits the
 block to that kind of result.
 The bottom status bar consumes existing direct-run and queue state. Its dialog

@@ -61,14 +61,16 @@ const RobustnessView=(()=>{
   }
   function render(next,engine){
     remember(next.configuration,engine);
+    // A new result starts at its first trial.
+    node('robustness-trial').value='';
     preview(next);
   }
-  function preview(result){
+  // selection: the window and ranks of an applied Explore selection that differs
+  // from the original. It replaces the chart and tables until Reset; say so above them.
+  function preview(result,selection=null){
     displayed=result;node('robustness-results').hidden=false;
-    // An applied Explore selection replaces the chart and tables until Reset. Say so above them.
-    const view=result.exploration;
-    node('robustness-scope').hidden=!view;
-    node('robustness-scope').textContent=view?`Explore selection: ${view.start} → ${view.end} · ranks ${view.rank_from}–${view.rank_to}. The chart and tables below show this temporary selection. The headline shows the original result. Select Reset to original in Explore to restore them.`:'';
+    node('robustness-scope').hidden=!selection;
+    node('robustness-scope').textContent=selection?`Explore selection: ${selection.start} → ${selection.end} · ranks ${selection.rank_from}–${selection.rank_to}. The chart and tables below show this temporary selection. The headline shows the original result. Select Reset to original in Explore to restore them.`:'';
     chart(result);
     const d=result.distributions;
     // The Explore panel shows these three values of the displayed trials.
@@ -81,8 +83,10 @@ const RobustnessView=(()=>{
     const definitions=[['Strategy CAGR','cagr',pct],['Paired SPY CAGR','spy_cagr',pct],['CAGR difference (pp)','excess_cagr',v=>v===null?'—':(v*100).toFixed(2)],['Total strategy return','total_return',pct],['Ending value of $1','growth',v=>v===null?'—':'$'+v.toFixed(2)]];
     node('robustness-distribution').innerHTML=definitions.map(([label,key,format])=>'<tr><td>'+label+'</td>'+['mean','median','p10','p25','p75','p90','min','max','stddev'].map(stat=>'<td>'+format(d[key][stat])+'</td>').join('')+'</tr>').join('');
     node('robustness-trials').innerHTML=result.trials.map(t=>'<tr>'+[t.trial,t.start,t.first_trade,t.end,t.periods,pct(t.cagr),pct(t.spy_cagr),t.excess_cagr===null?'—':(t.excess_cagr*100).toFixed(2),t.empty_periods,t.short_periods].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
+    // A redraw for Explore keeps the trial that the user chose.
+    const chosen=node('robustness-trial').value;
     node('robustness-trial').innerHTML=result.trials.map((t,i)=>`<option value="${i}">Trial ${t.trial} · ${t.first_trade} · CAGR ${pct(t.cagr)}</option>`).join('');
-    node('robustness-trial').value='0';
+    node('robustness-trial').value=result.trials[chosen]?chosen:'0';
   }
   function download(){
     const artifact=typeof ResultArtifacts!=='undefined'?ResultArtifacts.forView('custom'):null;

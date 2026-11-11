@@ -29,8 +29,21 @@ const EvidenceResults=(()=>{
     node('scalar-explanation').open=false;node('scalar-explanation-content').innerHTML='';
   }
   function readError(state,error){if(valid(state)&&error.name!=='AbortError')node(state.artifact.kind==='latest'?'screen-error':'schedule-message').textContent=error.message;}
+  // Set which pager buttons can be used. Disabling the button that has focus would
+  // drop keyboard focus to the page: the pager takes the focus first, and gives it
+  // back when that button can be used again.
+  let held=null;
+  function pager(id,back,next){
+    const pages=node(id+'-pages'),buttons=[node(id+'-back'),node(id+'-next')];
+    [back,next].forEach((disabled,i)=>{
+      if(disabled&&buttons[i]===document.activeElement){held=buttons[i];pages.focus({preventScroll:true});}
+      buttons[i].disabled=disabled;
+    });
+    if(buttons.includes(held)&&!held.disabled&&document.activeElement===pages){held.focus({preventScroll:true});held=null;}
+  }
   function navigation(id,cursor,next,total,label){
-    node(id+'-pages').hidden=false;node(id+'-back').disabled=cursor===0;node(id+'-next').disabled=next===null;
+    // A result with one page shows no pager.
+    node(id+'-pages').hidden=cursor===0&&next===null;pager(id,cursor===0,next===null);
     node(id+'-page').textContent=label+' · '+total+' total';
   }
   // The internal unit 'scalar' means a plain number; show no unit for it.
@@ -83,7 +96,7 @@ const EvidenceResults=(()=>{
     clearExplanation();
     const period=+node('schedule-period').value,sequence=++state.stockSequence;state.period=period;
     const selected=state.page.rows.find(row=>row.number===period);if(!selected)return;
-    node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
+    pager('schedule-holdings',true,true);
     node('schedule-stock-body').innerHTML='';state.holdingCursor=0;state.holdingNext=null;
     state.attributionLoaded=false;
     state.firstPage=state.sector===undefined?state.reader.holdings(state.trial,period,0):null;
@@ -115,8 +128,7 @@ const EvidenceResults=(()=>{
   async function storedPeriods(state,cursor=0,preferred=null){
     clearExplanation();
     const sequence=++state.periodSequence;state.period=null;state.stockSequence++;
-    node('schedule-period-back').disabled=true;node('schedule-period-next').disabled=true;
-    node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
+    pager('schedule-period',true,true);pager('schedule-holdings',true,true);
     try{
       const page=await state.reader.periods(state.trial,cursor);
       if(!valid(state)||state.periodSequence!==sequence)return;

@@ -74,6 +74,8 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 #workspace-headline dd{margin:0;font-size:24px;font-weight:500;line-height:1.2;color:#244f43;overflow-wrap:anywhere}
 #workspace-headline [data-tone=up] dd{color:#13755a}
 #workspace-headline [data-tone=down] dd{color:#a93830}
+#workspace-headline-note:empty{display:none}
+#workspace-headline-note>.hint{margin:-6px 0 20px}
 #workspace-recorded-notice{margin:0 0 20px}
 #custom-view{border:0;padding:0;background:none;margin-top:0}
 #custom-view>h2{display:none}
@@ -82,9 +84,10 @@ label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-
 .review-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;margin-bottom:12px}
 .review-heading h3{margin:0}
 #robustness-scope{margin:0 0 12px}
-/* A pager with one page has nothing to say. */
-#schedule-period-pages:not(:has(button:enabled)),#schedule-holdings-pages:not(:has(button:enabled)){display:none}
 #schedule-period-pages{margin-top:10px}
+/* The trial title and a pager can hold keyboard focus; they show the ring of a control. */
+#schedule-trial-title,#schedule-period-pages,#schedule-holdings-pages{width:fit-content}
+#schedule-trial-title:focus-visible,#schedule-period-pages:focus-visible,#schedule-holdings-pages:focus-visible{outline:2px solid #20775e;outline-offset:3px}
 #schedule-download-returns,#schedule-download-holdings{margin-top:12px}
 #result-explorer{margin-top:24px}
 #result-explorer:not([open]){padding-top:6px;padding-bottom:6px}

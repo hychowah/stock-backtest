@@ -7,8 +7,12 @@ const nav=['builder','runs','library','review'].map(name=>{const n=node('nav-'+n
 const tabs=['overview','selection','returns','settings'].map(name=>{const n=node('tab-'+name);n.dataset.review=name;return n;});
 const queries=selector=>selector==='[data-workspace]'||selector.startsWith('#workspace-nav')?nav:selector==='[data-review]'?tabs:[];
 // Review blocks list their tabs; a random- or fixed- name limits a block to that kind of result.
-const panels=['overview','random-returns','fixed-overview returns','selection returns'].map(reviewPanel=>({dataset:{reviewPanel},hidden:false}));
-node('workspace-review').querySelectorAll=()=>panels;const visible=()=>panels.filter(panel=>!panel.hidden).map(panel=>panel.dataset.reviewPanel);
+// The names come from the page markup. shows(id) tells if the block that holds that element is visible.
+const template=fs.readFileSync(path.join(__dirname,'../website/browser/template.html'),'utf8');
+const panels=[...new Set([...template.matchAll(/data-review-panel="([^"]+)"/g)].map(match=>match[1]))].map(reviewPanel=>({dataset:{reviewPanel},hidden:false}));
+node('workspace-review').querySelectorAll=()=>panels;
+const shows=id=>{const name=template.slice(0,template.indexOf('id="'+id+'"')).match(/.*data-review-panel="([^"]+)"/s)[1];return !panels.find(panel=>panel.dataset.reviewPanel===name).hidden;};
+const blocks=()=>['robustness-chart','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer','robustness-replay'].filter(shows);
 let copied=null,shown=null;
 const artifacts=require('../website/browser/result-artifacts.js');
 const context=vm.createContext({console,document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
@@ -34,23 +38,41 @@ assert.equal(node('rank-to').value,'25');assert.equal(node('workspace-result-tit
 // The headline of the original result shows under the title, for a fixed and a random-date result.
 const headline=()=>node('workspace-headline').innerHTML.split('</div>').filter(Boolean).map(cell=>cell.replace(/<[^>]+>/g,' ').trim().replace(/\s+/g,' '));
 assert.deepEqual(headline(),['Strategy CAGR 10.00%','SPY CAGR 5.00%','Difference vs SPY +5.00 pp','Growth of $1 $1.10']);
-assert.deepEqual(visible(),['overview','fixed-overview returns']);run("Workspaces.reviewSection('returns')");assert.deepEqual(visible(),['fixed-overview returns','selection returns']);
+// The colour of the difference follows its sign on screen: a shown 0.00 has no tone.
+const tone=()=>node('workspace-headline').innerHTML.match(/data-tone="(\w+)"/)?.[1];assert.equal(tone(),'up');
+const fixed=(result,presentation={})=>artifacts.create({mode:'custom',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50},{cagr:.1,spy_cagr:.05,growth:1.1,start:'2015-01-02',end:'2016-01-04',...result},{metrics:{},filters:{}},presentation);
+const publish=(artifact,...rest)=>{context.next=artifact;context.rest=rest;run('Workspaces.published(ResultArtifacts.publish(next),...rest)');};
+publish(fixed({cagr:.02}));assert.equal(tone(),'down');
+publish(fixed({cagr:.1+.2,spy_cagr:.3}));assert.equal(headline()[2],'Difference vs SPY 0.00 pp');assert.equal(tone(),undefined);
+// The fixed result shows its chart, its pager and Explore in Overview; Returns adds the stocks. The per-trial block stays hidden.
+assert.deepEqual(blocks(),['robustness-chart','schedule-chart','schedule-period-pages','result-explorer','robustness-replay']);
+run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
+// The coverage line of a fixed result is a recorded note. It moves below the headline when a headline value is unavailable.
+assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));assert.equal(node('workspace-recorded-context').hidden,false);
+publish(fixed({cagr:null,growth:null}));assert.equal(headline()[0],'Strategy CAGR Unavailable');
+assert.equal(node('schedule-coverage').parentNode,node('workspace-headline-note'));assert.equal(node('workspace-recorded-context').hidden,true);
 // A recorded warning stays above the tabs. Other notes, and how the result was opened, wait in the notes disclosure.
-context.noted=artifacts.create({mode:'custom',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50},{cagr:.1,spy_cagr:.05,growth:1.1,start:'2015-01-02',end:'2016-01-04'},{metrics:{},filters:{}},{notice:{text:'Recorded note',severity:'info'},coverage:'Recorded coverage'});
-run("Workspaces.published(ResultArtifacts.publish(noted),'Recorded test','Opened without a calculation.')");
+publish(fixed({},{notice:{text:'Recorded note',severity:'info'},coverage:'Recorded coverage'}),'Recorded test','Opened without a calculation.');
 assert.equal(node('workspace-recorded-notice').hidden,true);assert.equal(node('workspace-recorded-info').textContent,'Recorded note');assert.equal(node('workspace-opened-note').textContent,'Opened without a calculation.');
 assert.equal(node('workspace-recorded-coverage').textContent,'Recorded coverage');assert.equal(node('workspace-recorded-context').hidden,false);
-context.warned=artifacts.create({mode:'custom',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50},{cagr:.1,spy_cagr:.05,growth:1.1,start:'2015-01-02',end:'2016-01-04'},{metrics:{},filters:{}},{notice:{text:'Recorded warning',severity:'warning'}});
-run("Workspaces.published(ResultArtifacts.publish(warned),'Recorded test')");
+publish(fixed({},{notice:{text:'Recorded warning',severity:'warning'}}),'Recorded test');
 assert.equal(node('workspace-recorded-notice').textContent,'Recorded warning');assert.equal(node('workspace-recorded-notice').hidden,false);assert.equal(node('workspace-recorded-info').textContent,'');assert.equal(node('workspace-opened-note').textContent,'');
 const statistics={mean:.15,min:-.02,max:.31};
-context.random=artifacts.create({mode:'random',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50,trials:3},{completed:3,valid:3,incomplete:0,beat_spy:2,configuration:{seed:9,window_start:'2015-01-02',window_end:'2016-01-04'},distributions:{cagr:statistics,spy_cagr:{mean:.2},excess_cagr:{mean:-.05}}},{metrics:{},filters:{}},{});
-run("Workspaces.published(ResultArtifacts.publish(random),'Random test')");
+const random=artifacts.create({mode:'random',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50,trials:3},{completed:3,valid:3,incomplete:0,beat_spy:2,configuration:{seed:9,window_start:'2015-01-02',window_end:'2016-01-04'},distributions:{cagr:statistics,spy_cagr:{mean:.2},excess_cagr:{mean:-.05}}},{metrics:{},filters:{}},{});
+publish(random,'Random test');
 assert.deepEqual(headline(),['Mean strategy CAGR 15.00%','Mean SPY CAGR 20.00%','Mean difference vs SPY -5.00 pp','Trials beating SPY 2/3','Worst trial CAGR -2.00%','Best trial CAGR 31.00%']);
+// For random dates the coverage line describes the inspected trial and stays with it.
+assert.equal(node('schedule-coverage').parentNode,node('schedule-trial'));
 assert.equal(node('workspace-recorded-context').hidden,true,'No recorded note leaves no empty disclosure');
-assert.deepEqual(visible(),['overview']);run("Workspaces.reviewSection('returns')");assert.deepEqual(visible(),['random-returns','fixed-overview returns','selection returns']);
+// A producer line inside the disclosure keeps the disclosure in view.
+node('result-producer').textContent='Calculated by Original.';publish(random,'Random test');assert.equal(node('workspace-recorded-context').hidden,false);
+node('result-producer').hidden=true;publish(random,'Random test');assert.equal(node('workspace-recorded-context').hidden,true);
+Object.assign(node('result-producer'),{textContent:'',hidden:false});
+// The random-date result shows its distribution in Overview; Returns shows one trial with its chart and stocks.
+assert.deepEqual(blocks(),['robustness-chart','result-explorer','robustness-replay']);
+run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
 run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
 run("Workspaces.runStatus({detail:'Preparing original books',elapsed:'0:02'})");assert(node('workspace-run-detail').textContent.includes('Preparing original books'));
 assert.equal(form.innerHTML,'Mounted draft');
-console.log('Passed: mounted draft/queue lifetimes, original recorded settings, the result headline, kind-specific review blocks, recorded notes, explicit copy, and independent background-status updates.');
+console.log('Passed: mounted draft/queue lifetimes, original recorded settings, the result headline and its tone, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, explicit copy, and independent background-status updates.');

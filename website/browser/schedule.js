@@ -182,6 +182,8 @@ const ScheduleView=(()=>{
     RobustnessView.init((trial,configuration,stored,index)=>{
       if(!stored&&![3,4].includes(ResultArtifacts.forView('custom')?.version))return run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)});
       inspect(index);Workspaces.reviewSection('returns');
+      // The tab change hides the button that had focus; the trial title takes it.
+      node('schedule-trial-title').focus();
     },configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));

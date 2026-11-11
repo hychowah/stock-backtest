@@ -88,7 +88,9 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  run("ResultExplorer.show(ResultArtifacts.publish(input),'all',details)");
  assert(!panel().open&&!panel().hidden);assert.equal(input('title').textContent,'Explore all 24 trials');
  assert(input('apply').disabled);assert.equal(input('period-from').innerHTML,'');
- panel().open=true;panel().handlers.toggle();await tick();assert(!input('apply').disabled);
+ // Opening the panel, Apply and Reset keep the trial that the user chose for inspection.
+ node('robustness-trial').value='2';
+ panel().open=true;panel().handlers.toggle();await tick();assert(!input('apply').disabled);assert.equal(node('robustness-trial').value,'2');
  assert(input('summary').hidden&&!input('trials').hidden);assert.equal(node('robustness-mean').textContent,'15.00%');
  assert(node('robustness-scope').hidden,'The original result carries no selection notice');
  assert(input('period-from').innerHTML.includes('2010-01-01'));
@@ -111,6 +113,13 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  const allCount=applied().length;input('reset').handlers.click();
  assert.equal(node('robustness-mean').textContent,'15.00%');assert.equal(applied().length,allCount);
  assert(node('robustness-scope').hidden&&!node('robustness-scope').textContent);
+ // Apply with the full original window and ranks is the original again: no notice.
+ input('apply').handlers.click();await tick();
+ assert.deepEqual(JSON.parse(applied().at(-1).options.body).selection,{trial:'all',period_from:1,period_to:25,rank_from:1,rank_to:50});
+ assert(node('robustness-scope').hidden);assert.equal(node('robustness-trial').value,'2');
+ // Apply derives totals that the original did not record, so that full selection keeps its notice.
+ const unrecorded=structuredClone(batch);unrecorded.result.trials[0].growth=null;
+ await show(unrecorded,'all',{summary:unrecorded.result,periods:25});input('apply').handlers.click();await tick();assert(!node('robustness-scope').hidden);
  assert.equal(JSON.stringify(batch),batchBefore);
  for(const version of [3,4]){
   const bounded=structuredClone(batch);bounded.version=version;delete bounded.result.trial_results;

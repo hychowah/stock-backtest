@@ -81,7 +81,12 @@ assert.deepEqual(lines(describe(oldScalar)),lines(describe(a)),'A January result
 assert.deepEqual(lines(describe(artifact({},{cagr:.05,spy_cagr:.08,growth:null}))).slice(2),['difference|Difference vs SPY|-3.00 pp','growth|Growth of $1|Unavailable']);
 assert.deepEqual(lines(describe(unavailable)).filter(line=>line.endsWith('Unavailable')),['cagr|Strategy CAGR|Unavailable','difference|Difference vs SPY|Unavailable']);
 const trials=artifact({trials:6},{completed:6,valid:5,incomplete:1,beat_spy:2,configuration:{seed:7},distributions:{cagr:{mean:.15,min:-.02,max:.31},spy_cagr:{mean:.08},excess_cagr:{mean:.07}},trial_results:[{cagr:9,spy_cagr:1}]},'random');
-assert.deepEqual(lines(describe(trials)),['cagr|Mean strategy CAGR|15.00%','spy_cagr|Mean SPY CAGR|8.00%','difference|Mean difference vs SPY|+7.00 pp','beat_spy|Trials beating SPY|2/5','worst|Worst trial CAGR|-2.00%','best|Best trial CAGR|31.00%']);
+// The count covers complete trials only; the display says so when some trials are incomplete.
+assert.deepEqual(lines(describe(trials)),['cagr|Mean strategy CAGR|15.00%','spy_cagr|Mean SPY CAGR|8.00%','difference|Mean difference vs SPY|+7.00 pp','beat_spy|Trials beating SPY|2/5 complete','worst|Worst trial CAGR|-2.00%','best|Best trial CAGR|31.00%']);
+const allComplete=structuredClone(trials);Object.assign(allComplete.result,{valid:6,incomplete:0});assert.equal(lines(describe(allComplete))[3],'beat_spy|Trials beating SPY|2/6');
+// The sign of a difference follows the rounded number on screen: a shown 0.00 has no sign.
+const difference=(cagr,spy_cagr)=>describe(artifact({},{cagr,spy_cagr})).headline[2].display;
+assert.deepEqual([difference(.1+.2,.3),difference(.3,.3+1e-12),difference(.3,.3),difference(.30004,.3),difference(.3,.30004)],['0.00 pp','0.00 pp','0.00 pp','+0.0040 pp','-0.0040 pp']);
 assert.deepEqual(describe(trials).headline.map(row=>row.value),[.15,.08,.07,2,-.02,.31]);
 // A stored result that lacks a value shows Unavailable; nothing is derived from trials or holdings.
 assert.deepEqual(lines(randomDescription).map(line=>line.split('|')[2]),['15.00%','8.00%','Unavailable','Unavailable','Unavailable','Unavailable']);

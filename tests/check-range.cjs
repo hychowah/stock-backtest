@@ -13,6 +13,9 @@ const timers=new Map(),storage=new Map();let timerId=0;
 const ctx=vm.createContext({document,console,Date,Math,AbortController,crypto:require('crypto').webcrypto,Uint8Array,setTimeout,clearTimeout,localStorage:{get length(){return storage.size},key:index=>[...storage.keys()][index],getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(fn){timers.set(++timerId,fn);return timerId},clearInterval(id){timers.delete(id)}});
 for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[1],ctx);
 const run=code=>vm.runInContext(code,ctx);
+// What Result review shows for a result: the window line and the headline cells.
+const reviewWindow=()=>el('workspace-result-window').textContent;
+const headline=()=>el('workspace-headline').innerHTML.split('</div>').filter(Boolean).map(cell=>cell.replace(/<[^>]+>/g,' ').trim().replace(/\s+/g,' '));
 run('const LATEST_VIEW="latest"');
 assert.equal(run('screeningMode'),'latest');
 // One ordered step list replaces the ranking, order, range and floor controls.
@@ -134,7 +137,10 @@ assert.equal(el('trade-start').value,tradeStart,'January book years never become
 run('restoreSavedBacktest(savedJanuary)');
 const opened=run('currentArtifact()');assert.equal(opened.kind,'january');assert.equal(opened.version,2);assert.equal(opened.captured_at,savedJanuary.captured_at);
 assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);
-assert.equal(el('schedule-dates').textContent,'2015-01-02 → 2016-10-20 · January books');
+assert.equal(reviewWindow(),'2015-01-02 → 2016-10-20 · Saved January books');
+// Its totals were not recorded: the headline says so, and the coverage line with the reason shows below it.
+assert.deepEqual(headline(),['Strategy CAGR Unavailable','SPY CAGR 8.00%','Difference vs SPY Unavailable','Growth of $1 Unavailable']);
+assert.equal(el('schedule-coverage').parentNode,el('workspace-headline-note'));assert(el('schedule-coverage').textContent.includes('Recorded totals are unavailable'));
 assert(el('schedule-rows').innerHTML.includes('<td>2015-01-02</td><td>2016</td><td>3</td>'));
 assert(el('schedule-rows').innerHTML.includes('<td>2016</td><td>2016-10-20</td><td>0</td>'));
 assert(el('workspace-opened-note').textContent.includes('no calculation'));assert.equal(el('schedule-message').textContent,'');
@@ -195,7 +201,10 @@ console.log('Passed: a saved January result opens independently of its draft wit
  const sentFilter=request.body.strategy.steps.find(step=>step.source.id==='filter:market_cap');
  assert.equal(sentFilter.storage_comparison_value,0);assert.equal(sentFilter.submitted_threshold.unit,'usd_million','A built-in unit comes from the catalog');assert(!('filters' in request.body));
  assert(request.url.startsWith('/api/backtest-runs/'));assert.equal(request.mode,'custom');assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,3);assert(!('first' in request.body));
- assert(el('schedule-dates').textContent.includes('2015-03-16'));assert(el('schedule-chart').innerHTML.includes('<rect'));
+ assert.equal(reviewWindow(),'2015-03-16 → 2015-06-15 · Fixed schedule');assert(el('schedule-chart').innerHTML.includes('<rect'));
+ const fixedHeadline=['Strategy CAGR 10.00%','SPY CAGR 5.00%','Difference vs SPY +5.00 pp','Growth of $1 $1.22'];assert.deepEqual(headline(),fixedHeadline);
+ // The coverage line of a fixed result is one of its recorded notes.
+ assert.equal(el('schedule-coverage').parentNode,el('workspace-recorded-context'));assert(el('schedule-coverage').textContent.includes('Fixture coverage'));assert.equal(el('workspace-recorded-context').hidden,false);
  assert(el('schedule-stock-body').innerHTML.includes(selected.holdings[0].symbol));
  el('schedule-download-holdings').handlers.click();assert(savedCsv.includes('period_start'));assert(savedCsv.includes('2015-03-16'));
  // A running request retains its submitted settings while controls remain editable.
@@ -217,13 +226,13 @@ console.log('Passed: a saved January result opens independently of its draft wit
  finishStopped({ok:true,json:async()=>({state:'running'})});await stopped;
  assert(stopUrl.endsWith('/stop'));assert.equal(el('run-screen').disabled,false);assert.equal(el('stop-backtest').hidden,true);
  assert(el('schedule-message').textContent.includes('stopped'));assert.equal(timers.size,0);
- assert(!el('schedule-dates').textContent.includes('1999-01-01'));
+ assert(!reviewWindow().includes('1999-01-01'));assert.deepEqual(headline(),fixedHeadline);
  const savedFixed=JSON.parse(run('JSON.stringify(currentArtifact())'));ctx.savedFixed=savedFixed;
  el('trade-start').value='2001-01-01';stepEvent('input',rankId(),'rank_to','2');
  ctx.fetch=()=>{throw Error('Restoring must not request a calculation')};
  run('restoreSavedBacktest(savedFixed)');
  assert.equal(el('trade-start').value,'2001-01-01');assert.equal(steps().at(-1).rank_to,2);
- assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');
+ assert.equal(reviewWindow(),fixture.start+' → '+fixture.end+' · Fixed schedule');assert.deepEqual(headline(),fixedHeadline);
  assert(el('workspace-opened-note').textContent.includes('no calculation'));
  // Reopening restores submitted settings and retrieves the server result by GET.
  let resumedMethod;ctx.fetch=async(_url,options)=>{resumedMethod=options.method;return completed(fixture)};
@@ -235,9 +244,9 @@ console.log('Passed: a saved January result opens independently of its draft wit
  await run('ScheduleView.resume()');
  assert.equal(resumedMethod,'GET');assert.equal(el('trade-start').value,serverRun.options.start);
  assert.equal(steps().at(-1).rank_to,serverRun.options.strategy.steps.at(-1).rank_to);assert.equal(run('ScheduleView.isRunning()'),false);
- const previous=el('schedule-dates').textContent;
+ const previous=reviewWindow()+headline();
  ctx.fetch=async()=>({ok:false,status:400,json:async()=>({error:'Invalid schedule dates'})});
- await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('Invalid schedule'));assert.equal(el('schedule-dates').textContent,previous);
+ await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('Invalid schedule'));assert.equal(reviewWindow()+headline(),previous);
  assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);
  assert(el('schedule-message').textContent.includes('Backtest failed'));
  ctx.fetch=async()=>({ok:false,status:404,json:async()=>({error:'Unknown endpoint.'})});
@@ -281,6 +290,8 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);
  // The chosen trial opens in Returns under its own title.
  assert.equal(el('workspace-review').dataset.section,'returns');assert.equal(el('schedule-trial-title').textContent,'Trial 2 of 3');
+ assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');assert.equal(el('schedule-cagr').textContent,'10.00%');
+ assert.equal(el('schedule-coverage').parentNode,el('schedule-trial'));assert.equal(headline()[0],'Mean strategy CAGR 10.00%');
  const savedRandom=JSON.parse(run('JSON.stringify(currentArtifact())'));ctx.savedRandom=savedRandom;
  const beforeRandomCopy=run('currentArtifact()');
  el('random-seed').value='999';el('random-trials').value='1';el('auto-run').checked=true;

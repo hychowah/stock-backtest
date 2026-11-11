@@ -35,6 +35,9 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  assert(node('robustness-chart').innerHTML.includes('mean 9.00%'));
  assert(!node('robustness-chart').innerHTML.includes('NaN'));
  assert(node('robustness-chart-note').textContent.includes('2 complete trials'));
+ // A redraw keeps the trial that the user chose; a new result starts at its first trial.
+ node('robustness-trial').value='1';call('RobustnessView.preview(batch)');assert.equal(node('robustness-trial').value,'1');
+ call('RobustnessView.render(batch)');assert.equal(node('robustness-trial').value,'0');
  node('robustness-measure').value='total_return';node('robustness-measure').handlers.change();
  assert(node('robustness-chart').innerHTML.includes('Total return'));
  assert(node('robustness-chart').innerHTML.includes('mean 50.00%'));
@@ -53,8 +56,9 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  assert(node('robustness-chart').innerHTML.includes('mean 90.00%'));
  assert.equal(saved.get('backtest-experiment'),remembered,'Preview preserves original replay settings');
  // A previewed selection says which window and ranks the chart and tables show.
- ctx.preview={...ctx.preview,exploration:{start:'2016-01-04',end:'2019-01-02',rank_from:5,rank_to:10}};call('RobustnessView.preview(preview)');
+ ctx.selection={start:'2016-01-04',end:'2019-01-02',rank_from:5,rank_to:10};call('RobustnessView.preview(preview,selection)');
  assert(!node('robustness-scope').hidden&&node('robustness-scope').textContent.startsWith('Explore selection: 2016-01-04 → 2019-01-02 · ranks 5–10.'));
+ call('RobustnessView.preview(preview)');assert(node('robustness-scope').hidden&&!node('robustness-scope').textContent);
  call('RobustnessView.render(batch)');assert(node('robustness-scope').hidden);
  node('robustness-download').handlers.click();assert(csv.includes('2015-03-02;2017-07-03'));assert(csv.includes('"42"'));assert.equal(download,'random-dates-seed-42.csv');
  node('robustness-trial').value='0';node('robustness-inspect').handlers.click();assert.equal(inspected.trial.trial,1);assert.equal(inspected.config.months,24);

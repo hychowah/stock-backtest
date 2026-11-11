@@ -20,7 +20,12 @@ const ResultExplorer=(()=>{
       const cash=value.trials.filter(row=>row.empty_periods>0&&Number.isFinite(row.growth)).length;
       node('coverage').textContent=value.valid+' complete trials; '+value.incomplete+' incomplete trials. Trials with cash periods: '+cash+'. Empty selections hold cash at 0%; SPY keeps its period return. Counts appear in the trial table. '+(value.trials.some(row=>row.empty_periods>0&&row.growth===null)?'Older recorded totals remain unavailable; select Apply for a cash-based summary.':'');
       node('status').textContent='Summary across all saved trials. No backtest was run.';
-      RobustnessView.preview(value);return;
+      // The full window and ranks give the original numbers again, so they need no
+      // selection notice. Totals that the original did not record are the exception:
+      // Apply derives them, and the chart and tables then differ from the original.
+      const full=view.period_from===1&&view.period_to===active.info.periods&&view.rank_from===active.firstRank&&view.rank_to===active.lastRank;
+      const original=!value.exploration||full&&active.info.summary.trials.every(row=>row.growth!=null);
+      RobustnessView.preview(value,original?null:view);return;
     }
     node('window').textContent=value.start+' → '+value.end+' · ranks '+value.rank_from+'–'+value.rank_to+' · '+value.periods+' holding periods';
     node('strategy-return').textContent=format(value.total_return);

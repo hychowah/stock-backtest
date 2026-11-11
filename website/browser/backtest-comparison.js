@@ -14,8 +14,12 @@ const BacktestComparison=(()=>{
   // ResultArtifacts.scalarValue applies the same rule to table values.
   const rounded=value=>{const size=Math.abs(value);return size<1e-6?'0.00':size<.01?value.toPrecision(2):value.toFixed(2);};
   const percent=value=>Number.isFinite(value)?rounded(value*100)+'%':'Unavailable';
-  // A difference from SPY in percentage points; a gain shows its plus sign.
-  const points=value=>Number.isFinite(value)?(value>0?'+':'')+rounded(value*100)+' pp':'Unavailable';
+  // A difference from SPY in percentage points. The sign follows the rounded
+  // number on screen: a gain shows a plus sign, and a shown 0.00 shows none.
+  const points=value=>{
+    if(!Number.isFinite(value))return 'Unavailable';
+    const shown=rounded(value*100);return (value>0&&+shown?'+':'')+shown+' pp';
+  };
   const labels={january:'January',custom:'Fixed dates',random:'Random dates'};
   const defaults={rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',selection_order:'filter_first',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};
   const names={rank_from:'First rank',rank_to:'Last rank',pool:'Stock pool',metric:'Ranking metric',selection_order:'Selection order',min_cap:'Minimum market cap (USD)',max_cap:'Maximum market cap (USD)',min_ev:'Minimum EV (USD)',min_yield:'Minimum yield',max_multiple:'Maximum multiple',sector:'Sector',exchange:'Exchange'};
@@ -118,9 +122,10 @@ const BacktestComparison=(()=>{
     let headline;
     if(kind==='random'){
       // Stored trial statistics and counts only; a missing one stays unavailable.
+      // Only complete trials are counted, and the display says so when some are incomplete.
       const stat=(measure,name)=>r.distributions?.[measure]?.[name],counted=Number.isInteger(r.beat_spy)&&Number.isInteger(r.valid);
       headline=[entry('cagr','Mean strategy CAGR',stat('cagr','mean'),percent(stat('cagr','mean'))),entry('spy_cagr','Mean SPY CAGR',stat('spy_cagr','mean'),percent(stat('spy_cagr','mean'))),
-        entry('difference','Mean difference vs SPY',stat('excess_cagr','mean'),points(stat('excess_cagr','mean'))),entry('beat_spy','Trials beating SPY',counted?r.beat_spy:undefined,counted?r.beat_spy+'/'+r.valid:'Unavailable'),
+        entry('difference','Mean difference vs SPY',stat('excess_cagr','mean'),points(stat('excess_cagr','mean'))),entry('beat_spy','Trials beating SPY',counted?r.beat_spy:undefined,counted?r.beat_spy+'/'+r.valid+(r.incomplete>0?' complete':''):'Unavailable'),
         entry('worst','Worst trial CAGR',stat('cagr','min'),percent(stat('cagr','min'))),entry('best','Best trial CAGR',stat('cagr','max'),percent(stat('cagr','max')))];
     }else{
       const difference=Number.isFinite(r.cagr)&&Number.isFinite(r.spy_cagr)?r.cagr-r.spy_cagr:undefined;

@@ -54,7 +54,9 @@ gives the answer first. For a fixed schedule or a saved January result, it shows
 strategy CAGR, SPY CAGR, their difference in percentage points and growth of $1.
 For random dates, it shows the mean strategy CAGR, the mean SPY CAGR, the mean
 difference, the number of complete trials that beat paired SPY, and the worst
-and best trial CAGR. Each value comes from the stored summary of the result. A
+and best trial CAGR. When some trials are incomplete, the count reads
+`n/N complete`. A difference that rounds to 0.00 shows no sign and no colour.
+Each value comes from the stored summary of the result. A
 value that the result did not store shows **Unavailable**. The headline always
 shows the original result. It shows above the tabs, on every tab.
 
@@ -64,14 +66,17 @@ statistics of complete trials and the trial table. **Explore**, **Replay saved
 date test** and **Recorded coverage and notes** follow them. **Replay saved date
 test** shows when the browser has a saved date set. **Recorded coverage
 and notes** contains the notes that the result recorded and tells you when a
-saved result opened without a calculation. A recorded warning stays above the
-tabs. **How to read this** below the tables contains the sampling and reading
-rules. A status line above the chart shows only when it has a message, such as
-a completed run or a failed read.
+saved result opened without a calculation. For a fixed schedule, it also
+contains the coverage line: the short and empty period counts and the cash
+rules. When a headline value is **Unavailable**, the coverage line shows
+directly below the headline, because it gives the reason. A recorded warning
+stays above the tabs. For random dates, **How to read this** below the trial
+table contains the sampling and reading rules. A status line above the chart
+shows only when it has a message, such as a completed run or a failed read.
 
 **Returns** shows the period returns and the stocks of each rebalance. For
-random dates, it shows one trial below the title **Trial N of M**. The headline
-continues to show all trials.
+random dates, it shows one trial below the title **Trial N of M**, with the
+coverage line of that trial. The headline continues to show all trials.
 
 ## Explore a completed result
 
@@ -95,8 +100,12 @@ no CAGR when exact dates were not saved.
 Random-date results show **Explore all trials** below the trial table.
 One selection updates every trial, the combined statistics and distribution
 chart. The panel shows the mean and median strategy CAGR and the mean paired
-SPY CAGR of the selection. While the chart and tables show a selection, a notice
-above the chart gives its window and ranks. The headline does not change.
+SPY CAGR of the selection. While the chart and tables show a selection that
+differs from the original, a notice above the chart gives its window and ranks.
+**Apply** with the full original window and ranks shows the original numbers
+again, without a notice, unless it derived totals that the original did not
+record. The headline does not change. Opening the panel,
+**Apply** and **Reset to original** keep the trial chosen for inspection.
 Choose saved entry and exit blocks. Each trial keeps its own trade dates.
 The summary shows the shared window, with cash before each first selected trade
 and after each last selected exit for both strategy and SPY.

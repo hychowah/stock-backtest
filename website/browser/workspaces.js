@@ -47,7 +47,17 @@ const Workspaces=(()=>{
     const list=(rows,key)=>'<dl>'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>';
     node('workspace-parameters').innerHTML=list(description.parameters,'display')+(exact.length?'<details><summary>Exact recorded values</summary>'+list(exact,'exact')+'</details>':'');
     // The headline always shows the original result. An Explore selection never changes it.
-    node('workspace-headline').innerHTML=description.headline.map(row=>'<div'+(row.key==='difference'&&row.value?' data-tone="'+(row.value>0?'up':'down')+'"':'')+'><dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd></div>').join('');
+    // The colour of the difference follows its sign on screen; a shown 0.00 has none.
+    node('workspace-headline').innerHTML=description.headline.map(row=>{
+      const tone=row.key==='difference'&&{'+':'up','-':'down'}[row.display[0]];
+      return '<div'+(tone?' data-tone="'+tone+'"':'')+'><dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd></div>';
+    }).join('');
+    // The coverage line (short and empty periods, cash days) of a fixed result is a
+    // recorded note. It shows below the headline when a headline value is
+    // unavailable, because it gives the reason. For random dates it describes the
+    // inspected trial and stays with that trial.
+    const home=artifact.kind==='random'?'schedule-trial':description.headline.some(row=>row.display==='Unavailable')?'workspace-headline-note':'workspace-recorded-context';
+    node(home).append(node('schedule-coverage'));
     // A recorded warning stays above the tabs. Every other note waits in the closed disclosure.
     const presentation=artifact.presentation||{},notice=presentation.notice||{},warning=notice.severity==='warning'&&notice.text||'';
     node('workspace-recorded-notice').textContent=warning;
@@ -55,7 +65,9 @@ const Workspaces=(()=>{
     node('workspace-recorded-notice').className='screen-message'+(warning?' warning':'');
     const notes=[['workspace-opened-note',note],['workspace-recorded-info',warning?'':notice.text],['workspace-recorded-coverage',presentation.coverage],['workspace-recorded-range',presentation.rangeNote],['workspace-recorded-period',presentation.periodLabel]];
     for(const [id,text] of notes){node(id).textContent=text||'';node(id).hidden=!text;}
-    node('workspace-recorded-context').hidden=!notes.some(([,text])=>text);
+    // The disclosure hides only when it holds no note, no coverage line and no producer line.
+    const producer=node('result-producer');
+    node('workspace-recorded-context').hidden=!(home==='workspace-recorded-context'||notes.some(([,text])=>text)||!producer.hidden&&producer.textContent);
     const window=description.observationWindow;
     node('workspace-result-window').textContent=(window.start??'Not recorded')+' → '+(window.end??'Not recorded')+' · '+(artifact.kind==='random'?'Random dates':artifact.kind==='january'?'Saved January books':'Fixed schedule');
     node('workspace-no-result').hidden=true;

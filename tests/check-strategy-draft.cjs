@@ -313,5 +313,16 @@ if(process.argv[2]==='--builtins-parity'){
   const shared=await submit();assert.deepEqual(copy(shared.strategy),wire.shared.strategy);
   assert.equal(requests.at(-1).submitted.length,9);assert.equal(requests.at(-1).labels.length,9);assert(!('detached' in requests.at(-1)));assert(!('original' in requests.at(-1)));
  }
+ // The results line under the builder shows only when it has something to say:
+ // no result for the settings, changed settings, or a running backtest.
+ const resultsLine=()=>{run('updateResultsState()');return node('results-state').textContent;};
+ const running=' A backtest is running with the settings submitted at its start.',stubs={...context.ResultArtifacts},notRunning=context.ScheduleView.isRunning;
+ run("screeningMode='backtest'");assert.equal(resultsLine(),'No results for these settings yet. Select Run backtest.');
+ run("screeningMode='latest'");assert.equal(resultsLine(),'No results for these settings yet. Select Screen latest.');
+ context.ScheduleView.isRunning=()=>true;assert.equal(resultsLine(),'No results for these settings yet. Select Screen latest.'+running);
+ Object.assign(context.ResultArtifacts,{forView:()=>({kind:'custom'}),matches:()=>true});assert.equal(resultsLine(),running.trim());
+ context.ScheduleView.isRunning=notRunning;assert.equal(resultsLine(),'','Results that match the settings need no line');
+ context.ResultArtifacts.matches=()=>false;assert(resultsLine().startsWith('Settings changed — displayed results do not match the current settings.'));
+ Object.assign(context.ResultArtifacts,stubs);
  console.log('Passed: default chain and offline shape, both example chains, repeated Ranks, keyboard moves, stale replies, units and equality, flat/capture-1/capture-2 restore with ranks 20–40 and exact spellings, 50-step refusal, held save/cancel, snapshot-before-await, capture-before-ID and copy without calculation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
