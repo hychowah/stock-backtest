@@ -10,11 +10,11 @@ const SavedBacktests=(()=>{
   let queueRefresh=false;
   // Descriptions reuse stored-artifact descriptions and keep their rows only. They
   // own no artifact, evidence reader, form or main-result lifetime. viewed holds
-  // the rows whose open Details waits for its description. failures holds the
-  // reason of a failed read, shown in that row until Retry or a new tick. An id
-  // that leaves the list leaves all of them.
-  const ticked=new Set(),viewed=new Set(),descriptions=new Map(),failures=new Map();
-  let loading=false,refocus=null,allOpen=false;
+  // the rows whose open Details waits for its description. failed holds the rows
+  // whose read failed, until a new tick or until Details opens again. An id that
+  // leaves the list leaves all of them.
+  const ticked=new Set(),viewed=new Set(),failed=new Set(),descriptions=new Map();
+  let loading=false,allOpen=false;
   const headings={name:'Name',cagr:'CAGR',saved:'Saved'},directions={name:1,cagr:-1,saved:-1};
   let records=[],limit=100,sorting={key:'saved',direction:-1},renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
   // Every list action reports above the Saved backtests rows.
@@ -42,12 +42,10 @@ const SavedBacktests=(()=>{
   // the steps (or the earlier bounds and conditions that hold a value) in plain
   // wording, the headline and the saved ID. A closed disclosure lists every recorded
   // row with its exact text: it adds the recorded facts and the settings that hold
-  // only their documented default. Before the read the Details says so. After a
-  // failed read it gives the reason and Retry.
+  // only their documented default. Before the read the Details says so.
   function settings(record,exactOpen){
     const id=escape(record.id),description=descriptions.get(record.id),line=text=>'<p>'+escape(text)+'</p>';
-    if(failures.has(record.id))return '<p class="backtest-failed" role="status">'+escape(failures.get(record.id))+' <button type="button" id="saved-do-retry-'+id+'" data-retry="'+id+'">Retry</button></p>';
-    if(!description)return '<p role="status">Reading the saved settings…</p>';
+    if(!description)return '<p role="status">'+(failed.has(record.id)?'The saved settings were not read. Close Details and open it again to retry.':'Reading the saved settings…')+'</p>';
     const shown=key=>description.parameters.find(row=>row.key===key)?.display,first=['mode','market','currency','start','end','interval','first','last','trials'];
     const rows=description.parameters.filter(row=>!first.includes(row.key)&&!row.recorded&&!row.quiet);
     return line([shown('market'),shown('currency'),shown('mode')+(shown('trials')?' · '+shown('trials')+' trials':''),shown('first')?shown('first')+'–'+shown('last'):shown('start')&&shown('start')+' → '+shown('end'),shown('interval')&&'every '+shown('interval')].filter(Boolean).join(' · '))+
@@ -56,17 +54,14 @@ const SavedBacktests=(()=>{
   }
   // One line per test in the columns that the In progress rows use. The name opens
   // the result. Details opens the settings and the other actions below the row.
-  // Every control has a stable id, so the focus returns to it when the list is
-  // drawn again; an open Details and its open exact values stay open.
+  // A list that is drawn again keeps the focused control, an open Details and its
+  // open exact values.
   function render(){
     const list=node('saved-list'),known=new Set(records.map(record=>record.id));
-    for(const kept of [ticked,viewed,descriptions,failures])for(const id of [...kept.keys()])if(!known.has(id))kept.delete(id);
+    for(const kept of [ticked,viewed,failed,descriptions])for(const id of [...kept.keys()])if(!known.has(id))kept.delete(id);
     const opened=name=>new Set([...list.querySelectorAll('details[open][data-'+name+']')].map(control=>control.dataset[name]));
-    const open=opened('menu'),exactOpen=opened('exact'),focused=document.activeElement;
-    // An open Details always gets its description, also when the list is drawn again before its toggle arrives.
-    for(const id of open)if(known.has(id)&&!descriptions.has(id)&&!failures.has(id))viewed.add(id);
-    if(focused?.id)refocus={id:focused.id,start:focused.selectionStart,end:focused.selectionEnd};
-    else if(focused&&focused!==document.body)refocus=null;
+    const open=opened('menu'),exactOpen=opened('exact');
+    const focused=document.activeElement,focusId=focused?.id,start=focused?.selectionStart,end=focused?.selectionEnd;
     list.innerHTML=ordered().map(record=>{
       const id=escape(record.id),name=escape(record.name);
       const kind={january:'January',custom:'Fixed dates',random:'Random'+(record.trials?' · '+escape(record.trials)+' trials':' dates')}[record.kind]||'Backtest';
@@ -78,23 +73,18 @@ const SavedBacktests=(()=>{
     // Ticks stay usable while a list action runs.
     list.querySelectorAll('button,input:not([type=checkbox])').forEach(control=>control.disabled=busy);
     renderPanel();
-    // A control that is disabled while the list is busy gets its focus back afterwards.
-    const target=refocus&&node(refocus.id);
-    if(!target)refocus=null;
-    else if(!target.disabled){target.focus?.({preventScroll:true});if(refocus.start!==null&&refocus.start!==undefined)target.setSelectionRange?.(refocus.start,refocus.end);refocus=null;}
+    if(focusId&&!busy){const restored=node(focusId);restored?.focus?.({preventScroll:true});if(start!==null&&start!==undefined)restored?.setSelectionRange?.(start,end);}
     update();
-    if(viewed.size)void load();
   }
-  const menu=id=>node('saved-menu-'+id)?.focus?.({preventScroll:true});
   // The panel compares the ticked tests whose descriptions are read: one column
   // per test in list order, with the requested settings that differ, then the
   // headlines, then a short list of other measures and every setting in a closed disclosure. Only
   // setting rows carry the difference marker. One tick shows the top line only.
   // While another description is read, the panel keeps what it shows and its top
-  // line says so. A redraw keeps the open disclosure and the sideways scroll.
+  // line says so. A redraw keeps the open disclosure.
   function renderPanel(){
     const panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),ready=chosen.filter(record=>descriptions.has(record.id));
-    const [disclosure]=panel.querySelectorAll('details'),scrolled=[...panel.querySelectorAll('.comparison-scroll')].map(box=>box.scrollLeft);
+    const [disclosure]=panel.querySelectorAll('details');
     if(disclosure)allOpen=disclosure.open;
     panel.hidden=!chosen.length;
     if(!chosen.length){panel.innerHTML='';return;}
@@ -113,30 +103,25 @@ const SavedBacktests=(()=>{
     }
     const note=chosen.length===1?'Tick another to compare.':reading?'Reading '+(reading>1?reading+' stored results':'1 stored result')+'…':'';
     panel.innerHTML='<div class="comparison-bar"><strong>'+(chosen.length>1?chosen.length+' tests ticked':'1 test ticked.')+'</strong><span role="status">'+note+'</span><button type="button" id="saved-clear" data-clear>Clear</button></div>'+body;
-    panel.querySelectorAll('.comparison-scroll').forEach((box,at)=>{box.scrollLeft=scrolled[at]||0;});
   }
   // One loader reads the description of each row that the user ticked or opened,
   // one at a time and one time. A row that nobody ticked or opened is never read.
-  // A failed read is not kept: the Details of that row gives the reason with
-  // Retry, and a ticked row loses its tick with the reason in the status line.
+  // A failed read is not kept: the status line gives the reason and the row loses
+  // its tick. A new tick or opening Details again reads again.
   // The temporary evidence reader closes when the description is read.
   async function load(){
     if(loading)return;
     loading=true;
     try{
-      for(let id;(id=[...ticked,...viewed].find(id=>!descriptions.has(id)&&!failures.has(id)));){
+      for(let id;(id=[...ticked,...viewed].find(id=>!descriptions.has(id)&&!failed.has(id)));){
         try{
-          const used=await ResultArtifacts.use({kind:'saved',id},artifact=>BacktestComparison.describe(artifact));
-          if(!used.consumed)throw Error('Its stored result was not read.');
-          if(records.some(record=>record.id===id))descriptions.set(id,used.value);else ticked.delete(id);
+          descriptions.set(id,(await ResultArtifacts.use({kind:'saved',id},artifact=>BacktestComparison.describe(artifact))).value);
         }catch(error){
-          const record=records.find(record=>record.id===id),reason=error.message||'The local service did not answer.';
-          if(record)failures.set(id,'Could not read the saved settings. '+reason);
-          if(ticked.delete(id)&&record)message('Could not read “'+record.name+'”. '+reason,true);
+          failed.add(id);ticked.delete(id);
+          const record=records.find(record=>record.id===id);
+          if(record)message('Could not read “'+record.name+'”. '+(error.message||'The local service did not answer.'),true);
         }
-        viewed.delete(id);
-        // An active rename keeps its input. Its row shows the new text when the rename ends.
-        if(renaming)renderPanel();else render();
+        viewed.delete(id);render();
       }
     }finally{loading=false;}
   }
@@ -194,7 +179,7 @@ const SavedBacktests=(()=>{
     if(!name||name.length>120){message('Use a backtest name with 1–120 characters.',true);return;}
     await perform(async ticket=>{
       const record=await request('/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-      mutation++;records=records.map(item=>item.id===id?record:item);renaming=null;render();menu(id);
+      mutation++;records=records.map(item=>item.id===id?record:item);renaming=null;render();
       const success='Renamed to “'+record.name+'”. Its ID and stored results are unchanged.';message(success);
       void reconcile(success,ticket);
     });
@@ -214,19 +199,18 @@ const SavedBacktests=(()=>{
       const key=event.target.dataset.sort;if(!key)return;
       sorting={key,direction:sorting.key===key?-sorting.direction:directions[key]};render();
     });
-    // The panel compares 8 tests at most. Clear removes every tick. A new tick reads a failed row again.
+    // Clear removes every tick.
     node('saved-list').addEventListener('change',event=>{
       const id=event.target.dataset.tick;if(!id)return;
-      if(event.target.checked&&ticked.size>=8){event.target.checked=false;message('Untick a test first. The panel compares 8 tests at most.');return;}
-      if(event.target.checked){ticked.add(id);failures.delete(id);}else ticked.delete(id);
+      if(event.target.checked){ticked.add(id);failed.delete(id);}else ticked.delete(id);
       renderPanel();return load();
     });
     // Native toggle does not bubble: capture it on the list. Opening Details reads that row's
-    // description once. A list that is drawn again with an open Details starts no second read.
+    // description once. A list that is drawn again fires toggle for each open Details; it starts no second read.
     node('saved-list').addEventListener('toggle',event=>{
       const id=event.target.dataset?.menu;if(!id)return;
-      if(!event.target.open){viewed.delete(id);return;}
-      if(descriptions.has(id)||failures.has(id)||!records.some(record=>record.id===id))return;
+      if(!event.target.open){viewed.delete(id);failed.delete(id);return;}
+      if(descriptions.has(id)||failed.has(id)||!records.some(record=>record.id===id))return;
       viewed.add(id);return load();
     },true);
     node('saved-comparison').addEventListener('click',event=>{if('clear' in event.target.dataset){ticked.clear();render();}});
@@ -236,20 +220,19 @@ const SavedBacktests=(()=>{
     node('saved-list').addEventListener('keydown',event=>{
       if(!renaming||renaming.id!==event.target.dataset.renameInput)return;
       if(event.key==='Enter'){event.preventDefault();return rename(renaming.id);}
-      if(event.key==='Escape'){event.preventDefault();const id=renaming.id;renaming=null;render();menu(id);if(queueRefresh)changed();}
+      if(event.key==='Escape'){event.preventDefault();renaming=null;render();if(queueRefresh)changed();}
     });
     node('saved-list').addEventListener('click',event=>{
       if(busy)return;
       const data=event.target.dataset;
-      if(data.retry){failures.delete(data.retry);viewed.add(data.retry);const reading=load();render();return reading;}
       if(data.saveName)return rename(data.saveName);
       if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
-      if(data.cancelName){renaming=null;render();menu(data.cancelName);if(queueRefresh)changed();return;}
+      if(data.cancelName){renaming=null;render();if(queueRefresh)changed();return;}
       if(data.open)return open(data.open);
       if(data.copy)return copy(data.copy);
       if(data.confirm)return remove(data.confirm);
       if(data.delete){pendingDelete=data.delete;render();}
-      if(data.keep){pendingDelete=null;render();menu(data.keep);}
+      if(data.keep){pendingDelete=null;render();}
     });
     available=typeof fetch==='function' && typeof location!=='undefined' && location.protocol!=='file:';
     if(available)perform(refresh);

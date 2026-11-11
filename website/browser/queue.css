@@ -54,7 +54,6 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .run-menu details>summary,.saved-comparison summary{width:fit-content;min-height:32px;padding:7px 0;cursor:pointer;color:#536762}
 .run-menu details>p{margin-top:4px}
 .run-menu>:not(summary)+.run-actions{margin-top:10px}
-.run-menu p>button{margin-left:8px;min-height:32px;padding:4px 12px}
 .saved-rename{flex:1 1 260px;font-size:12px}
 .saved-rename input{display:block;width:100%;margin-top:4px}
 .saved-id{font:11px ui-monospace,monospace;color:#617172;overflow-wrap:anywhere}
@@ -101,6 +100,8 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
    one action that runs a dated test. One line below the buttons shows the result
    of Add and of a held edit. */
 #queue-builder-status{margin:8px 0 0;overflow-wrap:anywhere}
+/* The line below the builder buttons belongs to Historical backtest: it hides with the queue controls. */
+#strategy-form:has(#queue-controls[hidden]) #queue-builder-status{display:none}
 .strategy-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 #queue-controls{display:contents}
 .strategy-actions #queue-name{flex:0 1 210px;width:auto;min-width:120px}

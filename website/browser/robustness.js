@@ -53,9 +53,6 @@ const RobustnessView=(()=>{
     if(series.every(s=>!s.sd))node('robustness-chart-note').textContent+=' Each series has identical returns; no bell curves are fitted.';
   }
   function render(next){
-    // The date-set box takes the number of the shown result, so that Repeat the same dates can use
-    // its dates. A ticked box keeps the number that the user set.
-    if(!node('repeat-random').checked)node('random-seed').value=String(next.configuration.seed);
     // A new result starts at its first trial.
     node('robustness-trial').value='';
     preview(next);

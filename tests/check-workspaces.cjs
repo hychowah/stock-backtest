@@ -12,10 +12,8 @@ const template=fs.readFileSync(path.join(__dirname,'../website/browser/template.
 const panels=[...new Set([...template.matchAll(/data-review-panel="([^"]+)"/g)].map(match=>match[1]))].map(reviewPanel=>({dataset:{reviewPanel},hidden:false}));
 node('workspace-review').querySelectorAll=()=>panels;
 const shows=id=>{const name=template.slice(0,template.indexOf('id="'+id+'"')).match(/.*data-review-panel="([^"]+)"/s)[1];return !panels.find(panel=>panel.dataset.reviewPanel===name).hidden;};
-const blocks=()=>['robustness-chart','schedule-trial-missing','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer'].filter(shows);
-let copied=null,shown=null,tabsTop=120,contentStarts=0;const scrolls=[];
-// The tab row of Result review and the content that follows it.
-Object.assign(node('workspace-review-tabs'),{getBoundingClientRect:()=>({top:tabsTop}),nextElementSibling:{getClientRects:()=>[{}],scrollIntoView(){contentStarts++;}}});
+const blocks=()=>['robustness-chart','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer'].filter(shows);
+let copied=null,shown=null;const scrolls=[];
 const artifacts=require('../website/browser/result-artifacts.js');
 const context=vm.createContext({console,scrollTo:(x,y)=>scrolls.push(y),document:{getElementById:node,querySelectorAll:queries},viewKey:()=> 'latest',ResultArtifacts:artifacts,
  BacktestComparison:require('../website/browser/backtest-comparison.js'),SectorView:{init(){},show:a=>shown=a,load(){}},ScheduleView:{show(){},inspectOriginal(){}},EvidenceResults:{show(){}},copySavedBacktestSettings:a=>copied=a});
@@ -24,9 +22,9 @@ const run=code=>vm.runInContext(code,context);
 node('rank-to').value='25';node('filter-value').value='17';node('strategy-form').innerHTML='Mounted draft';
 run('Workspaces.init()');
 const form=node('strategy-form'),queue=node('queue-panel');
-// A view change starts at the top of the page. Showing the same view again does not move the page.
-for(const view of ['runs','review','builder'])run(`Workspaces.show('${view}')`);
-assert.deepEqual(scrolls,[0,0,0]);run("Workspaces.show('builder')");assert.equal(scrolls.length,3);
+// Every view change starts at the top of the page.
+scrolls.length=0;for(const view of ['runs','review','builder','builder'])run(`Workspaces.show('${view}')`);
+assert.deepEqual(scrolls,[0,0,0,0,0],'Result review also sets its tab');
 // The tray borrows the queue panel and returns it to the top of Runs, above the Saved backtests rows.
 node('workspace-queue-open').handlers.click();assert.equal(queue.parentNode,node('workspace-queue-content'));
 node('workspace-queue-close').handlers.click();assert.equal(queue.parentNode,node('workspace-runs'));assert.equal(node('workspace-runs').first,queue);
@@ -45,44 +43,35 @@ assert.equal(node('rank-to').value,'25');assert.equal(node('workspace-result-tit
 // The headline of the original result shows under the title, for a fixed and a random-date result.
 const headline=()=>node('workspace-headline').innerHTML.split('</div>').filter(Boolean).map(cell=>cell.replace(/<[^>]+>/g,' ').trim().replace(/\s+/g,' '));
 assert.deepEqual(headline(),['Strategy CAGR 10.00%','SPY CAGR 5.00%','Difference vs SPY +5.00 pp','Growth of $1 $1.10']);
-// The colour of the difference follows its sign on screen: a shown 0.00 has no tone.
+// The colour of the difference follows its sign.
 const tone=()=>node('workspace-headline').innerHTML.match(/data-tone="(\w+)"/)?.[1];assert.equal(tone(),'up');
 const fixed=(result,presentation={})=>artifacts.create({mode:'custom',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50},{cagr:.1,spy_cagr:.05,growth:1.1,start:'2015-01-02',end:'2016-01-04',...result},{metrics:{},filters:{}},presentation);
 const publish=(artifact,...rest)=>{context.next=artifact;context.rest=rest;run('Workspaces.published(ResultArtifacts.publish(next),...rest)');};
 publish(fixed({cagr:.02}));assert.equal(tone(),'down');
-publish(fixed({cagr:.1+.2,spy_cagr:.3}));assert.equal(headline()[2],'Difference vs SPY 0.00 pp');assert.equal(tone(),undefined);
 // The fixed result shows its chart, its pager and Explore in Overview; Returns adds the stocks. The per-trial block stays hidden.
 assert.deepEqual(blocks(),['robustness-chart','schedule-chart','schedule-period-pages','result-explorer']);
 run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
-// A tab change moves the page only while the tab row is stuck at the top of the window: the start of the new content goes under the row.
-assert.equal(contentStarts,0);tabsTop=0;run("Workspaces.reviewSection('overview')");assert.equal(contentStarts,1);tabsTop=120;run("Workspaces.reviewSection('returns')");assert.equal(contentStarts,1);
-// The coverage line of a fixed result is a recorded note. It moves below the headline when a headline value is unavailable.
-assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));assert.equal(node('workspace-recorded-context').hidden,false);
-publish(fixed({cagr:null,growth:null}));assert.equal(headline()[0],'Strategy CAGR Unavailable');
-assert.equal(node('schedule-coverage').parentNode,node('workspace-headline-note'));assert.equal(node('workspace-recorded-context').hidden,true);
-// A recorded warning stays above the tabs. Other notes, and how the result was opened, wait in the notes disclosure.
-publish(fixed({},{notice:{text:'Recorded note',severity:'info'},coverage:'Recorded coverage'}),'Recorded test','Opened without a calculation.');
-assert.equal(node('workspace-recorded-notice').hidden,true);assert.equal(node('workspace-recorded-info').textContent,'Recorded note');assert.equal(node('workspace-opened-note').textContent,'Opened without a calculation.');
-assert.equal(node('workspace-recorded-coverage').textContent,'Recorded coverage');assert.equal(node('workspace-recorded-context').hidden,false);
+// A tab change starts at the top of the page.
+scrolls.length=0;run("Workspaces.reviewSection('overview')");assert.deepEqual(scrolls,[0]);
+// The coverage line of a fixed result is a recorded note.
+assert.equal(node('schedule-coverage').parentNode,node('workspace-recorded-context'));
+// A recorded warning stays above the tabs. Other notes wait in the notes disclosure.
+publish(fixed({},{notice:{text:'Recorded note',severity:'info'},coverage:'Recorded coverage'}),'Recorded test');
+assert.equal(node('workspace-recorded-notice').hidden,true);assert.equal(node('workspace-recorded-info').textContent,'Recorded note');
+assert.equal(node('workspace-recorded-coverage').textContent,'Recorded coverage');
 publish(fixed({},{notice:{text:'Recorded warning',severity:'warning'}}),'Recorded test');
-assert.equal(node('workspace-recorded-notice').textContent,'Recorded warning');assert.equal(node('workspace-recorded-notice').hidden,false);assert.equal(node('workspace-recorded-info').textContent,'');assert.equal(node('workspace-opened-note').textContent,'');
+assert.equal(node('workspace-recorded-notice').textContent,'Recorded warning');assert.equal(node('workspace-recorded-notice').hidden,false);assert.equal(node('workspace-recorded-info').textContent,'');
 const statistics={mean:.15,min:-.02,max:.31};
 const random=artifacts.create({mode:'random',start:'2015-01-02',end:'2016-01-04',months:12,rank_to:50,trials:3},{completed:3,valid:3,incomplete:0,beat_spy:2,configuration:{seed:9,window_start:'2015-01-02',window_end:'2016-01-04'},distributions:{cagr:statistics,spy_cagr:{mean:.2},excess_cagr:{mean:-.05}}},{metrics:{},filters:{}},{});
 publish(random,'Random test');
 assert.deepEqual(headline(),['Mean strategy CAGR 15.00%','Mean SPY CAGR 20.00%','Mean difference vs SPY -5.00 pp','Trials beating SPY 2/3','Worst trial CAGR -2.00%','Best trial CAGR 31.00%']);
 // For random dates the coverage line describes the inspected trial and stays with it.
 assert.equal(node('schedule-coverage').parentNode,node('schedule-trial'));
-assert.equal(node('workspace-recorded-context').hidden,true,'No recorded note leaves no empty disclosure');
-// A producer line inside the disclosure keeps the disclosure in view.
-node('result-producer').textContent='Calculated by Original.';publish(random,'Random test');assert.equal(node('workspace-recorded-context').hidden,false);
-node('result-producer').hidden=true;publish(random,'Random test');assert.equal(node('workspace-recorded-context').hidden,true);
-Object.assign(node('result-producer'),{textContent:'',hidden:false});
-// The random-date result shows its distribution in Overview; Returns shows one trial with its chart and stocks,
-// or the note of a result that stored no trials.
+// The random-date result shows its distribution in Overview; Returns shows one trial with its chart and stocks.
 assert.deepEqual(blocks(),['robustness-chart','result-explorer']);
-run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-trial-missing','schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
+run("Workspaces.reviewSection('returns')");assert.deepEqual(blocks(),['schedule-trial-title','schedule-chart','schedule-period-pages','schedule-stock-table','result-explorer']);
 run("Workspaces.published(ResultArtifacts.publish(input),'Recorded test')");
 node('workspace-edit-copy').handlers.click();assert.equal(copied.kind,'custom');assert.equal(node('rank-to').value,'25');
 context.queue={records:[],paused:false,available:true};run('Workspaces.queueStatus(queue)');assert.equal(node('workspace-run-state').textContent,'Idle');assert.equal(node('workspace-run-detail').textContent,'No active backtest.');
 assert.equal(form.innerHTML,'Mounted draft');
-console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, the scroll reset of a view change and the tab change under a stuck tab row, kind-specific review blocks from the page markup, recorded notes, the coverage line and producer line, and explicit copy.');
+console.log('Passed: mounted draft/queue lifetimes, the queue panel returned to the top of Runs, queue-only status, original recorded settings, the result headline and its tone, the scroll reset of a view change and a tab change, kind-specific review blocks from the page markup, recorded notes, the coverage line, and explicit copy.');

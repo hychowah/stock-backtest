@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const nodes=new Map();
-function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn},scrollIntoView(){}});return nodes.get(id)}
+function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn}});return nodes.get(id)}
 const CalendarSettings=require('../website/browser/calendar-settings.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,builderShown=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false,libraryChanges=0;
@@ -80,10 +80,8 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const enter=extra=>node('queue-name').handlers.keydown({key:'Enter',preventDefault(){prevented++},...extra});
   await node('queue-name').handlers.keydown({key:'a',preventDefault(){prevented++}});assert.equal(records.length,1);
   settings.rank_to=25;settings.selection_order='filter_first';node('queue-name').value='Second';
-  await enter({isComposing:true});await enter({keyCode:229});assert.deepEqual([records.length,prevented],[1,0]);
-  // A disabled Add button means Enter adds nothing. It still never submits the strategy form.
-  node('queue-add').disabled=true;await enter();assert.deepEqual([records.length,prevented],[1,1]);node('queue-add').disabled=false;
-  await enter();assert.deepEqual([records.length,prevented],[2,2]);
+  await enter({isComposing:true});assert.deepEqual([records.length,prevented],[1,0]);
+  await enter();assert.deepEqual([records.length,prevented],[2,1]);
   assert.equal(records.length,2);assert.equal(records[0].options.rank_to,50);assert.equal(records[1].options.rank_to,25);
   assert.equal(records[0].options.selection_order,'rank_first');assert.equal(records[1].options.selection_order,'filter_first');
   assert(node('queue-list').innerHTML.includes('&lt;First &amp; strategy&gt;'));assert(!node('queue-list').innerHTML.includes('<First & strategy>'));
@@ -264,10 +262,6 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   assert.equal((await queueDefault({mode:'random',trials:3,market:'hk',calendar:{version:1,start:'2015-01-02',end:'2015-01-05',interval:{unit:'week',count:2}},strategy:oneRank})).name,'Hong Kong · Ranks 20–40 · Chain P/E · highest first · every 2 weeks · Market cap ≥ $100M');
   assert.equal((await queueDefault({...dated,months:1,market:'jp',strategy:oneRank})).name,'Japan · Tokyo · Ranks 20–40 · Chain P/E · highest first · monthly · Market cap ≥ $100M');
   for(const [months,words] of [[6,'half-yearly'],[24,'every 2 years']])assert.equal((await queueDefault({...dated,months,strategy:oneRank})).name.split(' · ')[3],words);
-  // The 120-character cut keeps whole characters and no space at the end, as the service stores a name.
-  const named=(label,rank_to=5)=>({...dated,months:12,strategy:{...copy(oneRank),steps:[{...oneRank.steps[0],rank_from:1,rank_to},chain.steps[1]],builtins:[{id:'filter:pe',label}]}});
-  const spaced=await queueDefault(named('L'.repeat(91)));assert.equal(spaced.name,'Ranks 1–5 · '+'L'.repeat(91)+' · highest first','The cut ended on a space');
-  const emoji=await queueDefault(named('L'.repeat(107)+'😀 tail'));assert.equal(emoji.name,'Ranks 1–5 · '+'L'.repeat(107)+'😀');assert(emoji.name.isWellFormed());assert.equal([...emoji.name].length,120);
   // The row line shows the name, state, test type and dates only. The row control lists every setting in
   // plain wording. The exact recorded text waits in one closed disclosure of that control.
   const listed=node('queue-list').innerHTML,rowStart=listed.indexOf('data-queue-id="'+chainRecord.id+'"'),chainRow=listed.slice(rowStart,listed.indexOf('</li>',rowStart));
@@ -290,9 +284,6 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   assert.equal(chainRecord.name,twoRanks.replace('20–40','20–30'));assert.equal(chainRecord.options.strategy.steps[2].rank_to,30);
   await call('BacktestQueue.action("edit",chainId)');node('queue-name').value='Energy, my name';settings.strategy.steps[2].rank_to=25;await call('BacktestQueue.add()');
   assert.equal(chainRecord.name,'Energy, my name');assert.equal(chainRecord.options.strategy.steps[2].rank_to,25);
-  // The held-edit rule compares like with like when the cut removed a space: the default still follows the settings.
-  context.spacedId=spaced.id;await call('BacktestQueue.action("edit",spacedId)');assert.equal(node('queue-name').value,spaced.name);
-  settings.strategy.steps[0].rank_to=6;await call('BacktestQueue.add()');assert.equal(spaced.name,'Ranks 1–6 · '+'L'.repeat(91)+' · highest first');
   // A capture/1 record and a flat record get the same form of default name.
   assert.equal(scalarRecord.name,'Captured name');scalar.selection.rank_to=8;assert.equal((await queueDefault({...dated,months:12,strategy:scalar})).name,'Ranks 2–8 · Original P/E · lowest first');
   assert.equal((await queueDefault({...dated,months:12,rank_to:25,metric:'ev_ebitda'})).name,'Ranks 1–25 · EV/EBITDA');
@@ -307,5 +298,5 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   records=[row('a','failed',1),row('b','queued',2),row('c','complete',3),row('d','running',4),row('e','held',5),row('1','queued',6)];await call('BacktestQueue.refresh()');
   assert.deepEqual([...node('queue-list').innerHTML.matchAll(/data-queue-id="(.)/g)].map(match=>match[1]),['d','b','e','1','a','c']);
   await call('BacktestQueue.action("up","'+'e'.repeat(32)+'")');assert(records.find(item=>item.id[0]==='e').position<records.find(item=>item.id[0]==='b').position,'Move up still follows the waiting order');
-  console.log('Passed: snapshots, default and held-edit names with a whole-character cut, Enter as the enabled Add button, Add and held-edit messages beside the name box, one-line rows in In progress order, exact text in one closed disclosure, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
+  console.log('Passed: snapshots, default and held-edit names, Enter as the Add button, Add and held-edit messages beside the name box, one-line rows in In progress order, exact text in one closed disclosure, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

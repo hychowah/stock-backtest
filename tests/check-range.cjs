@@ -6,11 +6,11 @@ const embedded=html.match(/<script id="screening-data" type="application\/json">
 const prepared=JSON.parse(embedded),screener=require('../website/browser/screener.js');
 const latestDate=prepared.latest.metadata.asof;
 const latestCount=limit=>screener.latestScreen(prepared,{pool:'cached',rank_to:limit}).stocks.length;
-function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*>'))?.[0]||'').includes(' hidden'),open:false,disabled:false,dataset:{},style:{},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},getBoundingClientRect:()=>({top:1}),focus(){},append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();},closest(){return this}});return els.get(id)}
+function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*>'))?.[0]||'').includes(' hidden'),open:false,disabled:false,dataset:{},style:{},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},focus(){},append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();},closest(){return this}});return els.get(id)}
 const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:()=>[]};
 el('screening-data').textContent=embedded;
-const timers=new Map(),storage=new Map();let timerId=0;
-const ctx=vm.createContext({document,console,Date,Math,scrollTo(){},AbortController,crypto:require('crypto').webcrypto,Uint8Array,setTimeout,clearTimeout,localStorage:{get length(){return storage.size},key:index=>[...storage.keys()][index],getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(fn){timers.set(++timerId,fn);return timerId},clearInterval(id){timers.delete(id)}});
+const storage=new Map();
+const ctx=vm.createContext({document,console,Date,Math,scrollTo(){},AbortController,crypto:require('crypto').webcrypto,Uint8Array,setTimeout,clearTimeout,localStorage:{get length(){return storage.size},key:index=>[...storage.keys()][index],getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){}});
 for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[1],ctx);
 const run=code=>vm.runInContext(code,ctx);
 // What Result review shows for a result: the window line and the headline cells.
@@ -142,16 +142,16 @@ run('restoreSavedBacktest(savedJanuary)');
 const opened=run('currentArtifact()');assert.equal(opened.kind,'january');assert.equal(opened.version,2);assert.equal(opened.captured_at,savedJanuary.captured_at);
 assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);
 assert.equal(reviewWindow(),'2015-01-02 → 2016-10-20 · Saved January books');
-// Its totals were not recorded: the headline says so, and the coverage line with the reason shows below it.
+// Its totals were not recorded: the headline says so, and the coverage line gives the reason.
 assert.deepEqual(headline(),['Strategy CAGR Unavailable','SPY CAGR 8.00%','Difference vs SPY Unavailable','Growth of $1 Unavailable']);
-assert.equal(el('schedule-coverage').parentNode,el('workspace-headline-note'));assert(el('schedule-coverage').textContent.includes('Recorded totals are unavailable'));
+assert(el('schedule-coverage').textContent.includes('Recorded totals are unavailable'));
 assert(el('schedule-rows').innerHTML.includes('<td>2015-01-02</td><td>2016</td><td>3</td>'));
 assert(el('schedule-rows').innerHTML.includes('<td>2016</td><td>2016-10-20</td><td>0</td>'));
-assert(el('workspace-opened-note').textContent.includes('no calculation'));assert.equal(el('schedule-message').textContent,'');
+assert.equal(el('schedule-message').textContent,'');
 assert.equal(el('workspace-review').hidden,false);assert.equal(el('workspace-builder').hidden,true);
 assert(el('workspace-parameters').innerHTML.includes('Saved valuation label'));
 assert.equal(el('workspace-recorded-notice').textContent,'Saved warning');assert(el('workspace-recorded-notice').className.includes('warning'));
-assert.equal(el('workspace-recorded-coverage').textContent,'Saved coverage');assert.equal(el('workspace-recorded-context').hidden,false);
+assert.equal(el('workspace-recorded-coverage').textContent,'Saved coverage');
 assert.equal(el('results-state').textContent,'','The builder shows no line for a dated result');
 el('schedule-period').value='0';el('schedule-period').handlers.change();assert(el('schedule-stock-body').innerHTML.includes('SAVED_ONLY'));
 assert(el('schedule-attribution').innerHTML.includes('Top 10 contributors'));
@@ -204,26 +204,24 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(reviewWindow(),'2015-03-16 → 2015-06-15 · Fixed schedule');assert(el('schedule-chart').innerHTML.includes('<rect'));
  const fixedHeadline=['Strategy CAGR 10.00%','SPY CAGR 5.00%','Difference vs SPY +5.00 pp','Growth of $1 $1.22'];assert.deepEqual(headline(),fixedHeadline);
  // The coverage line of a fixed result is one of its recorded notes.
- assert.equal(el('schedule-coverage').parentNode,el('workspace-recorded-context'));assert(el('schedule-coverage').textContent.includes('Fixture coverage'));assert.equal(el('workspace-recorded-context').hidden,false);
+ assert.equal(el('schedule-coverage').parentNode,el('workspace-recorded-context'));assert(el('schedule-coverage').textContent.includes('Fixture coverage'));
  assert(el('schedule-stock-body').innerHTML.includes(selected.holdings[0].symbol));
  el('schedule-download-holdings').handlers.click();assert(savedCsv.includes('period_start'));assert(savedCsv.includes('2015-03-16'));
- assert(el('workspace-opened-note').textContent.includes('no calculation'));
  // A stored result is a record: changed draft settings do not mark it, and the builder shows no line for it.
  stepEvent('change',rankId(),'rank_to','25');assert.equal(el('results-state').textContent,'');assert.equal(el('custom-view').attributes?.['data-results-stale'],undefined);
  assert.deepEqual(headline(),fixedHeadline);assert.equal(calls,0);
  // Random independent rebalances: the submission holds the trial count and, with Repeat ticked, the date set.
- el('date-testing').value='random';el('random-trials').value='3';el('random-seed').value='123';el('repeat-random').checked=true;el('repeat-random').handlers.change();el('rebalance-months').value='24';
+ el('date-testing').value='random';el('random-trials').value='3';el('random-seed').value='123';el('repeat-random').checked=true;el('rebalance-months').value='24';
  const randomSettings=JSON.parse(JSON.stringify(await run('StrategyDraft.prepareSubmission()')));
  assert.equal(randomSettings.mode,'random');assert.equal(randomSettings.trials,3);assert.equal(randomSettings.seed,123);assert.equal(randomSettings.months,24);
  const stat={n:3,mean:.1,median:.1,p10:.1,p25:.1,p75:.1,p90:.1,min:.1,max:.1,stddev:0};
  const batch={kind:'random_dates',completed:3,valid:3,incomplete:0,beat_spy:2,unique_schedules:3,note:'Independent dates in each block.',configuration:{start:'2015-03-15',end:'2015-06-15',months:24,seed:123,requested:3,options:{metric:'ev_ebitda',rank_to:50}},distributions:Object.fromEntries(['cagr','spy_cagr','excess_cagr','total_return','growth'].map(k=>[k,stat])),trials:[1,2,3].map(trial=>({trial,start:'2015-03-16',first_trade:'2015-03-16',end:'2015-06-15',dates:['2015-03-16'],periods:1,cagr:.1,spy_cagr:.05,excess_cagr:.05,empty_periods:0,short_periods:0}))};
- const savedSummary=stored(randomSettings,batch);ctx.savedSummary=savedSummary;
  const savedRandom=stored(randomSettings,{...batch,trial_results:[fixture,fixture,fixture]});ctx.savedRandom=savedRandom;
  run('restoreSavedBacktest(savedRandom)');
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,true);assert.equal(el('robustness-mean').textContent,'10.00%');
  assert.equal(el('workspace-review').dataset.section,'overview');
  el('robustness-trial').value='1';await el('robustness-inspect').handlers.click();assert.equal(calls,0,'Stored trial inspection must not call the service');
- assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);assert.equal(el('schedule-trial-missing').hidden,true);
+ assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);
  // The chosen trial opens in Returns under its own title.
  assert.equal(el('workspace-review').dataset.section,'returns');assert.equal(el('schedule-trial-title').textContent,'Trial 2 of 3');
  assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');assert.equal(el('schedule-cagr').textContent,'10.00%');
@@ -241,15 +239,10 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(el('results-state').textContent,'');
  assert.equal(el('schedule-results').hidden,true);await el('robustness-inspect').handlers.click();
  assert.equal(calls,0);assert.equal(el('schedule-results').hidden,false);
- // An older random-date result stored its summary only. A note shows in place of the trial; nothing is calculated.
- run('restoreSavedBacktest(savedSummary)');assert.equal(el('schedule-trial-missing').hidden,true);
- await el('robustness-inspect').handlers.click();
- assert.equal(el('workspace-review').dataset.section,'returns');assert.equal(el('schedule-trial-missing').hidden,false);assert.equal(el('schedule-results').hidden,true);
- run('restoreSavedBacktest(savedRandom)');assert.equal(el('schedule-trial-missing').hidden,true);assert.equal(calls,0);
 
- el('repeat-random').checked=false;el('repeat-random').handlers.change();assert.equal(el('random-seed').disabled,true);
+ el('repeat-random').checked=false;el('strategy-form').handlers.change({target:el('repeat-random')});assert.equal(el('random-seed').disabled,true);
  assert(!('seed' in await run('StrategyDraft.prepareSubmission()')),'Fresh random mode must not send a fixed seed');
- console.log('Passed: no run from a form submit or a changed setting in Historical backtest mode; submissions with dates, frequency, trial count and date set; stored fixed and random results with chart, stocks, attribution, CSV and stored-trial inspection; the note of a summary-only random result.');
+ console.log('Passed: no run from a form submit or a changed setting in Historical backtest mode; submissions with dates, frequency, trial count and date set; stored fixed and random results with chart, stocks, attribution, CSV and stored-trial inspection.');
 
  // One form-owner boundary protects a held edit from every restoration source.
  const waitingId='a'.repeat(32),completedId='b'.repeat(32);
@@ -320,8 +313,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  queueRows=[];await run('BacktestQueue.refresh()');
  console.log('Passed: held draft ownership across queue open/copy and saved-library opening; save/cancel/delete and failed admission release the form; every copy into the builder empties the name box.');
 
- // Latest stock picks shows no queue controls, and the queue owner submits no latest screen. In Historical
- // backtest mode Add to queue submits the chosen settings.
+ // Latest stock picks shows no queue controls. In Historical backtest mode Add to queue submits the chosen settings.
  let submissions=0;
  ctx.fetch=async(url,options={})=>{
    assert.equal(url,'/api/backtest-queue','The queue controls must never submit an immediate calculation');
@@ -334,7 +326,6 @@ console.log('Passed: a saved January result opens independently of its draft wit
    return {ok:true,json:async()=>({limit:100,paused:true,records:queueRows})};
  };
  run("switchMode('latest')");assert.deepEqual(modeControls(),['run-screen','auto-run-controls']);
- await run('BacktestQueue.add()');assert.equal(submissions,0);assert(el('queue-add-status').textContent.includes('Choose Historical backtest'));
  el('mode-backtest').handlers.click();assert.deepEqual(modeControls(),['queue-controls']);assert.equal(run('currentSettings().mode'),'custom');
  const queuedRank=rankId();stepEvent('input',queuedRank,'rank_to','12');for(let i=steps().length;i>1;i--)stepButton('up',queuedRank);
  assert.equal(stepIds()[0],queuedRank);assert.equal(submissions,0);
@@ -343,7 +334,7 @@ console.log('Passed: a saved January result opens independently of its draft wit
  assert.equal(queueRows[0].options.strategy.steps[0].kind,'rank','Rank first is the first step');assert(!('rank_to' in queueRows[0].options));
  assert.equal(el('queue-add').textContent,'Add to queue');
  queueRows=[];await run('BacktestQueue.refresh()');
- console.log('Passed: no queue controls and no queue submission in latest mode; Add to queue submits the chosen settings in Historical backtest mode.');
+ console.log('Passed: no queue controls in latest mode; Add to queue submits the chosen settings in Historical backtest mode.');
 
 run("StrategyDraft.reset();switchMode('latest')");
 el('add-filter').handlers.click();

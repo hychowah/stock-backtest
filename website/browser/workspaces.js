@@ -1,5 +1,5 @@
 /* Navigation changes visibility, never the lifetime of the draft or result. A
-   view change starts at the top of the page.
+   view change and a tab change start at the top of the page.
    The queue tray borrows the existing mounted queue panel and its owner, then
    returns it to the top of Runs, above the Saved backtests rows. */
 const Workspaces=(()=>{
@@ -10,8 +10,7 @@ const Workspaces=(()=>{
   function show(view){
     closeQueue();
     for(const name of ['builder','runs','review'])node('workspace-'+name).hidden=name!==view;
-    // Showing the same view again does not move the page.
-    if(view!==active)scrollTo(0,0);
+    scrollTo(0,0);
     active=view;
     document.querySelectorAll('#workspace-nav [data-workspace]').forEach(button=>button.setAttribute('aria-current',button.dataset.workspace===view?'page':'false'));
     // Scalar latest screens and dated evidence share the existing explanation
@@ -27,25 +26,17 @@ const Workspaces=(()=>{
     if(view==='review')reviewSection(section);
   }
   function reviewSection(next){
-    // The tab row stays at the top of the window while the page scrolls. A tab change in that state
-    // brings the start of the new content to just under the row; otherwise the page does not move.
-    const tabs=node('workspace-review-tabs'),stuck=tabs.getBoundingClientRect().top<1;
     section=next;node('workspace-review').dataset.section=next;
     // A block lists its tabs. A name such as random-returns or fixed-overview
     // shows it on that tab for that kind of result only.
     const random=ResultArtifacts.forView('custom')?.kind==='random',names=[next,(random?'random-':'fixed-')+next];
     node('workspace-review').querySelectorAll('[data-review-panel]').forEach(panel=>panel.hidden=!panel.dataset.reviewPanel.split(' ').some(name=>names.includes(name)));
     document.querySelectorAll('[data-review]').forEach(button=>button.setAttribute('aria-current',button.dataset.review===next?'page':'false'));
-    const loaded=next==='selection'?SectorView.load():null;
+    if(next==='selection')void SectorView.load();
     if(next==='returns'&&random)ScheduleView.inspectOriginal();
-    if(stuck){
-      const start=()=>{let first=tabs.nextElementSibling;while(first&&!first.getClientRects().length)first=first.nextElementSibling;first?.scrollIntoView();};
-      // The sector view gets its height after its read. The page is set again then.
-      start();loaded?.then(start);
-    }
+    scrollTo(0,0);
   }
-  // note: one line about how this result was opened, kept with the recorded notes.
-  function published(artifact,name,note=''){
+  function published(artifact,name){
     const scalar=node('scalar-evidence-view');
     if(artifact.kind==='latest'){
       rendered='latest';
@@ -60,27 +51,21 @@ const Workspaces=(()=>{
     const list=(rows,key)=>'<dl>'+rows.map(row=>'<div><dt>'+escape(row.label)+'</dt><dd>'+escape(row[key])+'</dd></div>').join('')+'</dl>';
     node('workspace-parameters').innerHTML=list(description.parameters,'display')+(exact.length?'<details><summary>Exact recorded values</summary>'+list(exact,'exact')+'</details>':'');
     // The headline always shows the original result. An Explore selection never changes it.
-    // The colour of the difference follows its sign on screen; a shown 0.00 has none.
+    // The colour of the difference follows its sign.
     node('workspace-headline').innerHTML=description.headline.map(row=>{
-      const tone=row.key==='difference'&&{'+':'up','-':'down'}[row.display[0]];
+      const tone=row.key==='difference'&&(row.value>0?'up':row.value<0?'down':'');
       return '<div'+(tone?' data-tone="'+tone+'"':'')+'><dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd></div>';
     }).join('');
     // The coverage line (short and empty periods, cash days) of a fixed result is a
-    // recorded note. It shows below the headline when a headline value is
-    // unavailable, because it gives the reason. For random dates it describes the
-    // inspected trial and stays with that trial.
-    const home=artifact.kind==='random'?'schedule-trial':description.headline.some(row=>row.display==='Unavailable')?'workspace-headline-note':'workspace-recorded-context';
-    node(home).append(node('schedule-coverage'));
+    // recorded note. For random dates it describes the inspected trial and stays with that trial.
+    node(artifact.kind==='random'?'schedule-trial':'workspace-recorded-context').append(node('schedule-coverage'));
     // A recorded warning stays above the tabs. Every other note waits in the closed disclosure.
     const presentation=artifact.presentation||{},notice=presentation.notice||{},warning=notice.severity==='warning'&&notice.text||'';
     node('workspace-recorded-notice').textContent=warning;
     node('workspace-recorded-notice').hidden=!warning;
     node('workspace-recorded-notice').className='screen-message'+(warning?' warning':'');
-    const notes=[['workspace-opened-note',note],['workspace-recorded-info',warning?'':notice.text],['workspace-recorded-coverage',presentation.coverage],['workspace-recorded-range',presentation.rangeNote],['workspace-recorded-period',presentation.periodLabel]];
+    const notes=[['workspace-recorded-info',warning?'':notice.text],['workspace-recorded-coverage',presentation.coverage],['workspace-recorded-range',presentation.rangeNote],['workspace-recorded-period',presentation.periodLabel]];
     for(const [id,text] of notes){node(id).textContent=text||'';node(id).hidden=!text;}
-    // The disclosure hides only when it holds no note, no coverage line and no producer line.
-    const producer=node('result-producer');
-    node('workspace-recorded-context').hidden=!(home==='workspace-recorded-context'||notes.some(([,text])=>text)||!producer.hidden&&producer.textContent);
     const window=description.observationWindow;
     node('workspace-result-window').textContent=(window.start??'Not recorded')+' → '+(window.end??'Not recorded')+' · '+(artifact.kind==='random'?'Random dates':artifact.kind==='january'?'Saved January books':'Fixed schedule');
     node('workspace-no-result').hidden=true;

@@ -2,7 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),asse
 const CalendarSettings=require('../website/browser/calendar-settings.js'),nodes=new Map(),copy=value=>JSON.parse(JSON.stringify(value));
 function node(id){if(!nodes.has(id))nodes.set(id,{id,value:'',innerHTML:'',textContent:'',hidden:false,disabled:false,handlers:{},captures:{},querySelectorAll(){return []},addEventListener(event,fn,capture){this.handlers[event]=fn;this.captures[event]=capture}});return nodes.get(id)}
 const make=(id,kind='custom',version=2)=>({id,name:'Saved '+id[0],created_at:'2026-11-01T00:00:00Z',kind,cagr:id[0]==='c'?.2:.12,start:'2015-01-02',end:'2020-12-31',snapshot:{version,kind,settings:{mode:kind,start:'2015-01-01',end:'2020-12-31',months:12,rank_to:id[0]==='a'?25:50},result:{start:'2015-01-02',end:'2020-12-31',cagr:id[0]==='c'?.2:.12,spy_cagr:.08,growth:2,producer:{engine:'original',label:'Original'},...(kind==='random'?{completed:2,valid:2,incomplete:0,configuration:{seed:42,window_start:'2015-01-02',window_end:'2020-12-31'},distributions:{cagr:{mean:.12,median:.11,p10:.05,p90:.2}}}:{}),periods:[]},catalog:{metrics:{},filters:{}},presentation:{},...(version===3?{evidence:{id:'e'.repeat(32)}}:{})}});
-const ids=['a','b','c'].map(c=>c.repeat(32));let records=[make(ids[0]),make(ids[1],'random',3),make(ids[2])],requests=[],released=[],acquired=[],rejectAcquire=false,invalidAcquire=false,holdAcquire=false,releaseAcquire=null,holdList=false,releaseList=null,comparisonPublished=0;
+const ids=['a','b','c'].map(c=>c.repeat(32));let records=[make(ids[0]),make(ids[1],'random',3),make(ids[2])],requests=[],released=[],acquired=[],rejectAcquire=false,holdAcquire=false,releaseAcquire=null,holdList=false,releaseList=null,comparisonPublished=0;
 const main=Object.freeze({version:2,kind:'custom',settings:{mode:'custom'},result:{cagr:.99}});
 const context=vm.createContext({document:{getElementById:node},location:{protocol:'http:'},crypto:require('node:crypto').webcrypto,Uint8Array,Date,console,CalendarSettings,async fetch(url,options={}){
  requests.push({url,method:options.method||'GET'});
@@ -13,7 +13,6 @@ const context=vm.createContext({document:{getElementById:node},location:{protoco
    const snapshot={...copy(records.find(record=>record.id===source.id).snapshot),evidence:{id,format_version:1,trials:2,periods:2,holdings:2}};
    if(holdAcquire){holdAcquire=false;await new Promise(resolve=>releaseAcquire=resolve);}
    if(rejectAcquire)throw Error('Lost acquisition response');
-   if(invalidAcquire)snapshot.kind='invalid';
    return {ok:true,json:async()=>snapshot};
  }
  const id=url.split('/')[3],record=records.find(record=>record.id===id);let value,status=200;
@@ -106,52 +105,25 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  await tick(ids[1]);assert.equal(rows(panel())[0],'Renamed <comparison> Saved b Saved c');assert.equal(acquired.length,1);assert.equal(loads(ids[1]),1);
  await tick(ids[1],false);
  // A failed read is not kept: the row loses its tick, the status line gives the reason and the reader closes.
+ // A new tick reads again.
  const retryId='d'.repeat(32);records.push(make(retryId,'custom',3));await refresh();
  const two=panel();
- for(const [failure,reason] of [['reject','Lost acquisition response'],['invalid','Unsupported saved backtest format']]){
-  rejectAcquire=failure==='reject';invalidAcquire=failure==='invalid';const before=acquired.length;await tick(retryId);rejectAcquire=invalidAcquire=false;
-  assert.equal(acquired.length,before+1);assert.deepEqual(released,acquired);assert.equal(panel(),two);
-  assert(node('saved-status').textContent.includes('Could not read “Saved d”'));assert(node('saved-status').textContent.includes(reason));assert.equal(node('saved-status').className,'backtest-failed');
- }
- const beforeRetry=acquired.length;await tick(retryId);assert.equal(acquired.length,beforeRetry+1);assert.deepEqual(released,acquired);assert.equal(rows(panel())[0],'Renamed <comparison> Saved c Saved d');
+ rejectAcquire=true;const beforeRetry=acquired.length;await tick(retryId);rejectAcquire=false;
+ assert.equal(acquired.length,beforeRetry+1);assert.deepEqual(released,acquired);assert.equal(panel(),two);
+ assert(node('saved-status').textContent.includes('Could not read “Saved d”. Lost acquisition response'));assert.equal(node('saved-status').className,'backtest-failed');
+ await tick(retryId);assert.equal(acquired.length,beforeRetry+2);assert.deepEqual(released,acquired);assert.equal(rows(panel())[0],'Renamed <comparison> Saved c Saved d');
  await tick(retryId,false);assert.equal(panel(),two);
- // A late reply cannot change a newer state: the tick was removed during the read.
- const lateId='f'.repeat(32);records.push(make(lateId,'custom',3));await refresh();
- holdAcquire=true;const late=tick(lateId);await settle();assert(text(panel()).includes('Reading 1 stored result'));assert.equal(rows(panel())[0],'Renamed <comparison> Saved c');
- await tick(lateId,false);assert.equal(panel(),two);releaseAcquire();await late;assert.equal(panel(),two);assert.deepEqual(released,acquired);
- // A deleted row leaves the panel and the descriptions, also when its read is still in progress.
- const goneId='e'.repeat(32);records.push(make(goneId,'custom',3));await refresh();
- holdAcquire=true;const gone=tick(goneId);await settle();
- records=records.filter(record=>record.id!==goneId&&record.id!==ids[2]);await refresh();
- assert.equal(text(panel()),'1 test ticked. Tick another to compare. Clear','One ticked test remains');
- releaseAcquire();await gone;assert(!panel().includes('Saved e'));assert.deepEqual(released,acquired);
- records.push(make(ids[2]),make(goneId,'custom',3));await refresh();assert(!panel().includes('Saved c'),'A returned id has no tick');
- const beforeReturn=acquired.length;await tick(ids[2]);await tick(goneId);assert.equal(loads(ids[2]),2,'A deleted row left the descriptions');assert.equal(acquired.length,beforeReturn+1);assert.deepEqual(released,acquired);
- // A failed read of an opened row is not kept. The row gives the reason and Retry; only Retry reads again.
+ // A failed read of an opened row leaves its actions in place. A list that is drawn again, which fires toggle for
+ // an open Details, does not read it again; closing and opening Details does.
  const failedId='7'.repeat(32);records.push(make(failedId,'custom',3));await refresh();
- const statusBefore=node('saved-status').textContent,panelBefore=panel();
  rejectAcquire=true;const beforeFailed=acquired.length;await open(failedId);rejectAcquire=false;
- assert.equal(acquired.length,beforeFailed+1);assert.deepEqual(released,acquired);
- assert(text(row(failedId)).includes('Could not read the saved settings. Lost acquisition response'));assert(text(row(failedId)).includes('Retry'));assert(text(row(failedId)).includes('Rename'),'The actions stay');
- assert.equal(node('saved-status').textContent,statusBefore,'No tick, so the status line keeps its text');assert.equal(panel(),panelBefore);
- await open(failedId);await open(failedId,false);await open(failedId);await refresh();assert.equal(acquired.length,beforeFailed+1,'Only Retry reads again');
- await node('saved-list').handlers.click({target:{dataset:{retry:failedId}}});
- assert.equal(acquired.length,beforeFailed+2);assert.deepEqual(released,acquired);assert(text(row(failedId)).includes('Last rank: 50'));assert(!text(row(failedId)).includes('Retry'));
- // A late reply for an opened row that was deleted during the read changes nothing and is not kept.
- const lostId='8'.repeat(32);records.push(make(lostId,'custom',3));await refresh();
- holdAcquire=true;const lost=open(lostId);await settle();const listBefore=()=>node('saved-list').innerHTML;
- records=records.filter(record=>record.id!==lostId);await refresh();const afterDelete=listBefore();
- releaseAcquire();await lost;assert.equal(listBefore(),afterDelete);assert.equal(row(lostId),'');assert.deepEqual(released,acquired);
- records.push(make(lostId,'custom',3));await refresh();const beforeLost=acquired.length;await open(lostId);assert.equal(acquired.length,beforeLost+1,'The deleted row left no description');
- // A description that arrives during a rename does not draw the list again, so the rename input stays. The row
- // shows its settings when the rename ends.
- const quietId='6'.repeat(32);records.push(make(quietId));await refresh();
- node('saved-list').handlers.click({target:{dataset:{rename:ids[0]}}});const during=node('saved-list').innerHTML;
- await open(quietId);assert.equal(loads(quietId),1);assert.equal(node('saved-list').innerHTML,during);
- node('saved-list').handlers.click({target:{dataset:{cancelName:ids[0]}}});assert(text(row(quietId)).includes('Last rank: 50'));
+ assert.equal(acquired.length,beforeFailed+1);assert(node('saved-status').textContent.includes('Could not read “Saved 7”'));
+ assert(text(row(failedId)).includes('The saved settings were not read'));assert(text(row(failedId)).includes('Rename'),'The actions stay');
+ await refresh();await open(failedId);assert.equal(acquired.length,beforeFailed+1);
+ await open(failedId,false);await open(failedId);assert.equal(acquired.length,beforeFailed+2);assert(text(row(failedId)).includes('Last rank: 50'));
  // A sort changes the column order with the row order. It reads nothing.
  const beforeSort=requests.length;node('saved-head').handlers.click({target:{dataset:{sort:'cagr'}}});
- assert.equal(rows(panel())[0],'Saved c Renamed <comparison> Saved e');assert.equal(requests.length,beforeSort);
+ assert.equal(rows(panel())[0],'Saved c Renamed <comparison>');assert.equal(requests.length,beforeSort);
  // Clear removes every tick.
  const clear=()=>node('saved-comparison').handlers.click({target:{dataset:{clear:''}}});
  clear();assert(node('saved-comparison').hidden);assert.equal(panel(),'');assert(!node('saved-list').innerHTML.includes(' checked'));
@@ -162,11 +134,6 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  records.push(...fresh);await refresh();await tick(fresh[0].id);await tick(fresh[1].id);
  [top,all]=panel().split('<details');
  assert.deepEqual(rows(top).slice(0,3),['Saved 1 Saved 2','Same settings','Headline']);assert(rows(all).includes('Recorded random date set Different 42 43'));
- // The panel compares 8 tests at most: a ninth tick is refused with a reason, reads nothing, and the box loses its tick.
- clear();assert(records.length>=9);for(const record of records.slice(0,8))await tick(record.id);
- const ninth={dataset:{tick:records[8].id},checked:true},beforeNinth=requests.length;await node('saved-list').handlers.change({target:ninth});
- assert.equal(ninth.checked,false);assert(node('saved-status').textContent.includes('Untick a test first'));assert.equal(requests.length,beforeNinth);assert(text(panel()).startsWith('8 tests ticked'));
- await tick(records[0].id,false);ninth.checked=true;await node('saved-list').handlers.change({target:ninth});assert.equal(ninth.checked,true);assert(text(panel()).startsWith('8 tests ticked'));
  assert.deepEqual(released,acquired);assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
- console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, a failed open read retried only by Retry, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, the short list of other measures for random dates, marked setting differences only, Clear and the limit of 8 ticks, rename/sort identity, failed reads not kept, late replies and deleted rows discarded, released readers and unchanged main view.');
+ console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, the short list of other measures for random dates, marked setting differences only, Clear, rename/sort identity, failed reads not kept and read again by a new tick or a reopened Details, released readers and unchanged main view.');
 })().catch(error=>{console.error(error);process.exitCode=1});

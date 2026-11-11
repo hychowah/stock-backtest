@@ -59,15 +59,14 @@ const BacktestQueue=(()=>{
   }
   // The default name says what the row columns do not, in plain wording: the final
   // Rank, the rebalance interval when it is not 12 months, then every other step in
-  // step order. A market other than US goes first. The cut keeps whole characters
-  // and no space at the end, as the server stores a name.
+  // step order. A market other than US goes first. A name has 120 characters at most.
   function title(settings){
     const capture=settings.strategy,rank=BacktestComparison.finalRank(settings),{unit,count}=CalendarSettings.decode(settings).interval;
     const source=capture?BacktestComparison.plainName(capture,rank.source)+' · '+rank.direction+' first':callbacks.metricLabel(settings.metric??'ev_ebitda');
     const interval=unit==='month'&&count===12?[]:[{month:{1:'monthly',3:'quarterly',6:'half-yearly',24:'every 2 years'},week:{1:'weekly'}}[unit][count]||'every '+count+' '+unit+'s'];
     const steps=capture?BacktestComparison.scalarRows(capture).filter(row=>row.key.startsWith('step.')&&row.value!==rank||row.key.startsWith('condition.')).map(row=>row.display):[];
     const market=(settings.market??'us')==='us'?[]:[markets[settings.market]||settings.market];
-    return [...[...market,'Ranks '+rank.rank_from+'–'+rank.rank_to,source,...interval,...steps].join(' · ')].slice(0,120).join('').trim();
+    return [...market,'Ranks '+rank.rank_from+'–'+rank.rank_to,source,...interval,...steps].join(' · ').slice(0,120).trim();
   }
   const when=value=>value?new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
   // The first line of the open Details of a row. A captured strategy lists its pool and steps below it.
@@ -76,18 +75,11 @@ const BacktestQueue=(()=>{
     return (markets[o.market??'us']||o.market)+` · USD · ${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${dates.start} → ${dates.end} · ${CalendarSettings.label(o)}`+
       (o.strategy?'':` · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All stocks with cached prices':'Original candidate set'} · ${EngineControls.label(o.engine??'original')}`);
   }
-  // Rows are replaced and moved in place. The focused control is remembered first,
-  // and gets the focus back when every row is in its final place. While the list
-  // is busy its buttons are disabled: the focus waits on the Details button, then
-  // returns to the same action.
-  let refocus=null;
+  // Rows are replaced and moved in place.
   function renderRows(rows){
     const list=node('queue-list');
     if(!rows.length){list.innerHTML='<li class="run-empty">No test is waiting or running. Select Add to queue in Build strategy.</li>';rendered.clear();return;}
     if(!list.insertBefore){list.innerHTML=rows.map(row=>row.html).join('');return;}
-    const active=list.contains(document.activeElement)?document.activeElement:null,home=active?.closest('li[data-queue-id]');
-    if(!(refocus&&home?.dataset.queueId===refocus.id&&active===home.querySelector('summary')))
-      refocus=home?{id:home.dataset.queueId,action:active.dataset.action,summary:Math.max([...home.querySelectorAll('summary')].indexOf(active),0)}:null;
     const wanted=new Set(rows.map(row=>row.id));
     for(const row of [...list.children])if(!wanted.has(row.dataset.queueId)){rendered.delete(row.dataset.queueId);row.remove();}
     const existing=new Map([...list.querySelectorAll(':scope > li[data-queue-id]')].map(row=>[row.dataset.queueId,row]));
@@ -102,13 +94,10 @@ const BacktestQueue=(()=>{
           const open=[...row.querySelectorAll('details')].map(control=>control.open);
           next.querySelectorAll('details').forEach((control,at)=>{control.open=!!open[at];});row.replaceWith(next);
         }
-        row=next;existing.set(item.id,row);rendered.set(item.id,item.signature);
+        row=next;rendered.set(item.id,item.signature);
       }
       if(list.children[index]!==row)list.insertBefore(row,list.children[index]||null);
     }
-    const row=refocus&&existing.get(refocus.id),same=row?.querySelector('[data-action="'+refocus.action+'"]:enabled'),target=same||row?.querySelectorAll('summary')[refocus.action?0:refocus.summary];
-    if(target&&target!==document.activeElement)target.focus({preventScroll:true});
-    if(same||!busy||!refocus?.action)refocus=null;
   }
   function render(){
     callbacks.changed?.({records,paused,available});
@@ -205,7 +194,6 @@ const BacktestQueue=(()=>{
     const submittedName=node('queue-name').value.trim(),held=editing&&records.find(record=>record.id===editing.id);
     // The draft keeps an unchanged held record's original selection.
     const settings=await callbacks.prepareSubmission({held:!!editing});
-    if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest to queue a fixed or random-date test.');
     const {mode,...options}=settings;
     // A held edit keeps a typed name. A name that is still the default of the old settings follows the new settings.
     const typed=submittedName&&!(held&&submittedName===title({mode:held.mode,...held.options}));
@@ -262,7 +250,7 @@ const BacktestQueue=(()=>{
     // Enter that ends an input-method composition belongs to the composition.
     for(const type of ['input','change'])node('queue-name').addEventListener(type,event=>event.stopPropagation());
     node('queue-name').addEventListener('keydown',event=>{
-      if(event.key!=='Enter'||event.isComposing||event.keyCode===229)return;
+      if(event.key!=='Enter'||event.isComposing)return;
       event.preventDefault();if(!node('queue-add').disabled)return add();
     });
     node('queue-refresh').addEventListener('click',()=>perform(refresh));

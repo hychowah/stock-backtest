@@ -12,18 +12,15 @@ financial generation, calculation readiness or calculation.
 
 ## Explore a completed result
 
-The dated result has an **Explore this result** panel. It starts closed, after
-the chart and tables, and reads its date labels when it opens. Choose saved holding
+The dated result has an **Explore this result** panel. It starts closed and
+reads its date labels when it opens. Choose saved holding
 periods and an inclusive rank range within the original request. Apply summarizes
 saved returns without screening, formulas, preparation or market inputs.
 
 Random results have **Explore all trials** in the same position. One
 selection updates every trial, combined statistics and the distribution chart.
-The panel shows the mean and median strategy CAGR and the mean paired SPY CAGR
-of the selection. A notice above the chart gives the window and ranks of an
-applied selection that differs from the original. The full original window and
-ranks need no notice, unless Apply derived totals that the original did not
-record. The result headline keeps the original result.
+A notice above the chart gives the window and ranks of an applied selection.
+The result headline keeps the original result.
 Selectors name saved entry and exit blocks. The actual shared window runs from
 the earliest selected entry to the latest selected exit. A selection beginning
 with the first period keeps the original common start. Strategy and paired SPY
@@ -63,40 +60,25 @@ creates no saved format or durable preference.
 `website/browser/workspaces.js` changes workspace visibility without replacing
 the mounted strategy form. Opening a result publishes its artifact without
 restoring draft settings. Tune and Tune this strategy retain the existing
-held-edit protection; the restore that they share empties the test-name box. Recorded parameter rows reuse `BacktestComparison.describe`.
+held-edit protection. Recorded parameter rows reuse `BacktestComparison.describe`.
 Desktop review shows them in a side column; phones have a Settings section.
 The same description supplies `headline`, the short answer that review prints
 below the title: `cagr`, `spy_cagr` and `difference` for every test type, then
-`growth` for a fixed schedule or a January result, or `beat_spy`, `worst` and
-`best` for random dates. Random values are the stored trial statistics and
-counts. A value that the result did not store reads Unavailable. The sign of
-`difference` follows its rounded display. The coverage line of a fixed result
-sits with the recorded notes, or below the headline when a headline value is
-Unavailable; for random dates it stays with the inspected trial. A review block
-lists its tabs in `data-review-panel`; a `random-` or `fixed-` name limits the
-block to that kind of result.
+`growth`, or `beat_spy`, `worst` and `best` for random dates, from stored
+values only. A review block lists its tabs in `data-review-panel`; a `random-`
+or `fixed-` name limits the block to that kind of result.
 The bottom status bar consumes queue state. Its dialog
-borrows the mounted queue panel, including the same controls and polling owner,
-and returns it to the top of Runs & saved.
+borrows the mounted queue panel, including the same controls and polling owner.
 
-Runs & saved shows two row groups with one column layout. `queue.js` draws the In
-progress rows and keeps the queue state. `saved-backtests.js` draws the Saved
-backtests rows, their ticks, their sort order and the panel of the ticked tests. The two
-owners share the row styles and `BacktestComparison`, and call nothing new in
-each other. `saved-backtests.js` keeps one description for each saved id that
-the user ticked or opened with Details. One loader reads them one at a time through `ResultArtifacts.use` and
-`describe`, so each temporary reader closes after its read. A failed read is
-not kept: the row shows the reason with Retry. An id that leaves the list
-leaves the ticks and the descriptions. Details of a saved row prints the
-description of that row in place; the panel compares two or more ticked rows.
+Runs & saved has two owners. `queue.js` draws the In progress rows.
+`saved-backtests.js` draws the Saved backtests rows and the panel of the ticked
+tests. It reads one description for each saved id that the user ticked or
+opened with Details, through `ResultArtifacts.use` and `describe`.
 `BacktestComparison.compare` takes a list of descriptions and returns one cell
-for each test in every row: settings, the headline and, for random dates, six
-more stored measures. The full distribution table stays on the page of each result. A row whose values differ behind the same plain
-wording prints the exact text. A row of recorded facts (the recorded random
-date set, observation window and producer) keeps a `recorded` mark, so the
-first block of the panel lists requested settings only. The panel is derived
-from the ticks and the descriptions each time it is drawn; during a read it
-shows the tests that are already read.
+for each test in every row. A row of recorded facts keeps a `recorded` mark, so
+the first block of the panel lists requested settings only. The
+[website guide](../website/README.md#save-and-reopen-completed-backtests)
+describes the screen.
 
 ## Sector selections
 
@@ -260,10 +242,7 @@ Legacy requests log their translated counts.
 The holding Details panel and the latest screen's Details show the step trail:
 for each step, its source label, recorded value and unit, then its rank and kept
 range for a Rank or "passed" for a Filter. `EvidenceResults` reads it from the
-stored row and the captured strategy only. The **Ranking value** column and the
-formula or built-in step values of the trail show 2 decimals; below 0.01 they
-show 2 significant digits, and below 0.000001 they show 0.00. Weights, returns
-and contributions show 2 decimals. Downloads and the calculation evidence keep
+stored row and the captured strategy only. On-screen values are rounded; downloads and the calculation evidence keep
 the recorded precision. A row without step evidence, such as
 capture/1 and every older result, says the trail is not recorded.
 
@@ -289,8 +268,7 @@ builder restores such a minimum as a Filter without a value, so submission asks
 for one. Captures use null to omit a bound; that meaning and their bytes stay.
 
 Stored results and request records are never rewritten. Opening and trial
-inspection never calculate: a random-date result that stored its summary only
-shows a note in place of the trial.
+inspection never calculate.
 
 Existing waiting and held queue rows retain their request format and execution.
 Saving an unchanged held edit keeps its original selection in any format. An

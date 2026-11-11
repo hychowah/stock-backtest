@@ -29,18 +29,7 @@ const EvidenceResults=(()=>{
     node('scalar-explanation').open=false;node('scalar-explanation-content').innerHTML='';
   }
   function readError(state,error){if(valid(state)&&error.name!=='AbortError')node(state.artifact.kind==='latest'?'screen-error':'schedule-message').textContent=error.message;}
-  // Set which pager buttons can be used. Disabling the button that has focus would
-  // drop keyboard focus to the page: the pager takes the focus first, and gives it
-  // back when that button can be used again.
-  let held=null;
-  function pager(id,back,next){
-    const pages=node(id+'-pages'),buttons=[node(id+'-back'),node(id+'-next')];
-    [back,next].forEach((disabled,i)=>{
-      if(disabled&&buttons[i]===document.activeElement){held=buttons[i];pages.focus({preventScroll:true});}
-      buttons[i].disabled=disabled;
-    });
-    if(buttons.includes(held)&&!held.disabled&&document.activeElement===pages){held.focus({preventScroll:true});held=null;}
-  }
+  function pager(id,back,next){node(id+'-back').disabled=back;node(id+'-next').disabled=next;}
   function navigation(id,cursor,next,total,label){
     // A result with one page shows no pager.
     node(id+'-pages').hidden=cursor===0&&next===null;pager(id,cursor===0,next===null);

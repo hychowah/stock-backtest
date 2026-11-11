@@ -76,7 +76,7 @@ assert.equal(flat.headline.find(row=>row.key==='growth').display,'$2.35');assert
 const spread=describe(artifact({trials:2},{completed:2,valid:2,incomplete:0,configuration:{seed:1},distributions:{cagr:{mean:.000082208838},excess_cagr:{mean:-.005837653252144099}}},'random')).headline;
 assert.deepEqual(['cagr','difference'].map(key=>spread.find(row=>row.key===key).display),['0.0082%','-0.58 pp']);
 // A value below 0.000001 in its unit shows 0.00, never exponent notation.
-const tiny=describe(artifact({},{cagr:5.55e-17,spy_cagr:-2e-9,growth:1.2e-6})).headline.map(row=>row.display);assert.deepEqual(tiny,['0.00%','0.00%','0.00 pp','$0.0000012']);
+const tiny=describe(artifact({},{cagr:5.55e-17,spy_cagr:-2e-9,growth:1.2e-6})).headline.map(row=>row.display);assert.deepEqual(tiny,['0.00%','0.00%','+0.00 pp','$0.0000012']);
 assert.equal(spread.find(row=>row.key==='difference').value,-.005837653252144099);
 console.log('Passed: chain captures list the universe and ordered steps in plain wording with exact text kept, compare by step, the last Rank sets the recorded range, and on-screen values are rounded.');
 // The headline is the short answer of one result. Every test type starts with the
@@ -90,9 +90,6 @@ const trials=artifact({trials:6},{completed:6,valid:5,incomplete:1,beat_spy:2,co
 // The count covers complete trials only; the display says so when some trials are incomplete.
 assert.deepEqual(lines(describe(trials)),['cagr|Mean strategy CAGR|15.00%','spy_cagr|Mean SPY CAGR|8.00%','difference|Mean difference vs SPY|+7.00 pp','beat_spy|Trials beating SPY|2/5 complete','worst|Worst trial CAGR|-2.00%','best|Best trial CAGR|31.00%']);
 const allComplete=structuredClone(trials);Object.assign(allComplete.result,{valid:6,incomplete:0});assert.equal(lines(describe(allComplete))[3],'beat_spy|Trials beating SPY|2/6');
-// The sign of a difference follows the rounded number on screen: a shown 0.00 has no sign.
-const difference=(cagr,spy_cagr)=>describe(artifact({},{cagr,spy_cagr})).headline[2].display;
-assert.deepEqual([difference(.1+.2,.3),difference(.3,.3+1e-12),difference(.3,.3),difference(.30004,.3),difference(.3,.30004)],['0.00 pp','0.00 pp','0.00 pp','+0.0040 pp','-0.0040 pp']);
 assert.deepEqual(describe(trials).headline.map(row=>row.value),[.15,.08,.07,2,-.02,.31]);
 // A stored result that lacks a value shows Unavailable; nothing is derived from trials or holdings.
 assert.deepEqual(lines(randomDescription).map(line=>line.split('|')[2]),['15.00%','8.00%','Unavailable','Unavailable','Unavailable','Unavailable']);
@@ -114,9 +111,6 @@ const mixed=compare(a,trials);
 assert.deepEqual(mixed.headline.map(row=>[row.key,row.label,...row.cells]),[['cagr','Strategy CAGR / Mean strategy CAGR','12.00%','15.00%'],['spy_cagr','SPY CAGR / Mean SPY CAGR','8.00%','8.00%'],
  ['difference','Difference vs SPY / Mean difference vs SPY','+4.00 pp','+7.00 pp'],['growth','Growth of $1','$2.00','—'],['beat_spy','Trials beating SPY','—','2/5 complete'],['worst','Worst trial CAGR','—','-2.00%'],['best','Best trial CAGR','—','31.00%']]);
 assert.deepEqual(mixed.parameters.find(row=>row.key==='trials').cells,['Not recorded','6']);assert.deepEqual(mixed.measures.find(row=>row.key==='trials').cells,['—','5 of 6 complete']);
-// Each notice is one short line. Two different windows share a line.
-assert.deepEqual(compare(a,changedWindow).notices,['These tests use different requested date windows and recorded observation windows.']);
-assert.deepEqual(compare(a,random).notices,['Random dates: mean trial CAGR is not one portfolio return, and percentiles are not confidence intervals.','These tests use different test types; their measures can differ.']);
 // A recorded fact is what a run stored, not a requested setting. Its rows keep a mark, so that two random tests
 // with equal settings and fresh dates have no requested setting that differs.
 const otherDates=structuredClone(random);otherDates.result.configuration.seed=43;otherDates.result.producer={engine:'original'};

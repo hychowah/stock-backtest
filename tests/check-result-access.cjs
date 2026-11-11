@@ -10,8 +10,8 @@ const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textConten
 const response=(value,status=200)=>({ok:status<400,status,headers:{get:()=>responseBytes},json:async()=>structuredClone(value)});
 const context=vm.createContext({console,Date,Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,
  document:{getElementById:node},location:{protocol:'http:'},addEventListener:(event,fn)=>events[event]=fn,
- setInterval:()=>1,clearInterval(){},updateResultsState(){},viewKey:()=> 'custom',sourceCatalog:()=>artifact.catalog,scheduledPresentation:()=>artifact.presentation,
- EngineControls:{label:()=> 'Original',fields:()=>({})},CalendarSettings:{read:()=>settings,decode:()=>settings,label:()=> 'Annual'},
+ setInterval:()=>1,sourceCatalog:()=>artifact.catalog,scheduledPresentation:()=>artifact.presentation,
+ EngineControls:{label:()=> 'Original'},CalendarSettings:{decode:()=>settings,label:()=> 'Annual'},
  BacktestRuns:{create:options=>({id:runId,mode:'latest',options,submitted:Date.now()}),follow:async()=>({state:'complete',evidence:{manifest:{periods:0}}})},
  async fetch(url,options={}){
   const id=url.split('/')[3],method=options.method||'GET';

@@ -78,7 +78,7 @@ const BacktestRuns=(()=>{
     else save(run);
     return state;
   }
-  async function recover(update=()=>{}){
+  async function recover(){
     // Browser records describe past observations. Ask the server before
     // selecting active work, or the newest available completed screen.
     let completed=null;
@@ -86,12 +86,11 @@ const BacktestRuns=(()=>{
       while(true){
         try{
           const state=await reconcile(run);
-          if(['running','stopping'].includes(state.state))return run;
+          if(state.state==='running')return run;
           if(state.state==='complete'&&!completed)completed=run;
           break;
         }catch(error){
           if(error.terminal){forget(run.id);break;}
-          update({state:'reconnecting'});
           await new Promise(resolve=>setTimeout(resolve,1000));
         }
       }

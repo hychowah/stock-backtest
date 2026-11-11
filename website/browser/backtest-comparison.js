@@ -16,12 +16,8 @@ const BacktestComparison=(()=>{
   // ResultArtifacts.scalarValue applies the same rule to table values.
   const rounded=value=>{const size=Math.abs(value);return size<1e-6?'0.00':size<.01?value.toPrecision(2):value.toFixed(2);};
   const percent=value=>Number.isFinite(value)?rounded(value*100)+'%':'Unavailable';
-  // A difference from SPY in percentage points. The sign follows the rounded
-  // number on screen: a gain shows a plus sign, and a shown 0.00 shows none.
-  const points=value=>{
-    if(!Number.isFinite(value))return 'Unavailable';
-    const shown=rounded(value*100);return (value>0&&+shown?'+':'')+shown+' pp';
-  };
+  // A difference from SPY in percentage points. A gain shows a plus sign.
+  const points=value=>Number.isFinite(value)?(value>0?'+':'')+rounded(value*100)+' pp':'Unavailable';
   const labels={january:'January',custom:'Fixed dates',random:'Random dates'};
   const defaults={rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',selection_order:'filter_first',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};
   const names={rank_from:'First rank',rank_to:'Last rank',pool:'Stock pool',metric:'Ranking metric',selection_order:'Selection order',min_cap:'Minimum market cap (USD)',max_cap:'Maximum market cap (USD)',min_ev:'Minimum EV (USD)',min_yield:'Minimum yield',max_multiple:'Maximum multiple',sector:'Sector',exchange:'Exchange'};

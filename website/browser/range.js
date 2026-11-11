@@ -41,7 +41,7 @@ function applyPresentation(presentation={}){
 }
 // Every result other than a latest screen, saved January results included,
 // renders in the dated view.
-function publishResult(artifact,name,note){
+function publishResult(artifact,name){
   const completed=ResultArtifacts.publish(artifact);
   if(completed.kind==='latest'){
     applyPresentation(completed.presentation);
@@ -49,12 +49,8 @@ function publishResult(artifact,name,note){
   }else{
     ScheduleView.show(completed);
   }
-  Workspaces.published(completed,name,note);
+  Workspaces.published(completed,name);
   document.getElementById('screen-error').textContent='';updateResultsState();
-}
-function completeResult(settings,result){
-  const presentation=settings.mode==='latest'?latestPresentation(result):scheduledPresentation(settings);
-  publishResult(ResultArtifacts.create(settings,result,sourceCatalog(),presentation));
 }
 function scheduledPresentation(settings){
   if(settings.strategy)return {coverage:(marketLabels[settings.market||'us']||settings.market)+' · USD returns and cash. Captured strategy over prepared stocks. FMP coverage and later revisions remain limitations. US Treasury reference yields; SPY total-return benchmark uses the previous completed US close for Asian dates.',notice:{text:'Results retain the submitted settings and selected stock values, including explanations for custom variables.',severity:'info'},rangeNote:'Downloads use completed immutable evidence. Period and stock tables show pages of the complete result.',periodLabel:settings.mode==='latest'?'Latest cached close':CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
@@ -182,6 +178,8 @@ function setModeVisibility(){
   // Latest stock picks has Screen latest and Auto-run. Historical backtest has the test name and Add to queue.
   for(const id of ['run-screen','auto-run-controls'])document.getElementById(id).hidden=!latest;
   document.getElementById('queue-controls').hidden=latest;
+  // The results line and the notes of the displayed picks belong to Latest stock picks.
+  for(const id of ['results-state','screen-coverage','range-note'])document.getElementById(id).hidden=!latest;
   const artifact=currentArtifact(),scalar=document.getElementById('scalar-evidence-view');
   applyPresentation(artifact?.presentation);renderSteps();
   // A server latest panel in the builder belongs to latest mode only.
@@ -202,7 +200,7 @@ function applyLatest(){
     StrategyDraft.requireValues();result=StockScreener.latestScreen(screeningData,StrategyDraft.flat());
   }
   catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
-  completeResult(settings,result);
+  publishResult(ResultArtifacts.create(settings,result,sourceCatalog(),latestPresentation(result)));
 }
 function renderLatest(r){
   // A server latest screen hides this offline table; an offline screen shows it again.
@@ -249,7 +247,7 @@ function downloadLatest(){
 function restoreSavedBacktest(snapshot,name){
   const artifact=ResultArtifacts.decode(snapshot);
   if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
-  publishResult(artifact,name,'Saved backtest opened. Draft settings are unchanged; no calculation was run.');
+  publishResult(artifact,name);
 }
 function copySavedBacktestSettings(snapshot){
   const artifact=ResultArtifacts.decode(snapshot);

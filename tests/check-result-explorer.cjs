@@ -113,13 +113,6 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  const allCount=applied().length;input('reset').handlers.click();
  assert.equal(node('robustness-mean').textContent,'15.00%');assert.equal(applied().length,allCount);
  assert(node('robustness-scope').hidden&&!node('robustness-scope').textContent);
- // Apply with the full original window and ranks is the original again: no notice.
- input('apply').handlers.click();await tick();
- assert.deepEqual(JSON.parse(applied().at(-1).options.body).selection,{trial:'all',period_from:1,period_to:25,rank_from:1,rank_to:50});
- assert(node('robustness-scope').hidden);assert.equal(node('robustness-trial').value,'2');
- // Apply derives totals that the original did not record, so that full selection keeps its notice.
- const unrecorded=structuredClone(batch);unrecorded.result.trials[0].growth=null;
- await show(unrecorded,'all',{summary:unrecorded.result,periods:25});input('apply').handlers.click();await tick();assert(!node('robustness-scope').hidden);
  assert.equal(JSON.stringify(batch),batchBefore);
  for(const version of [3,4]){
   const bounded=structuredClone(batch);bounded.version=version;delete bounded.result.trial_results;
@@ -171,25 +164,5 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  assert(html.includes('Download original holdings'));
  // Explore follows the main chart and the tables of both kinds of result.
  for(const id of ['robustness-chart','robustness-trials','schedule-chart','schedule-rows'])assert(html.indexOf('id="result-explorer"')>html.indexOf('id="'+id+'"'),id);
- // The builder shows controls first: no page heading, and at most three help
- // lines outside the disclosures in each mode. A help line is any element with
- // the hint class that has text, with or without an id. The latest picks panel
- // adds its own help line and scroll line, so the template shows one more at most.
- const builder=html.slice(html.indexOf('id="workspace-builder"'),html.indexOf('id="workspace-runs"'));
- const helpLines=shown=>{
-  const covered=[];let count=0;
-  for(const [,closing,tag,attributes,text] of builder.matchAll(/<(\/?)([a-z0-9]+)([^>]*)>([^<]*)/g)){
-   if(closing){covered.pop();continue;}
-   const id=attributes.match(/\bid="([^"]*)"/)?.[1],classes=(attributes.match(/\bclass="([^"]*)"/)?.[1]||'').split(/\s+/);
-   const inside=covered.at(-1)||tag==='details'||/(^|\s)hidden(\s|$)/.test(attributes)&&!shown.includes(id);
-   if(!inside&&classes.includes('hint')&&text.trim())count++;
-   if(tag!=='input')covered.push(inside);
-  }
-  return count;
- };
- assert(!builder.includes('<h1')&&!html.includes('class="intro"'));
- const latestMode=helpLines([]),backtestMode=helpLines(['schedule-controls']);
- assert(latestMode>=1&&latestMode+2<=3,'Latest mode: '+latestMode);assert(backtestMode>latestMode&&backtestMode<=3,'Backtest mode: '+backtestMode);
- assert(helpLines(['schedule-controls','legacy-pool-note'])>backtestMode,'A hint with an id counts');
  console.log('Passed: closed all-24-trial date/rank controls that load on opening, the selection notice, combined statistics and chart, eager and both codec transports, original artifacts, reset, validation and cancellation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

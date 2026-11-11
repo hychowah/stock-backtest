@@ -11,11 +11,9 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  ctx.batch=batch;let inspected;
  // This context has no browser storage: showing a result stores nothing.
  ctx.inspect=index=>inspected=index;call('RobustnessView.init(inspect,()=>batch)');
- // The date-set box takes the number of the shown result. A ticked Repeat keeps the number that the user set.
- node('repeat-random').checked=true;node('random-seed').value='321';call('RobustnessView.render(batch)');
- assert.equal(node('random-seed').value,'321');node('repeat-random').checked=false;call('RobustnessView.render(batch)');
+ call('RobustnessView.render(batch)');
  assert.equal(node('robustness-results').hidden,false);assert.equal(node('robustness-mean').textContent,'15.00%');
- assert.equal(node('random-seed').value,'42');assert(node('robustness-distribution').innerHTML.includes('Strategy CAGR'));
+ assert(node('robustness-distribution').innerHTML.includes('Strategy CAGR'));
  assert(node('robustness-chart').innerHTML.includes('<rect'));
  assert(!node('robustness-chart').innerHTML.includes('NaN'));
  assert(node('robustness-chart-note').textContent.includes('Seed 42'));
@@ -48,7 +46,6 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  call('RobustnessView.preview(preview)');
  node('robustness-measure').value='cagr';node('robustness-measure').handlers.change();
  assert(node('robustness-chart').innerHTML.includes('mean 90.00%'));
- assert.equal(node('random-seed').value,'42','An Explore preview keeps the date-set number of the original result');
  // A previewed selection says which window and ranks the chart and tables show.
  ctx.selection={start:'2016-01-04',end:'2019-01-02',rank_from:5,rank_to:10};call('RobustnessView.preview(preview,selection)');
  assert(!node('robustness-scope').hidden&&node('robustness-scope').textContent.startsWith('Explore selection: 2016-01-04 → 2019-01-02 · ranks 5–10.'));
@@ -57,5 +54,5 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  node('robustness-download').handlers.click();assert(csv.includes('2015-03-02;2017-07-03'));assert(csv.includes('"42"'));assert.equal(download,'random-dates-seed-42.csv');
  // Inspect names the chosen trial by its place in the list; the dated view decides what it can show.
  node('robustness-trial').value='0';node('robustness-inspect').handlers.click();assert.equal(inspected,0);
- console.log('Passed: no browser storage, the date-set number of the shown result, distribution rendering, reproducible CSV and trial inspection.');
+ console.log('Passed: no browser storage, distribution rendering, reproducible CSV and trial inspection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

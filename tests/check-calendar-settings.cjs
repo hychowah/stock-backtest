@@ -19,10 +19,8 @@ assert.throws(()=>Calendar.decode({...week,months:12}),/one calendar/);
 assert.equal(Calendar.decode({start:old.start,end:old.end}).interval.count,12);
 for(const value of [null,false,0]){
  assert.throws(()=>Calendar.decode({...old,calendar:value}));
- assert.throws(()=>Calendar.fields({calendar:value}));
  assert.throws(()=>Calendar.normalize({mode:'custom',calendar:value}));
 }
 assert.throws(()=>Calendar.decode({...old,months:null}));
-assert.throws(()=>Calendar.fields({...old,months:null}));
 for(const count of [null,0,105,1.5])assert.throws(()=>Calendar.decode({calendar:{...week.calendar,interval:{unit:'week',count}}}));
 console.log('Passed: old v1/v2 snapshots, exact submitted settings, equivalent month comparisons, weekly labels and mixed request rejection.');

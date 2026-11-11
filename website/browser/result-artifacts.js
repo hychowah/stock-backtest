@@ -151,8 +151,6 @@ const ResultArtifacts=(()=>{
   function matches(artifact,settings){
     if(!artifact)return false;
     let submitted=artifact.settings;
-    // Opening a fresh-date run exposes its actual seed for an exact replay.
-    if(artifact.kind==='random'&&settings.seed!==undefined)submitted={...submitted,seed:artifact.result.configuration.seed};
     const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
     // Older saved records used filter-first selection. Compare that default
     // without adding fields to, or rewriting, the stored artifact.
@@ -160,7 +158,7 @@ const ResultArtifacts=(()=>{
     settings=calendar?calendar.normalize(settings):settings;
     // Phase 6 scalar latest/January settings omitted engine and mean Original.
     // This comparison default establishes no historical producer evidence.
-    const defaults=['custom','random'].includes(artifact.kind)||artifact.settings.strategy?{engine:'original',selection_order:'filter_first',market:'us'}:{selection_order:'filter_first',market:'us'};
+    const defaults=artifact.settings.strategy?{engine:'original',selection_order:'filter_first',market:'us'}:{selection_order:'filter_first',market:'us'};
     return signature({...defaults,...submitted})===signature({...defaults,...settings});
   }
   // Evidence views keep 8 significant digits. A table shows 2 decimals; below

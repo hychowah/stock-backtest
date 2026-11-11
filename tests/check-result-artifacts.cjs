@@ -25,9 +25,9 @@ assert.deepEqual(decoded.presentation,{coverage:'Old coverage',notice:{text:'Old
 assert.equal(JSON.stringify(legacy),raw);assert(!JSON.stringify(decoded).includes('screen-status'));assert(!('context' in decoded));assert(!('record' in decoded));
 const random=Artifacts.create({mode:'random',start:'2015-01-01',trials:2},{configuration:{seed:42},trials:[],trial_results:[]},catalog,presentation);
 Artifacts.publish(random);assert.equal(Artifacts.forView('custom').kind,'random');
-assert(Artifacts.matches(random,{...random.settings}));assert(Artifacts.matches(random,{...random.settings,seed:42}));assert(!Artifacts.matches(random,{...random.settings,seed:43}));
+assert(Artifacts.matches(random,{...random.settings}));
 assert.throws(()=>Artifacts.decode({...legacy,version:3}),/Unsupported/);
-console.log('Passed: one immutable result per view, original labels and precision, version-1 decoding, semantic display context, pending edits and exact random-seed reopening.');
+console.log('Passed: one immutable result per view, original labels and precision, version-1 decoding and semantic display context.');
 // Saved January results of versions 1 and 2 open in the dated view. Their book
 // years become periods at read time; the stored record is never rewritten.
 const book=(year,names,portfolio,spy,holdings)=>({year,names,portfolio,spy,median_market_cap:null,holdings});
@@ -58,7 +58,6 @@ assert(!Artifacts.matches(produced,{...produced.settings,engine:'original'}));
 assert.equal(Artifacts.decode(produced).result.producer.engine,'experimental');
 const unidentified=Artifacts.decode({...produced,result:{},settings:{mode:'custom',start:'2015-01-01'}});
 assert(!('producer' in unidentified.result));
-assert(Artifacts.matches(unidentified,{...unidentified.settings,engine:'original'}));
 console.log('Passed: pinned engine comparison and recorded producer identity without legacy inference.');
 for(const kind of ['latest','january']){
  const prior={version:4,kind,settings:{mode:kind,strategy:{format:'strategy-capture',version:1}},

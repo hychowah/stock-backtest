@@ -84,15 +84,10 @@ const ScheduleView=(()=>{
   }
   function init(readContext){
     CalendarSettings.init();void EngineControls.init(readContext);
-    const repeat=node('repeat-random');
-    const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
-    repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
+    node('repeat-random').checked=false;
     // A trial opens in Returns, where its period returns and stocks show.
-    RobustnessView.init(index=>{
-      inspect(index);Workspaces.reviewSection('returns');
-      // The tab change hides the button that had focus; the trial title takes it.
-      node('schedule-trial-title').focus();
-    },()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    RobustnessView.init(index=>{inspect(index);Workspaces.reviewSection('returns');},
+      ()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
@@ -111,26 +106,18 @@ const ScheduleView=(()=>{
     return follow(run);
   }
   // The per-trial block of a random-date result names its trial; the headline shows all trials.
-  // An older random-date result can hold its summary only. Then a trial has no stocks and no period
-  // returns: a note says so and how to get them. Nothing is calculated to show them.
-  function trial(artifact){
-    node('schedule-trial-title').textContent='Trial '+(inspectedTrial+1)+' of '+artifact.result.trials.length;
-    const stored=[3,4].includes(artifact.version)||!!artifact.result.trial_results?.[inspectedTrial];
-    node('schedule-trial-missing').hidden=stored;
-    if(!stored)node('schedule-results').hidden=true;
-    return stored;
-  }
+  const trialTitle=artifact=>{if(artifact.kind==='random')node('schedule-trial-title').textContent='Trial '+(inspectedTrial+1)+' of '+artifact.result.trials.length;};
   function inspect(index){
     inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');
-    if(!trial(artifact))return;
+    trialTitle(artifact);
     if([3,4].includes(artifact.version))EvidenceResults.show(artifact,index+1);else render();
   }
   function inspectOriginal(number,period,sector){
     const artifact=ResultArtifacts.forView('custom');if(!artifact)return;
-    if(number===undefined&&inspectedTrial!==null){node('schedule-results').hidden=!node('schedule-trial-missing').hidden;return;}
+    if(number===undefined&&inspectedTrial!==null){node('schedule-results').hidden=false;return;}
     number??=1;period??=1;
     inspectedTrial=number-1;inspectedSector=sector;
-    if(artifact.kind==='random'&&!trial(artifact))return;
+    trialTitle(artifact);
     if([3,4].includes(artifact.version))EvidenceResults.show(artifact,number,{period,sector});
     else{render();node('schedule-period').value=String(period-1);stocks();}
   }
@@ -138,7 +125,7 @@ const ScheduleView=(()=>{
     node('custom-view').hidden=false;
     ResultExplorer.clear();
     EvidenceResults.showProducer(artifact);
-    inspectedTrial=null;inspectedSector=undefined;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;node('schedule-trial-missing').hidden=true;
+    inspectedTrial=null;inspectedSector=undefined;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){
       RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
       ResultExplorer.show(artifact,'all',{summary:artifact.result,periods:artifact.result.trials[0]?.periods??0});

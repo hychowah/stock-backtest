@@ -15,7 +15,6 @@ const CalendarSettings=(()=>{
     if(!legacy.includes(count))throw Error('Invalid month interval.');
     return {version:1,start:value.start,end:value.end,interval:{unit:'month',count}};
   }
-  const fields=value=>Object.hasOwn(value,'calendar')?{calendar:decode(value)}:{start:value.start,end:value.end,months:decode(value).interval.count};
   const label=value=>{const c=decode(Object.hasOwn(value,'calendar')?{calendar:value.calendar}:value);return 'every '+c.interval.count+' '+c.interval.unit+'(s)';};
   function normalize(value){
     if(!['custom','random'].includes(value.mode)||!Object.hasOwn(value,'calendar')&&value.start===undefined)return value;
@@ -45,6 +44,6 @@ const CalendarSettings=(()=>{
     const unit=document.getElementById('calendar-unit'),count=document.getElementById('calendar-count');
     unit?.addEventListener('change',()=>{count.max=unit.value==='week'?'104':'24';});
   }
-  return {decode,fields,label,normalize,read,restore,init};
+  return {decode,label,normalize,read,restore,init};
 })();
 if(typeof module!=='undefined')module.exports=CalendarSettings;

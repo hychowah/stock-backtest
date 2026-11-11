@@ -32,7 +32,7 @@ market data.
   result shows the spread of returns against SPY, not one lucky start date.
 - **Saved library and queue.** Every dated test runs from a queue. Edit, hold,
   reorder or pause waiting tests. Completed results move to a library of up to
-  100 saved backtests. You can rename them, sort them and compare up to eight
+  100 saved backtests. You can rename them, sort them and compare them
   side by side. Opening a saved result never recalculates it.
 - **Incremental daily updates.** A data update downloads only what is new or
   missing. Preparation then recalculates only the affected companies and

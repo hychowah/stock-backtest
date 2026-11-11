@@ -409,8 +409,7 @@ not claim another item. Stop cancels the selected item and waits for normal
 worker cleanup. Failed items remain visible; the consumer continues to the next.
 
 The strategy form owns a queued edit session. While that session is active,
-opening a queue or saved-library result, copying another test, or recovering a
-manual run cannot replace its settings. Save or cancel the edit first. The same
+Tune on another test cannot replace its settings. Save or cancel the edit first. The same
 form boundary handles every restoration source. A failed server hold releases
 the local form session without leaving the controls reserved.
 
@@ -473,9 +472,7 @@ and SPY period returns. Their trials remain in both paired averages. Unavailable
 trial results stay listed and are excluded from both averages. Percentiles are
 scenario descriptions, not confidence limits.
 
-The browser submits each run to the loopback `/api/backtest-runs/<id>` service and
-polls its status; progress counts real completed trials, and the run continues on
-the server if the page closes. `backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
+`backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
 deduplicates missing entry/pool sheets across the batch. Bounded process
 workers read prepared inputs with read-only daily connections that attach the
 research file the parent admitted, and calculate ahead with `books.book`. Each
@@ -490,10 +487,9 @@ bounded by CPU count. Smaller batches stay serial. Workers monitor parent lifeti
 and exit if the launcher is forcibly closed. Cached-only batches launch no processes. Each individual trial commits its books,
 so a disconnected/stopped batch can be repeated with the same seed and reuse
 completed work. Prefetched books for later trials are not saved if the batch is
-stopped first. The frontend reports worker counts and book preparation separately
-from real completed-trial counts and exports dates,
-seed, frequency and trial outcomes. Inspection calls the existing schedule API
-with that trial's exact dates rather than implementing another selection engine.
+stopped first. The running queue row counts completed trials and new books.
+The result exports dates, seed, frequency and trial outcomes. Trial inspection
+reads the stored rows of the completed result.
 Test sampling, statistics, interruption and the stream contract with
 `python3 tests/test_robustness.py` and `python3 tests/test_book_batch.py`; test incremental decoding and distribution
 rendering with `node tests/check-robustness.cjs`.
