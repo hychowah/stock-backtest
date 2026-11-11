@@ -12,7 +12,7 @@ const context=vm.createContext({console,Date,Uint8Array,crypto:require('node:cry
  document:{getElementById:node},location:{protocol:'http:'},addEventListener:(event,fn)=>events[event]=fn,
  setInterval:()=>1,sourceCatalog:()=>artifact.catalog,scheduledPresentation:()=>artifact.presentation,
  EngineControls:{label:()=> 'Original'},CalendarSettings:{decode:()=>settings,label:()=> 'Annual'},
- BacktestRuns:{create:options=>({id:runId,mode:'latest',options,submitted:Date.now()}),follow:async()=>({state:'complete',evidence:{manifest:{periods:0}}})},
+ BacktestRuns:{create:options=>({id:runId,mode:'latest',options}),follow:async()=>({state:'complete',evidence:{manifest:{periods:0}}})},
  async fetch(url,options={}){
   const id=url.split('/')[3],method=options.method||'GET';
   if(url.includes('/reader')){

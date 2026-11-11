@@ -532,7 +532,8 @@ const StrategyDraft=(()=>{
     touch();
     load(restoredSteps.steps,catalogValue,settings.strategy?.builtins,settings.strategy?.variables);
     selectMarket(settings.market||'us');
-    screeningMode=settings.mode==='latest'?'latest':'backtest';
+    // Every restored record is a dated test.
+    screeningMode='backtest';
     const set=(id,value,label=value)=>{
       const control=document.getElementById(id),text=String(value??'');
       if(control.tagName==='SELECT' && ![...control.options].some(option=>option.value===text))control.add(new Option(label,text));
@@ -543,7 +544,7 @@ const StrategyDraft=(()=>{
       EngineControls.label?.(settings.engine??'original')||settings.engine||'Original');
     // January settings restore the strategy only; their book years never
     // become a dated calendar.
-    if(!['latest','january'].includes(settings.mode)){
+    if(settings.mode!=='january'){
       CalendarSettings.restore(settings);
       set('date-testing',settings.mode==='random'?'random':'single');
       if(settings.mode==='random'){
@@ -641,4 +642,3 @@ BacktestQueue.init({changed:Workspaces.queueStatus,libraryChanged:SavedBacktests
   showBuilder:()=>Workspaces.show('builder'),
   metricLabel:id=>sourceCatalog().metrics[id]?.label||id,filterLabel:id=>sourceCatalog().filters[id]?.label||id});
 Workspaces.init();
-ScheduleView.resume();

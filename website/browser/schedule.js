@@ -11,7 +11,7 @@ const ScheduleView=(()=>{
   const node=id=>document.getElementById(id);
   const format=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  // The Screen latest button waits while the local service screens or looks for the last screen.
+  // The Screen latest button waits while the local service screens.
   function busy(on){node('run-screen').disabled=on;node('run-screen').textContent=on?'Screening…':'Screen latest';}
   function csv(kind){
     if(EvidenceResults.download(kind))return;
@@ -61,15 +61,12 @@ const ScheduleView=(()=>{
     if(ResultArtifacts.forView('custom').kind!=='random')ResultExplorer.show(ResultArtifacts.forView('custom'),1,
       {summary:result,periods:result.periods.length,short,empty});
   }
-  // Screen latest for a chain outside the offline shape.
+  // Screen latest for a chain outside the offline shape. The result stays wanted
+  // until another result opens. Then this page stops asking.
   async function runPrepared(settings){
     if(typeof location==='undefined'||location.protocol==='file:'){node('screen-error').textContent='This latest screen uses the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;}
     const {mode,...options}=JSON.parse(JSON.stringify(settings));
-    await follow(BacktestRuns.create(options));
-  }
-  // The result stays wanted until another result opens. Then this page stops asking.
-  async function follow(run){
-    const isCurrent=ResultArtifacts.opening();
+    const run=BacktestRuns.create(options),isCurrent=ResultArtifacts.opening();
     node('screen-error').textContent='';
     busy(true);
     try{
@@ -93,17 +90,6 @@ const ScheduleView=(()=>{
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
     EvidenceResults.init();
     ResultExplorer.init();
-  }
-  // After a reload, show again the newest latest screen that this browser sent to the service.
-  async function resume(){
-    if(typeof location==='undefined'||location.protocol==='file:'||!BacktestRuns.pending())return;
-    busy(true);
-    let run;
-    try{run=await BacktestRuns.recover();}
-    finally{busy(false);}
-    if(!run)return;
-    restoreBacktestSettings({mode:run.mode,...run.options});
-    return follow(run);
   }
   // The per-trial block of a random-date result names its trial; the headline shows all trials.
   const trialTitle=artifact=>{if(artifact.kind==='random')node('schedule-trial-title').textContent='Trial '+(inspectedTrial+1)+' of '+artifact.result.trials.length;};
@@ -135,5 +121,5 @@ const ScheduleView=(()=>{
     // The status line speaks only for a failed read or a refused copy; an opened result needs none.
     node('schedule-message').textContent='';node('schedule-message').className='';
   }
-  return {runPrepared,init,resume,show,inspectOriginal};
+  return {runPrepared,init,show,inspectOriginal};
 })();

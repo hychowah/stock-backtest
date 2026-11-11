@@ -256,7 +256,7 @@ if(process.argv[2]==='--builtins-parity'){
  const fresh=await submit();context.prepared=fresh;
  assert.equal(ids.length,0);const actual=run('{const {mode,...options}=prepared;BacktestRuns.create(options)}');assert.equal(ids.length,1);
  fresh.strategy.steps.at(-1).rank_to=1;assert.equal(actual.options.strategy.steps.at(-1).rank_to,5);
- await run('BacktestRuns.follow(BacktestRuns.pending(),()=>{})');assert.equal(posted[0].options.strategy.steps.at(-1).rank_to,5);
+ context.job=actual;await run('BacktestRuns.follow(job,()=>{})');assert.equal(posted[0].options.strategy.steps.at(-1).rank_to,5);
 
  // Copying a saved result restores its settings without a calculation;
  // opening a result is a separate path that leaves the draft alone.

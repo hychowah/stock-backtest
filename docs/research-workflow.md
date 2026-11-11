@@ -364,11 +364,11 @@ its progress, and **Stop test** in that row stops it.
 
 The server keeps its direct run route, `/api/backtest-runs/<id>`. The page uses
 it only for a latest screen of a chain that it cannot screen offline. The
-browser saves an unguessable run ID before submission and follows
+browser sends an unguessable run ID with the submission and follows
 `/api/backtest-runs/<id>/status` with short polling requests. Repeated
-submissions with that ID reuse the same run. A lost connection retries without
-starting a new calculation, and a reload shows the newest screen that the
-server still has.
+submissions with that ID reuse the same run, so a lost connection retries
+without starting a new calculation. The page keeps no record of a screen: after
+a reload, select **Screen latest** again.
 
 `backtest/application/jobs.py` accepts one active run per server. It uses the
 existing engine cancellation checks and the calculation owner's financial cache
@@ -387,8 +387,8 @@ writer while a new period is uncommitted, reopens the file, runs
 `PRAGMA integrity_check`, verifies prior row counts, and retries the schedule.
 `tests/test_backtest_jobs.py` checks real HTTP disconnects, reconnects, explicit
 stops, idempotent submission, retention and shutdown ownership on WSL and native
-Windows. `tests/check-backtest-runs.cjs` checks browser transport and stored-ID
-recovery of a latest screen. `tests/check-range.cjs` checks that Historical
+Windows. `tests/check-backtest-runs.cjs` checks the browser transport of a
+latest screen. `tests/check-range.cjs` checks that Historical
 backtest mode starts nothing outside the queue.
 
 ### Overnight queue
