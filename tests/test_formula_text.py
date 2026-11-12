@@ -32,7 +32,7 @@ def binary(op, left, right):
 
 
 def read(text, saved=()):
-    return f.from_text(text, vocabulary.entries(), list(saved))
+    return f.from_text(text, list(saved))
 
 
 class FormulaTextTests(unittest.TestCase):
@@ -41,11 +41,11 @@ class FormulaTextTests(unittest.TestCase):
         newest = dict(op='ref', variable_id=SAVED[1]['variable_id'], revision=SAVED[1]['revision'])
         revenue, ebit = parameter('annual.revenue'), parameter('annual.ebit')
         cases = {
-            'Revenue': revenue, 'Gross profit': gross_profit, '[Debt/EV]': newest,
+            'Revenue': revenue, 'Gross profit': gross_profit, 'Debt/EV': newest,
             '0.05': constant('0.05'), '1e6 USD': constant('1e6', 'USD'),
             '-5 USD per share': constant('-5', 'USD/share'), '+5 shares': constant('+5', 'share'),
-            '-(5)': dict(op='neg', arg=constant('5')), '-[P/E]': dict(op='neg', arg=parameter('owner.pe')),
-            '-([P/E] * 2)': dict(op='neg', arg=binary('mul', parameter('owner.pe'), constant('2'))),
+            '-(5)': dict(op='neg', arg=constant('5')), '-P/E': dict(op='neg', arg=parameter('owner.pe')),
+            '-(P/E * 2)': dict(op='neg', arg=binary('mul', parameter('owner.pe'), constant('2'))),
             'Revenue - (EBIT - -5 USD)': binary('sub', revenue, binary('sub', ebit, constant('-5', 'USD'))),
             'Revenue - EBIT - -(5 USD)': binary('sub', binary('sub', revenue, ebit), dict(op='neg', arg=constant('5', 'USD'))),
             '(Revenue + EBIT) * 2': binary('mul', binary('add', revenue, ebit), constant('2')),
@@ -55,7 +55,7 @@ class FormulaTextTests(unittest.TestCase):
             'average(Revenue, 3 years)': dict(op='annual', stat='mean', count=3, parameter='annual.revenue'),
             'growth(Revenue, 3 years)': dict(op='annual', stat='growth', count=4, parameter='annual.revenue'),
             'cagr(Revenue, 1 year)': dict(op='annual', stat='cagr', count=2, parameter='annual.revenue'),
-            'ago([P/E] + 1, 12 months)': dict(op='lookback', months=12, arg=binary('add', parameter('owner.pe'), constant('1'))),
+            'ago(P/E + 1, 12 months)': dict(op='lookback', months=12, arg=binary('add', parameter('owner.pe'), constant('1'))),
             'at(Share price, 2024-12-31)': dict(op='at', date='2024-12-31', arg=parameter('market.adjusted_price')),
         }
         self.assertEqual({node['op'] for node in self._nodes(cases.values())}, set(d.OPERATIONS))
@@ -87,22 +87,24 @@ class FormulaTextTests(unittest.TestCase):
         self.assertEqual(f.to_text(oldest, []), 'max(Operating margin, 2 years)')
 
     def test_unchanged_text_keeps_the_saved_debt_ev_revision(self):
-        enterprise_value = next(item for item in measures.catalog() if item['id'] == 'enterprise_value')
-        base = dict(current(dict(op='div', left=parameter('annual.total_debt'), right=dict(op='ref', **enterprise_value['root']))),
-                    parameter_catalog=parameters.V3, temporal_policy=d.TEMPORAL_POLICY)
-        submitted = measures.bundle(['enterprise_value'])['definitions']
-        labels = [dict(enterprise_value['root'], name=enterprise_value['name'])]
+        enterprise_value = next(item['root'] for item in measures.catalog() if item['id'] == 'enterprise_value')
+        saved = dict(current(dict(op='div', left=parameter('annual.total_debt'), right=dict(op='ref', **enterprise_value))),
+                     parameter_catalog=parameters.V3, temporal_policy=d.TEMPORAL_POLICY)
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         store = library.Store(Path(folder.name) / 'variables.sqlite')
+        entry = store.create('debt/EV', saved)
+        opened = variable_authoring.authoring_snapshot({key: entry[key] for key in ('variable_id', 'revision')}, store)
+        self.assertEqual(opened['text'], 'Total debt / Enterprise value')
+        base = dict(root=opened['selected'], capture=opened['capture'])
         def check(text, display='percent'):
             return variable_authoring.validate(dict(formula=dict(text=text, display=display), base=base, name='debt/EV',
-                                                    variable_id='var:' + '1' * 32, submitted=submitted, labels=labels), store)
+                                                    variable_id=entry['variable_id']), store)
         kept = check('Total debt  /  Enterprise value ')
-        self.assertEqual(kept['root']['revision'], d.revision(base))
+        self.assertEqual(kept['root'], opened['selected'])
         self.assertEqual(kept['picture'], {'op': '/', 'top': {'name': 'Total debt'}, 'bottom': {'name': 'Enterprise value'}, 'positive': False})
         shown = check('Total debt / Enterprise value', 'multiple')['authored'][-1]['definition']
-        self.assertEqual(shown, dict(base, output=dict(unit='scalar', display='multiple')))
+        self.assertEqual(shown, dict(saved, output=dict(unit='scalar', display='multiple')))
         edited = check('Total debt / positive(Enterprise value)')['authored'][-1]['definition']
         self.assertEqual(edited, current(binary('positive_div', parameter('annual.total_debt'), parameter('market.enterprise_value'))))
 
@@ -114,9 +116,10 @@ class FormulaTextTests(unittest.TestCase):
         self.assertEqual(sorted(named), sorted(item['id'] for item in parameters.catalog(V4)))
         builtins = {item['id'] for item in strategy_requests.builtin_catalog()}
         self.assertTrue(all(identity in builtins for item in entries for identity in item['builtins']))
-        self.assertEqual(f.spelling('debt/EV'), '[debt/EV]')
-        self.assertEqual(f.spelling('a]b'), '[a]]b]')
-        self.assertEqual(read('[a]]b] * 2', [dict(SAVED[0], name='a]b')])[0]['left']['variable_id'], SAVED[0]['variable_id'])
+        self.assertEqual(read('P/E * 2')[0], binary('mul', parameter('owner.pe'), constant('2')))
+        self.assertEqual(read('debt/EV * 2', SAVED[:1]), read('[debt/EV] * 2', SAVED[:1]))
+        self.assertEqual(f.spelling('3]b'), '[3]]b]')
+        self.assertEqual(read('[3]]b] * 2', [dict(SAVED[0], name='3]b')])[0]['left']['variable_id'], SAVED[0]['variable_id'])
 
     def test_reader_errors_are_positioned_with_codes_and_suggestions(self):
         cases = [('Revenue * (EBIT', 'SYNTAX', 10, 11, []),

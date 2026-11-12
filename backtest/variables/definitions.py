@@ -677,21 +677,21 @@ def output_unit(definition, reference_units):
     """Unit an expression produces; ignores the declared output; references are trusted.
 
     definition needs only parameter_catalog and expression. reference_units
-    maps each referenced (variable_id, revision) to its checked unit.
+    maps each referenced (variable_id, revision) to its checked unit. Errors
+    carry the path /expression.
     """
     catalog = {item['id']: item for item in parameters.catalog(definition['parameter_catalog'])}
     units = parameters.units(definition['parameter_catalog'])
-    def infer(node, path):
+    def infer(node):
         op = node['op']
         if op in ('parameter', 'annual', 'constant'):
             return _leaf_dimensions(node, node.get('id', node.get('parameter')), catalog, units)
         if op == 'ref':
             return dict(units[reference_units[node['variable_id'], node['revision']]]['dimensions'])
         if op in ('neg', 'at', 'lookback'):
-            return infer(node['arg'], path + '/arg')
-        return _combined_dimensions(op, infer(node['left'], path + '/left'),
-                                    infer(node['right'], path + '/right'), path)
-    return _unit_of(infer(definition['expression'], '/expression'), units, '/output')
+            return infer(node['arg'])
+        return _combined_dimensions(op, infer(node['left']), infer(node['right']), '/expression')
+    return _unit_of(infer(definition['expression']), units, '/expression')
 
 
 def upgrade(entries):

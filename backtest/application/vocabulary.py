@@ -68,7 +68,7 @@ _ROWS = (
         ('annual.operating_cash_flow', 'Operating cash flow'),
         ('annual.capital_expenditure', 'CapEx'),
         ('measure:operating_cash_flow_plus_capex', 'Operating cash flow plus CapEx'),
-        ('annual.free_cash_flow', 'Free cash flow'),
+        ('annual.free_cash_flow', 'Reported free cash flow'),
         ('annual.depreciation_amortization', 'Depreciation and amortization'),
         ('annual.stock_based_compensation', 'Stock based compensation'),
         ('annual.net_acquisitions', 'Net acquisitions'),
@@ -129,32 +129,44 @@ _ROWS = (
 def _build():
     catalog = {item['id']: item for item in parameters.catalog(parameters.V4)}
     named = {item['id']: item for item in measures.catalog(parameters.V4)}
-    measured = {}
+    measured = {}  # parameter ID -> the named measure of that one parameter
     for item in named.values():
         expression = measures.exact(**item['root'])['definition']['expression']
         if expression['op'] == 'parameter':
-            measured[expression['id']] = item['display']
+            measured[expression['id']] = item
     builtins = {item['id']: item for item in strategy_requests.builtin_catalog()}
     result = []
     for category, rows in _ROWS:
         for identity, name, *links in rows:
             if identity.startswith('measure:'):
-                item = named[identity.split(':', 1)[1]]
-                term, unit, display = dict(op='ref', **item['root']), item['unit'], item['display']
+                measure = named[identity.split(':', 1)[1]]
+                term, unit = dict(op='ref', **measure['root']), measure['unit']
             elif identity in builtins:
-                term, unit, display = None, builtins[identity]['unit'], builtins[identity]['display']
-                links = [identity]
+                term, unit, links = None, builtins[identity]['unit'], [identity]
             else:
-                unit = catalog[identity]['unit']
-                term, display = dict(op='parameter', id=identity), measured.get(identity, DISPLAYS[unit])
+                measure, unit = measured.get(identity), catalog[identity]['unit']
+                term = dict(op='parameter', id=identity)
+            # A ratio keeps its measure's display; amounts default to $ million.
+            display = (builtins[identity]['display'] if term is None else
+                       measure['display'] if measure and unit == 'scalar' else DISPLAYS[unit])
             result.append(dict(id=identity, name=name, category=category, unit=unit,
                                display=display, term=term, builtins=list(links)))
-    return result
+    names = {item['term'].get('id') or item['term']['variable_id']: item['name'] for item in result if item['term']}
+    names.update({measure['root']['variable_id']: names[identity] for identity, measure in measured.items()})
+    return result, names
 
 
-_ENTRIES = _build()
+_ENTRIES, _NAMES = _build()
 
 
 def entries():
     """Every entry: {id, name, category, unit, display, term or None, builtins}."""
     return copy.deepcopy(_ENTRIES)
+
+
+def names():
+    """The plain name of each term, by parameter ID or measure variable ID.
+
+    A named measure of one parameter has that parameter's name.
+    """
+    return dict(_NAMES)

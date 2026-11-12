@@ -88,15 +88,16 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
     """Check a typed formula or a raw editor definition and complete dependencies without saving.
 
     The request has exactly one of formula {text, display} and definition.
-    Text equal to to_text(base), repeated spaces ignored, keeps base's
-    expression, version, catalog and policy and applies only the display;
-    other text is read in the current form. labels, submitted or detached
-    content name base's references. The display stays when it suits the
-    inferred unit, else the unit's default applies; an empty name becomes the
-    text. Formula errors raise formula_text.TextError; errors from the
-    definition owner carry no position. The definition owner supplies the
-    revision, units and requirements. Captures include exact references.
-    Missing storage is valid for a complete local draft.
+    base {root, capture} is what opened the formula, as detached takes it.
+    Text equal to detached(base)'s text, repeated spaces ignored, keeps base's
+    definition and its references and applies only the display. Other text is
+    read in the current form; its names come from the vocabulary and the
+    library. The display stays when it suits the inferred unit, else the
+    unit's default applies; an empty name becomes the text. Formula errors
+    raise formula_text.TextError; errors from the definition owner carry no
+    position. The definition owner supplies the revision, units and
+    requirements. Captures include exact references. Missing storage is valid
+    for a complete local draft.
     """
     if type(request) is not dict or ('definition' in request) == ('formula' in request):
         raise ValueError('Send a formula or a variable definition.')
@@ -108,16 +109,19 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
     text = ' '.join(formula['text'].split())
     name = request.get('name').strip() if type(request.get('name')) is str else ''
     name = name or text[:120].strip()
+    content = dict(variable_id=request.get('variable_id', 'local:editor'))
     try:
-        base = request.get('base')
-        if base is not None:
-            _, labels = _content(request, definitions.references(base))
-            if text == ' '.join(formula_text.to_text(base, labels).split()):
-                unit = base['output']['unit']
-                definition = dict(base, output=dict(unit=unit, display=_display(formula.get('display'), unit)))
-                checked = _checked(request, definition, name, store, checkpoint)
-                return dict(checked, picture=formula_text.from_text(text, vocabulary.entries(), labels)[1], name=name)
-        expression, picture = formula_text.from_text(text, vocabulary.entries(), store.list())
+        if request.get('base') is not None:
+            opened = detached(request['base'])
+            if text == ' '.join(opened['text'].split()):
+                selected = opened['selected']['variable_id'], opened['selected']['revision']
+                definition = next(item['definition'] for item in opened['authored']
+                                  if (item['variable_id'], item['revision']) == selected)
+                unit = definition['output']['unit']
+                definition = dict(definition, output=dict(unit=unit, display=_display(formula.get('display'), unit)))
+                checked = _checked(dict(content, detached=[request['base']['capture']]), definition, name, store, checkpoint)
+                return dict(checked, picture=formula_text.picture(definition, opened['capture']['presentation']), name=name)
+        expression, picture = formula_text.from_text(formula['text'], store.list())
         definition = dict(format='variable-definition', version=3, parameter_catalog=parameters.V4,
                           temporal_policy=definitions.MARKET_TEMPORAL_POLICY, expression=expression)
         # The output is provisional: the definition owner checks the tree here,
@@ -126,18 +130,17 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
         keys = [item['variable_id'].split(':', 1)[1] for item in references if item['variable_id'].startswith('measure:')]
         if keys:
             bundled = measures.bundle(keys, parameters.V4)['definitions']
-            named = [dict(variable_id=item['variable_id'], revision=item['revision'],
-                          name=measures.exact(item['variable_id'], item['revision'])['name']) for item in bundled]
-            request = dict(request, submitted=list(request.get('submitted', [])) + bundled,
-                           labels=list(request.get('labels', [])) + named)
+            content.update(submitted=bundled, labels=[dict(variable_id=item['variable_id'], revision=item['revision'],
+                                                           name=measures.exact(item['variable_id'], item['revision'])['name'])
+                                                      for item in bundled])
         units = {}
         if references:
-            closure, names = _content(request, references)
+            closure, names = _content(content, references)
             program = _capture(references, store, closure, names, checkpoint).to_dict()['program']
             units = {(item['variable_id'], item['revision']): item['unit'] for item in program['definitions']}
         unit = definitions.output_unit(definition, units)
         definition['output'] = dict(unit=unit, display=_display(formula.get('display'), unit))
-        return dict(_checked(request, definition, name, store, checkpoint), picture=picture, name=name)
+        return dict(_checked(content, definition, name, store, checkpoint), picture=picture, name=name)
     except definitions.FormulaError as error:
         raise formula_text.TextError([dict(code=error.code, message=str(error), suggestions=[])]) from None
 
@@ -174,6 +177,12 @@ def detached(request):
                       if (item['variable_id'],item['revision']) == (selected['variable_id'],selected['revision']))
     return dict(selected=selected,name=label['name'],authored=authored['definitions'],capture=checked,
                 text=formula_text.to_text(definition, checked['presentation']))
+
+
+def authoring_snapshot(request, store):
+    """Read an exact saved revision for editing, with its text as detached prints it."""
+    snapshot = store.authoring_snapshot(request)
+    return dict(snapshot, text=detached(dict(root=snapshot['selected'], capture=snapshot['capture']))['text'])
 
 
 def prepare(request, store, *, checkpoint=backtest_control.checkpoint):

@@ -5,16 +5,16 @@ years; the tree counts yearly values (years + 1).
 
 + and - bind looser than * and /; all four are left-associative and unary minus
 binds tightest. A sign belongs to a number only when it is attached to the
-digits where a value starts. A function is a word directly followed by "(";
-positive( ) is only a divisor. Bare names start with a letter and contain only
-letters, digits, spaces and _ ' . &; other names are bracketed, [P/E], with ]]
-for ]. Names match ignoring case and repeated spaces.
+digits where a value starts. Where a name can start, the longest whole known
+name wins, whatever characters it holds: P/E * 2 is P/E times 2. Otherwise a
+word directly followed by "(" is a function; positive( ) is only a divisor.
+Brackets are optional, [P/E] with ]] for ], and needed only for a name that
+does not start with a letter. Names match ignoring case and repeated spaces.
 """
 import difflib
 import re
 
-from backtest.application import vocabulary as owner
-from backtest.variables import measures, parameters
+from backtest.application import vocabulary
 
 FUNCTIONS = (
     dict(name='average', text='average(', hint='Average of yearly values: average(Revenue, 3 years)'),
@@ -33,18 +33,14 @@ _HINTS = {'mean': 'average of', 'min': 'lowest of', 'max': 'highest of',
 _UNITS = {'USD': 'USD', 'USD/share': 'USD per share', 'share': 'shares'}
 _UNIT_NAMES = {word.casefold(): unit for unit, word in _UNITS.items()}
 _PRECEDENCE = {'add': 1, 'sub': 1, 'mul': 2, 'div': 2, 'positive_div': 2}
+# A negated sum, product or number is printed in parentheses: -(5).
+_NEGATED_IN_PARENS = {*_PRECEDENCE, 'constant'}
 _SYMBOLS = {'add': '+', 'sub': '-', 'mul': '*', 'div': '/', 'positive_div': '/'}
 _BARE = re.compile(r"[^\W\d_][\w '.&]*")
 _NUMBER = re.compile(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?')
 _UNIT_WORD = re.compile(r" *(usd +per +share|usd|shares)(?![\w'.&])", re.I)
 _PERIOD = re.compile(r"([0-9]+) *(years?|months?)(?![\w'.&])", re.I)
 _DATE = re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\w-])')
-# Built-in measures that name one parameter print as that parameter's name.
-_MEASURE_PARAMETERS = {}
-for _item in measures.catalog(parameters.V4):
-    _expression = measures.exact(**_item['root'])['definition']['expression']
-    if _expression['op'] == 'parameter':
-        _MEASURE_PARAMETERS[_item['root']['variable_id']] = _expression['id']
 
 
 class TextError(ValueError):
@@ -67,25 +63,17 @@ def _key(name):
 
 
 def spelling(name):
-    """How a name is typed in a formula: bare, or in brackets."""
-    return name if _BARE.fullmatch(name) else '[' + name.replace(']', ']]') + ']'
+    """How a name is typed in a formula: bare when it starts with a letter, else in brackets."""
+    return name if _BARE.match(name) else '[' + name.replace(']', ']]') + ']'
 
 
-def _namer(vocabulary, labels):
-    named = {}
-    for item in vocabulary:
-        if item['term'] is not None:
-            term = item['term']
-            named[term['id'] if term['op'] == 'parameter' else term['variable_id']] = item['name']
-    for identity, parameter in _MEASURE_PARAMETERS.items():
-        named[identity] = named[parameter]
-    labelled = {(item['variable_id'], item['revision']): item['name'] for item in labels}
+def _namer(names):
+    named = vocabulary.names()
+    labelled = {(item['variable_id'], item['revision']): item['name'] for item in names}
     def name(node):
-        if node['op'] != 'ref':
-            return named[node['id'] if node['op'] == 'parameter' else node['parameter']]
-        if node['variable_id'].startswith('measure:') and node['variable_id'] in named:
-            return named[node['variable_id']]
-        return labelled.get((node['variable_id'], node['revision']), node['variable_id'])
+        if node['op'] == 'ref':
+            return named.get(node['variable_id']) or labelled[node['variable_id'], node['revision']]
+        return named[node['id'] if node['op'] == 'parameter' else node['parameter']]
     return name
 
 
@@ -110,7 +98,7 @@ def _write(node, name):
         return node['value'] + (' ' + _UNITS[node['unit']] if node['unit'] in _UNITS else '')
     if op == 'neg':
         inner = _write(node['arg'], name)
-        return '-(' + inner + ')' if node['arg']['op'] in _PRECEDENCE or node['arg']['op'] == 'constant' else '-' + inner
+        return '-(' + inner + ')' if node['arg']['op'] in _NEGATED_IN_PARENS else '-' + inner
     if op == 'annual':
         return _WORDS[node['stat']] + '(' + spelling(name(node)) + ', ' + _count(_years(node), 'year') + ')'
     if op == 'lookback':
@@ -124,14 +112,24 @@ def _write(node, name):
     return left + ' ' + _SYMBOLS[op] + ' ' + right
 
 
-def to_text(definition, labels):
+def to_text(definition, names):
     """Print any stored definition's expression (catalogs /1-/4, every operation).
 
-    A parameter or built-in measure prints its vocabulary name. labels
+    A parameter or built-in measure prints its vocabulary name. names
     [{variable_id, revision, name}], such as a capture presentation, name
-    other references; an unlabelled reference prints its variable ID.
+    every other reference.
     """
-    return _write(definition['expression'], _namer(owner.entries(), labels))
+    return _write(definition['expression'], _namer(names))
+
+
+def picture(definition, names):
+    """Lay out a definition's expression for drawing; names as for to_text.
+
+    The layout tree is {name}, {number, unit}, {op: '+'|'-'|'*', left, right},
+    {op: '/', top, bottom, positive}, {op: 'neg', arg} and {fn, args, hint},
+    each with optional parens.
+    """
+    return _picture(definition['expression'], _namer(names))
 
 
 def _picture(node, name, parens=False):
@@ -141,8 +139,7 @@ def _picture(node, name, parens=False):
     elif op == 'constant':
         result = dict(number=node['value'], unit=_UNITS.get(node['unit']))
     elif op == 'neg':
-        grouped = node['arg']['op'] in _PRECEDENCE or node['arg']['op'] == 'constant'
-        result = dict(op='neg', arg=_picture(node['arg'], name, grouped))
+        result = dict(op='neg', arg=_picture(node['arg'], name, node['arg']['op'] in _NEGATED_IN_PARENS))
     elif op == 'annual':
         years = _years(node)
         hint = _HINTS[node['stat']] + ' ' + (_count(years, 'yearly value') if node['stat'] in ('mean', 'min', 'max')
@@ -167,8 +164,8 @@ def _picture(node, name, parens=False):
 
 
 class _Reader:
-    def __init__(self, text, known, usable):
-        self.text, self.at, self.known, self.usable = text, 0, known, usable
+    def __init__(self, text, known, usable, names):
+        self.text, self.at, self.known, self.usable, self.names = text, 0, known, usable, names
 
     def peek(self):
         while self.at < len(self.text) and self.text[self.at].isspace():
@@ -219,6 +216,10 @@ class _Reader:
         if char == '[':
             name = self.bracketed()
             return self.resolve(name, start, self.at)
+        whole = self.names.match(self.text, start)
+        if whole:
+            self.at = whole.end()
+            return self.resolve(whole.group(), start, self.at)
         bare = _BARE.match(self.text, start)
         if bare:
             word = bare.group().rstrip()
@@ -314,32 +315,32 @@ class _Reader:
 _FUNCTION_NAMES = {item['name']: item['name'] for item in FUNCTIONS}
 
 
-def from_text(text, vocabulary, library_entries):
+def from_text(text, library):
     """Read text in the current form into (expression, picture), or raise TextError.
 
-    Names resolve vocabulary first, then saved variables; when two share a
-    name, the later entry (the newest) wins. A vocabulary entry without a term
-    is a step only. Terms use catalog /4; a saved variable reference names its
-    current revision. The picture is a layout tree: {name}, {number, unit},
-    {op: '+'|'-'|'*', left, right}, {op: '/', top, bottom, positive},
-    {op: 'neg', arg} and {fn, args, hint}, each with optional parens.
+    library holds the active saved entries [{variable_id, revision, name}].
+    Vocabulary names come first; when two saved variables share a name, the
+    later (newest) wins. A vocabulary entry without a term is a step only.
+    Terms use catalog /4; a saved variable reference names its current
+    revision. The picture is as picture() draws it. Error offsets count
+    characters of the text as typed; they equal JavaScript string offsets for
+    every character the names use.
     """
-    known, usable = {}, {}
-    for item in library_entries:
+    known = {}
+    for item in library:
         known[_key(item['name'])] = item['name'], dict(op='ref', variable_id=item['variable_id'], revision=item['revision'])
-        usable[_key(item['name'])] = item['name']
-    for item in vocabulary:
+    for item in vocabulary.entries():
         known[_key(item['name'])] = item['name'], item['term']
-        if item['term'] is None:
-            usable.pop(_key(item['name']), None)
-        else:
-            usable[_key(item['name'])] = item['name']
+    usable = {key: name for key, (name, term) in known.items() if term is not None}
+    # Longest first, so a regular expression alternation finds the longest whole name.
+    names = re.compile('(?:' + '|'.join(r'\s+'.join(map(re.escape, known[key][0].split()))
+                                        for key in sorted(known, key=len, reverse=True)) + r')(?![\w(])', re.I)
     if not text.strip():
         _fail('SYNTAX', 0, len(text), 'Type a formula.')
-    reader = _Reader(text, known, usable)
+    reader = _Reader(text, known, usable, names)
     expression = reader.sum()
     if reader.peek():
         char = reader.text[reader.at]
         _fail('SYNTAX', reader.at, reader.at + 1, 'This ) has no matching (.' if char == ')'
               else 'Put +, -, * or / between two values.')
-    return expression, _picture(expression, _namer(vocabulary, library_entries))
+    return expression, _picture(expression, _namer(library))

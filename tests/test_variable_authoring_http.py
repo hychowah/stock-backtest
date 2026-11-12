@@ -58,10 +58,10 @@ class AuthoringHttpTests(ExistingHttp):
         status,value=self.post('/validate',dict(formula=dict(text='Total debt / positive(Total assets)',display='multiple'),name=''))
         self.assertEqual(status,200,value);self.assertEqual(value['name'],'Total debt / positive(Total assets)')
         self.assertEqual(value['output']['display'],'multiple');self.assertTrue(value['picture']['positive'])
-        status,error=self.post('/validate',dict(formula=dict(text='Revnue / 2')))
+        status,error=self.post('/validate',dict(formula=dict(text='  Revnue  / 2')))
         self.assertEqual(status,400);self.assertEqual(error['error'],error['errors'][0]['message'])
         self.assertEqual({key:error['errors'][0][key] for key in ('start','end','code','suggestions')},
-                         dict(start=0,end=6,code='UNKNOWN_NAME',suggestions=[dict(text='Revenue',label='Revenue')]))
+                         dict(start=2,end=8,code='UNKNOWN_NAME',suggestions=[dict(text='Revenue',label='Revenue')]))
         status,error=self.post('/validate',dict(formula=dict(text='Revenue + 1')))
         self.assertEqual(status,400);self.assertEqual(error['errors'],[dict(code='UNIT_MISMATCH',message=error['error'],suggestions=[])])
         self.assertFalse(self.server.variable_store.path.exists());self.assertFalse(self.manager.runs)
@@ -70,6 +70,7 @@ class AuthoringHttpTests(ExistingHttp):
         status,entry=self.post('',dict(name='Exact value',definition=definition));self.assertEqual(status,200,entry)
         old={key:entry[key] for key in ('variable_id','revision')}
         status,snapshot=self.post('/authored',old);self.assertEqual(status,200);self.assertEqual(snapshot['authored'][0]['definition'],definition)
+        self.assertEqual(snapshot['text'],'1e100')
         status,changed=self.post('/'+entry['variable_id']+'/save',dict(name='Edited',version=entry['version'],definition=language.definition(language.constant('2'))));self.assertEqual(status,200,changed)
         status,value=self.post('/'+entry['variable_id']+'/save',dict(name='Stale',version=entry['version'],definition=definition));self.assertEqual(status,409,value)
         status,starred=self.post('/'+entry['variable_id']+'/favourite',dict(version=changed['version'],favourite=True));self.assertEqual(status,200);self.assertTrue(starred['favourite'])

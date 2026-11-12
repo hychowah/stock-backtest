@@ -166,16 +166,16 @@ class AuthoringTests(unittest.TestCase):
         enterprise_value=next(item['root'] for item in measures.catalog() if item['id']=='enterprise_value')
         saved=self.store.create('debt/EV',dict(language.definition(dict(op='div',left=dict(op='parameter',id='annual.total_debt'),
             right=dict(op='ref',**enterprise_value)),display='percent'),version=3,parameter_catalog='financial-parameters/3'))
-        self.assertEqual([item['text'] for item in a.entries(self.store)],['[debt/EV]'])
-        checked=a.validate(dict(formula=dict(text='[debt/EV] * Gross profit / positive(Revenue)',display='usd'),name=' '),self.store)
-        self.assertEqual(checked['name'],'[debt/EV] * Gross profit / positive(Revenue)')
+        self.assertEqual([item['text'] for item in a.entries(self.store)],['debt/EV'])
+        checked=a.validate(dict(formula=dict(text='debt/EV * Gross profit / positive(Revenue)',display='usd'),name=' '),self.store)
+        self.assertEqual(checked['name'],'debt/EV * Gross profit / positive(Revenue)')
         self.assertEqual((checked['output']['unit'],checked['output']['display']),('scalar','percent'))
         self.assertEqual(checked['picture']['top'],{'op':'*','left':{'name':'debt/EV'},'right':{'name':'Gross profit'}})
         names={item['variable_id']:item['name'] for item in checked['capture']['presentation']}
         self.assertEqual(names[saved['variable_id']],'debt/EV');self.assertEqual(names['measure:gross_profit'],'Gross profit')
         opened=a.detached(dict(root=checked['root'],capture=checked['capture']))
-        self.assertEqual(opened['text'],'[debt/EV] * Gross profit / positive(Revenue)')
-        catalog=a.catalog();self.assertIn('[P/E]',[item['text'] for item in catalog['vocabulary']])
+        self.assertEqual(opened['text'],'debt/EV * Gross profit / positive(Revenue)')
+        catalog=a.catalog();self.assertIn('P/E',[item['text'] for item in catalog['vocabulary']])
         self.assertIn('average(',[item['text'] for item in catalog['functions']])
         with self.assertRaises(ValueError):a.validate(dict(formula=dict(text='Revenue'),definition=language.definition()),self.store)
     def test_legacy_catalog_retains_four_parameters_and_stored_builtin_adapters(self):
