@@ -21,17 +21,23 @@ market data.
 
 ## Screenshots
 
-**Strategy builder:** a chain of Filter and Rank blocks.
+The screenshots use fictional companies and prices.
+
+**Strategy builder:** a chain of Filter and Rank steps.
 
 ![Strategy builder](docs/images/strategy-builder.png)
+
+**Runs and saved backtests:** the queue, and each finished test with its settings.
+
+![Runs and saved backtests](docs/images/runs-and-saved.png)
+
+**Result review:** the answer first, then the value of $1 across all random-date trials.
+
+![Result review](docs/images/result-review.png)
 
 **Step trail:** how one holding passed each step.
 
 ![Step trail](docs/images/step-trail.png)
-
-**Random-date trials:** the distribution of returns across trials.
-
-![Random-date trials](docs/images/random-trials.png)
 
 ## Highlights
 

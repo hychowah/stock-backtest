@@ -31,10 +31,10 @@ status and trial outcome exactly.
 
 ## Experimental engine comparison
 
-- [Parallel comparison](parallel-comparison-2026-11-01/README.md): CB-19F
+- [Parallel comparison](parallel-comparison-2026-11-01/README.md): a
   scoped comparison of Original and the experimental engine. With 24 fresh
   trials over 2010–2019, Original took 71.0 seconds and Numba 59.8 seconds.
-- [Parallel qualification](parallel-qualification-2026-11-01/README.md): CB-19G
+- [Parallel qualification](parallel-qualification-2026-11-01/README.md): the
   final source qualification. It compares the Numba and Rust backends and
   selects Numba. The Rust backend is removed.
 

@@ -279,7 +279,7 @@ sampled rows. It reads no raw files.
 | Path | Contract |
 |---|---|
 | Original | Default. Latest, fixed and random scalar modes; sample preview. A January request is refused at `/mode` |
-| Experimental numerical engine | Deleted on 2026-11-05. The server refuses a request that names it |
+| Experimental numerical engine | Removed. The server refuses a request that names it |
 | Sample preview | Original only, 1–16 explicit company/date roots |
 | Eager scalar `calculate()` | Unsupported |
 | Coverage inspection | Original over a complete recorded latest scope |

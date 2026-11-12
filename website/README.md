@@ -165,8 +165,7 @@ and end at the selected report. Subtract the latest saved US 10-year Treasury
 yield on or before the screen date. Enter 5 for a spread of 5 percentage points.
 Missing history or Treasury values fail this condition. Negative margins and
 spreads remain valid. This filter follows the chosen selection order in both pools and all
-three views. Installing this change requires an offline rebuild of research,
-daily data and the website. It reuses full annual statement assets and saved
+three views. Its data come from the full annual statement assets and the saved
 Treasury curves. See the [formula and data rules](../docs/research-workflow.md#sales-based-operating-yield-spread).
 
 ## Rebuild from saved data
@@ -236,8 +235,8 @@ Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-yea
 
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
 chain is automatic; no separate preparation commands are needed. The browser
-opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **One fixed schedule**, then set the first trade date, end/mark date, and monthly, quarterly,
-half-yearly or yearly rebalance interval, then select **Add to queue**.
+opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **One fixed schedule**, then set the first trade date, end/mark date, and the rebalance interval (monthly, quarterly,
+half-yearly, yearly, every 2 years, or a custom interval in weeks or months), then select **Add to queue**.
 
 Rebalances stay anchored to the starting day, clamp invalid month ends, and roll
 to the next cached session of the selected market. The final mark rolls back to an available session;

@@ -1,8 +1,8 @@
 # US EBITDA/EV book, 1996–2026
 
-This document describes the original 30-year January study and its frozen result. The app runs it as a 12-month dated schedule from 1 January. The folder does not depend on `tmp/`. Move the whole folder, including `raw/`. Scripts resolve the project root from their own location and read the shared `raw/` cache.
+This document describes the original 30-year US January study and its frozen result. The app runs it as a 12-month dated schedule from 1 January. The rules that all three markets share are in the [README](../README.md#methodology-essentials) and in [Research workflow](research-workflow.md#market-data-and-calculations).
 
-The FMP key is read from `~/.grok/secrets/fmp_api_key` only for API requests. Cache-only backtests and website builds require no key.
+The study is research, not investment advice. A backtest describes the past and does not predict future returns.
 
 ## The test
 
@@ -10,7 +10,7 @@ At the first trading day of each year, buy the 50 US common stocks with the high
 
 Each stock gets the same weight. The comparison is SPY with dividends. There are no commissions.
 
-EBITDA/EV is the earnings yield on enterprise value. A high number means the company looks cheap on that measure. The 3-month Treasury yield is subtracted, as requested. On a given day that yield is the same for every stock, so it does not change which 50 are bought.
+EBITDA/EV is the earnings yield on enterprise value. A high number means the company looks cheap on that measure. The 3-month Treasury yield is subtracted. On a given day that yield is the same for every stock, so it does not change which 50 are bought.
 
 ## The frozen result
 

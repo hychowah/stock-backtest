@@ -6,8 +6,7 @@ the Python standard library. It reads no files and calculates no portfolios.
 
 Legacy standalone planners accept 1, 3, 6, 12 and 24 months. Original accepts
 versioned week/month requests through the shared calendar-request owner.
-Custom controls follow the server's engine capability.
-This source change does not update the installed server. SQL selection and
+Custom controls follow the server's engine capability. SQL selection and
 financial rules remain in their existing owners.
 
 ## Market sessions

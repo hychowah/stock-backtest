@@ -211,7 +211,7 @@ machine:
 - An update from the 2026-10-21 files (US only) to those files took 584 s
   for research and sheet repair, plus 483 s for the new sheets. The result
   equals a cold build bit for bit.
-- The user's random-date test (24 quarterly trials, 2013–2026, 1,344
+- A random-date test (24 quarterly trials, 2013–2026, 1,344
   periods, ranks 1–30, the cached pool, three built-in conditions and one
   custom variable) took 52 s with its sheets precomputed.
 
@@ -273,7 +273,8 @@ The launcher prepares stale research and daily caches in dependency order,
 rebuilds changed website sources and opens the browser automatically. Unchanged
 outputs are reused. `--no-browser` suppresses browser opening.
 Select **Historical backtest**, enter a starting date and final mark date, and
-choose monthly, quarterly, half-yearly or yearly. Latest picks still work by
+choose monthly, quarterly, half-yearly, yearly or every 2 years, or a custom
+interval in weeks or months. Latest picks still work by
 opening the HTML directly; custom schedules need the local service because
 daily histories are kept out of the embedded page.
 
