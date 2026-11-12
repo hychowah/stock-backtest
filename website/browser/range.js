@@ -280,7 +280,9 @@ const StrategyDraft=(()=>{
   }
   const exactKey=value=>JSON.stringify([value.variable_id,value.revision]);
   const bare=list=>list.map(({id,...step})=>step);
-  const content=()=>JSON.stringify({universe:{pool:document.getElementById('stock-pool').value},steps:bare(steps)});
+  // The market keys the capture cache and the unchanged restore: a Hong Kong or
+  // Japan capture holds the market-aware form of each formula.
+  const content=()=>JSON.stringify({market:selectedMarket(),universe:{pool:document.getElementById('stock-pool').value},steps:bare(steps)});
   function compactDetached(captures,chain){
     const needed=new Set(chain.map(step=>step.source).filter(source=>source.kind==='formula').map(exactKey)),kept=[];
     // Every capture already contains its complete dependency closure. Choose
@@ -365,7 +367,7 @@ const StrategyDraft=(()=>{
   }
   const empty=step=>step.kind==='filter'&&String(typeof step.threshold==='string'?step.threshold:shown(step).value).trim()==='';
   function requireValues(list=steps){if(list.some(empty))throw Error('Enter a value for each filter.');}
-  const placeholder=()=>({format:'strategy-draft',version:2,...JSON.parse(content())});
+  const placeholder=()=>{const {market,...draft}=JSON.parse(content());return {format:'strategy-draft',version:2,...draft};};
   const unchanged=()=>restored?.content===content();
   function selection(){
     const offline=viewKey()==='latest'&&flat();
@@ -448,7 +450,7 @@ const StrategyDraft=(()=>{
       const projected=await VariableWorkspace.request('/detached',{root:{variable_id:source.variable_id,revision:source.revision},capture});
       known[exact]={submitted:projected.authored,labels:capture.presentation};
     }
-    const prepared=await VariableWorkspace.request('/capture',{intent,...(sources.length?VariableWorkspace.content(...sources.map(source=>known[exactKey(source)]),{labels:available.flatMap(capture=>capture.presentation)}):{})});
+    const prepared=await VariableWorkspace.request('/capture',{intent,market:settings.market,...(sources.length?VariableWorkspace.content(...sources.map(source=>known[exactKey(source)]),{labels:available.flatMap(capture=>capture.presentation)}):{})});
     captured={content:key,strategy:copy(prepared.strategy)};
     for(const source of sources)if(steps.some(step=>step.source.kind==='formula'&&exactKey(step.source)===exactKey(source)))projections[exactKey(source)]??=known[exactKey(source)];
     return {...settings,strategy:prepared.strategy};

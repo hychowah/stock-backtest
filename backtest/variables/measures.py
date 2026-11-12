@@ -108,22 +108,10 @@ for _key, _name, _lane, _output in (
 
 # Current authoring uses the same named formulas with the market-aware policy.
 # Published /3 identities remain available to exact reads and old captures.
-_MARKET_ENTRIES, _MARKET_DESCRIPTORS = {}, {}
-for _key, _entry in _ENTRIES.items():
-    _definition = copy.deepcopy(_entry['definition'])
-    _definition.update(parameter_catalog=parameters.V4, temporal_policy=definitions.MARKET_TEMPORAL_POLICY)
-    def _upgrade_refs(node):
-        if node['op'] == 'ref':
-            target = next(value for value in _MARKET_ENTRIES.values()
-                          if value['variable_id'] == node['variable_id'])
-            node['revision'] = target['revision']
-        for field in ('left', 'right', 'arg'):
-            if field in node:
-                _upgrade_refs(node[field])
-    _upgrade_refs(_definition['expression'])
-    _identity = dict(variable_id=_entry['variable_id'], revision=definitions.revision(_definition))
-    _MARKET_ENTRIES[_key] = dict(**_identity, definition=_definition)
-    _MARKET_DESCRIPTORS[_key] = dict(_DESCRIPTORS[_key], root=_identity)
+# Measure IDs are distinct, so the upgraded entries keep the registry order.
+_MARKET_ENTRIES = dict(zip(_ENTRIES, definitions.upgrade(list(_ENTRIES.values()))[0]))
+_MARKET_DESCRIPTORS = {key: dict(_DESCRIPTORS[key], root=dict(variable_id=entry['variable_id'],
+                       revision=entry['revision'])) for key, entry in _MARKET_ENTRIES.items()}
 
 
 def catalog(parameter_catalog=parameters.V3):

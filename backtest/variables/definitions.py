@@ -658,3 +658,36 @@ def references(definition):
     """Return exact authored dependency identities using the language parser."""
     _, refs, _ = _normal_definition(definition, _limits(None), '')
     return [dict(variable_id=identity[0], revision=identity[1]) for identity, _ in refs]
+
+
+def upgrade(entries):
+    """Market-aware form of a closed authored set; the whole closure becomes /4;
+    variable_ids never change; returns the old→new identity map.
+
+    The input is trusted checked content, such as authored_bundle output.
+    Entries keep their order; old revisions with one new form appear once.
+    revisions maps each old (variable_id, revision) to its new revision.
+    """
+    authored = {(entry['variable_id'], entry['revision']): entry['definition'] for entry in entries}
+    revisions, upgraded = {}, {}
+    def form(identity):
+        if identity not in revisions:
+            definition = json.loads(canonical(authored[identity]))
+            if definition['parameter_catalog'] != parameters.V4:
+                definition.update(version=3, parameter_catalog=parameters.V4,
+                                  temporal_policy=MARKET_TEMPORAL_POLICY)
+            def remap(node):
+                if node['op'] == 'ref':
+                    node['revision'] = form((node['variable_id'], node['revision']))
+                for field in ('left', 'right', 'arg'):
+                    if field in node:
+                        remap(node[field])
+            remap(definition['expression'])
+            upgraded[identity], revisions[identity] = definition, revision(definition)
+        return revisions[identity]
+    result = {}
+    for entry in entries:
+        old = entry['variable_id'], entry['revision']
+        new = old[0], form(old)
+        result.setdefault(new, dict(variable_id=new[0], revision=new[1], definition=upgraded[old]))
+    return list(result.values()), revisions

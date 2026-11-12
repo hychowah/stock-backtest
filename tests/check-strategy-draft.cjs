@@ -85,7 +85,7 @@ if(process.argv[2]==='--builtins-parity'){
  choose('single',false);assert.deepEqual(blocking(),[]);assert(!('trials' in run('currentSettings()')));
  node('calendar-count').value='12';node('random-trials').value='24';node('random-seed').value='42';node('repeat-random').checked=false;choose('single',false);
  const first=await submit();
- assert.deepEqual(requests.at(-1),{intent:{format:'strategy-intent',version:2,universe:{pool:'cached'},steps:[{kind:'filter',source:field('market_cap'),op:'ge',threshold:{value:'100',unit:'usd_million'}},{kind:'filter',source:field('enterprise_value'),op:'ge',threshold:{value:'50',unit:'usd_million'}},{kind:'rank',source:builtin('metric:ev_ebitda:yield'),direction:'highest',rank_from:1,rank_to:50}]}});
+ assert.deepEqual(requests.at(-1),{intent:{format:'strategy-intent',version:2,universe:{pool:'cached'},steps:[{kind:'filter',source:field('market_cap'),op:'ge',threshold:{value:'100',unit:'usd_million'}},{kind:'filter',source:field('enterprise_value'),op:'ge',threshold:{value:'50',unit:'usd_million'}},{kind:'rank',source:builtin('metric:ev_ebitda:yield'),direction:'highest',rank_from:1,rank_to:50}]},market:'us'});
  assert.equal(first.mode,'custom');assert.equal(first.strategy.version,2);
  // The capture stays current until the draft changes; no second request.
  const before=requests.length;assert.deepEqual(copy(await submit()).strategy,copy(first.strategy));assert.equal(requests.length,before);
@@ -206,8 +206,11 @@ if(process.argv[2]==='--builtins-parity'){
  assert.deepEqual(view().map(item=>item.kind),['rank','filter','rank','filter']);assert.equal(node('stock-market').value,'jp');
  let count=requests.length;assert.deepEqual(copy((await submit()).strategy),copy(chainA.strategy));assert.equal(requests.length,count);
  edit(view()[0].id,'rank_to','39');assert.equal((await submit()).strategy.steps[0].rank_to,39);
- assert.deepEqual(requests.slice(count).map(item=>Object.keys(item).sort().join()),['capture,root','intent,labels,submitted'],'A changed restored formula projects its exact content, then captures');
+ assert.deepEqual(requests.slice(count).map(item=>Object.keys(item).sort().join()),['capture,root','intent,labels,market,submitted'],'A changed restored formula projects its exact content, then captures');
  edit(view()[0].id,'rank_to','40');count=requests.length;assert.deepEqual(copy((await submit()).strategy),copy(chainA.strategy),'Returning to the recorded settings reuses the record');assert.equal(requests.length,count);
+ // Another market captures again, so Hong Kong gets the market-aware form; the recorded market reuses the record.
+ node('stock-market').value='hk';await submit();assert.equal(requests.at(-1).market,'hk');
+ node('stock-market').value='jp';count=requests.length;assert.deepEqual(copy((await submit()).strategy),copy(chainA.strategy));assert.equal(requests.length,count);
  // More than 50 steps refuses the copy and keeps the draft.
  const kept=JSON.stringify(view());
  assert.throws(()=>restore({...flat,filters:Array.from({length:44},()=>({field:'pe',op:'gt',value:1}))}),/more than 50 steps/);
@@ -280,7 +283,7 @@ if(process.argv[2]==='--builtins-parity'){
   // A large capture/1 is copied as a chain: exact authored content travels once.
   restore({mode:'custom',strategy:wire.large});
   const large=await submit();
-  assert(!('original' in requests.at(-1))&&!('detached' in requests.at(-1)));assert.equal(requests.at(-1).submitted.length,1);
+  assert(!('detached' in requests.at(-1)));assert.equal(requests.at(-1).submitted.length,1);
   assert.equal(large.strategy.version,2);assert.deepEqual(large.strategy.steps.at(-1).source,wire.large.selection.ranking.source);assert.deepEqual(copy(large.strategy.variables.presentation),wire.large.variables.presentation);
   // The held original is kept unchanged without a request.
   run("var wired=StrategyDraft.beginQueuedEdit('wired')");context.record={mode:'custom',strategy:wire.large};run('wired.restore(record)');
@@ -308,7 +311,7 @@ if(process.argv[2]==='--builtins-parity'){
    if(i)edit(id,'value','0');
   }
   const shared=await submit();assert.deepEqual(copy(shared.strategy),wire.shared.strategy);
-  assert.equal(requests.at(-1).submitted.length,9);assert.equal(requests.at(-1).labels.length,9);assert(!('detached' in requests.at(-1)));assert(!('original' in requests.at(-1)));
+  assert.equal(requests.at(-1).submitted.length,9);assert.equal(requests.at(-1).labels.length,9);assert(!('detached' in requests.at(-1)));
  }
  // The results line under the builder speaks for the latest picks, and only when it has something to say:
  // no picks for the settings, or changed settings. Historical backtest mode hides the line.

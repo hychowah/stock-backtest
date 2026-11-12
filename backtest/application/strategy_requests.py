@@ -520,7 +520,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
                 item['definition']['parameter_catalog'] != parameters.V4
                 for item in checked['variables']['program']['bundle']['definitions']):
             _fail('UNSUPPORTED_CAPABILITY', '/strategy/variables',
-                  'Upgrade these formulas to the market-aware catalog before using Hong Kong or Japan.')
+                  'Hong Kong and Japan runs need the market-aware form of every formula; submit the strategy from the website.')
     current = {item['id']: item for item in builtin_catalog()}
     for descriptor in checked['builtins']:
         expected = current.get(descriptor['id'])

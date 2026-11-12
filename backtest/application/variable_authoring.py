@@ -1,8 +1,8 @@
 """Financial-free authoring over the existing language, library and capture owners.
 
 Raw edits and checked detached restoration are distinct. Exact submitted content
-wins over archive lookup. Unchanged captures are returned without a library or
-catalog read. No operation starts a calculation or owns financial resources.
+wins over archive lookup. No operation starts a calculation or owns financial
+resources.
 """
 from copy import deepcopy
 
@@ -82,67 +82,21 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
 
     The definition owner supplies the revision, units and requirements. Captures
     include exact references. Missing storage is valid for a complete local draft.
-    Explicit Upgrade changes the root policy and named-measure references;
-    user-variable references retain their selected revisions.
     """
     if type(request) is not dict or 'definition' not in request:
         raise ValueError('A variable definition is required.')
     definition = request['definition']
-    additions, names = {}, {}
-    if request.get('upgrade') is True:
-        definitions.revision(definition)
-        definition = deepcopy(definition)
-        definition.update(version=3, parameter_catalog=parameters.V4,
-                          temporal_policy=definitions.MARKET_TEMPORAL_POLICY)
-        current = {item['root']['variable_id']: item for item in measures.catalog(parameters.V4)}
-        def upgrade(node):
-            if node['op'] == 'ref' and node['variable_id'] in current and measures.exact(
-                    node['variable_id'], node['revision']) is not None:
-                descriptor = current[node['variable_id']]
-                node['revision'] = descriptor['root']['revision']
-                for item in measures.bundle([descriptor['id']], parameters.V4)['definitions']:
-                    identity = item['variable_id'], item['revision']
-                    additions[identity] = item
-                    names[identity] = dict(variable_id=item['variable_id'], revision=item['revision'],
-                                           name=measures.exact(*identity)['name'])
-            for field in ('left', 'right', 'arg'):
-                if field in node:
-                    upgrade(node[field])
-        upgrade(definition['expression'])
     root = dict(variable_id=request.get('variable_id','local:editor'), revision=definitions.revision(definition))
     entries, labels = _content(request, [root] + definitions.references(definition))
     entries = [item for item in entries if (item['variable_id'],item['revision']) != (root['variable_id'],root['revision'])]
     entries.append(dict(root, definition=definition))
     labels = [item for item in labels if (item['variable_id'],item['revision']) != (root['variable_id'],root['revision'])]
     labels.append(dict(root, name=request.get('name') or root['variable_id']))
-    if request.get('upgrade') is True:
-        available = {(item['variable_id'], item['revision']): item for item in entries}
-        available.update(additions)
-        pending, retained = [(root['variable_id'], root['revision'])], set()
-        while pending:
-            checkpoint()
-            identity = pending.pop()
-            if identity in retained:
-                continue
-            retained.add(identity)
-            if identity in available:
-                pending.extend((item['variable_id'], item['revision'])
-                               for item in definitions.references(available[identity]['definition']))
-        entries = [item for identity, item in available.items() if identity in retained]
-        names.update({(item['variable_id'], item['revision']): item for item in labels})
-        labels = [item for identity, item in names.items() if identity in retained]
     captured = _capture([root],store,entries,labels,checkpoint)
     checked = captured.to_dict()['program']
     output = next(item for item in checked['definitions'] if (item['variable_id'],item['revision']) == (root['variable_id'],root['revision']))
     return dict(root=root, output=output, requirements=checked['requirements'], capture=captured.to_dict(),
                 authored=definitions.authored_bundle(captured.program)['definitions'])
-
-
-def intent(capture):
-    checked = strategy_requests.require_strategy(strategy_requests.from_wire(capture))
-    if checked['version'] == 2:
-        return dict(format='strategy-intent', version=2, universe=checked['universe'], steps=checked['steps'])
-    return dict(format='strategy-intent',version=1,selection=checked['selection'],pool=checked['pool'],bounds=checked['bounds'])
 
 
 def detached(request):
@@ -159,17 +113,17 @@ def detached(request):
 
 
 def prepare(request, store, *, checkpoint=backtest_control.checkpoint):
-    """Capture one draft snapshot before transport owners allocate retry identity.
+    """Capture one draft snapshot for one market before retry identity; HK/JP
+    captures use the market-aware form; the draft is unchanged.
 
-    An unchanged restored capture stays byte-for-byte unchanged. Changed drafts
-    submit complete detached dependencies and labels; absent exact archives fail
-    rather than substituting newer revisions. This never imports those records.
+    Drafts submit complete detached dependencies and labels; absent exact
+    archives fail rather than substituting newer revisions. This never imports
+    those records. A US capture keeps every formula as submitted.
     """
     if type(request) is not dict or type(request.get('intent')) is not dict:
         raise ValueError('A complete strategy intent is required.')
-    if request.get('original') is not None and request['intent'] == intent(request['original']):
-        checked = strategy_requests.require_strategy(strategy_requests.from_wire(request['original']))
-        return dict(strategy=checked)
+    if request.get('market') not in ('us', 'hk', 'jp'):
+        raise ValueError('Choose US, Hong Kong or Japan.')
     # Only the reachable closure is retained. Old editor revisions can coexist
     # locally without changing the submitted calculation or exceeding limits.
     roots = []
@@ -186,4 +140,18 @@ def prepare(request, store, *, checkpoint=backtest_control.checkpoint):
             captured = strategy_requests.capture_strategy(request['intent'],store,submitted=entries,labels=labels,checkpoint=checkpoint)
         except library.Missing:
             raise missing
+    value = captured.to_dict()
+    if request['market'] == 'us' or value['variables'] is None:
+        return dict(strategy=value)
+    # Capture the market-aware closure again from submitted content only, so
+    # the stored request is what runs. Names carry over by variable ID.
+    program = _variable(value['variables']).program
+    authored, revisions = definitions.upgrade(definitions.authored_bundle(program)['definitions'])
+    intent = deepcopy(request['intent'])
+    for source in strategy_requests.sources(intent):
+        if source.get('kind') == 'formula':
+            source['revision'] = revisions[source['variable_id'], source['revision']]
+    names = {item['variable_id']: item['name'] for item in value['variables']['presentation']}
+    labels = [dict(variable_id=item['variable_id'], revision=item['revision'], name=names[item['variable_id']]) for item in authored]
+    captured = strategy_requests.capture_strategy(intent,submitted=authored,labels=labels,checkpoint=checkpoint)
     return dict(strategy=captured.to_dict())

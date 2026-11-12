@@ -109,14 +109,11 @@ class AuthoringTests(unittest.TestCase):
     def test_prepare_and_edit_detached_program_without_library_access(self):
         validated=a.validate(dict(definition=language.definition(language.constant('1e100')),name='Original'),self.store)
         source=dict(kind='formula',**validated['root']);intent=strategy.intent(source)
-        prepared=a.prepare(dict(intent=intent,detached=[validated['capture']]),self.store)['strategy']
-        with patch.object(self.store,'capture',side_effect=AssertionError('No library on unchanged restore')):
-            same=a.prepare(dict(intent=a.intent(prepared),original=prepared),self.store)['strategy']
-        self.assertEqual(prepared,same)
+        prepared=a.prepare(dict(intent=intent,market='us',detached=[validated['capture']]),self.store)['strategy']
         editable=d.authored_bundle(library.VariableCapture(d.canonical(prepared['variables'])).program)
         edited=deepcopy(editable['definitions'][0]['definition']);edited['expression']=dict(op='neg',arg=edited['expression'])
         validated2=a.validate(dict(definition=edited,detached=[prepared['variables']],name='Edited'),self.store)
-        fresh=a.prepare(dict(intent=strategy.intent(dict(kind='formula',**validated2['root'])),detached=[validated2['capture']]),self.store)
+        fresh=a.prepare(dict(intent=strategy.intent(dict(kind='formula',**validated2['root'])),market='us',detached=[validated2['capture']]),self.store)
         self.assertNotEqual(fresh['strategy']['variables']['program']['bundle_revision'],prepared['variables']['program']['bundle_revision'])
         self.assertFalse(self.store.path.exists())
     def test_missing_archived_dependency_save_fails_and_keeps_detached_content(self):
@@ -161,7 +158,7 @@ class AuthoringTests(unittest.TestCase):
         captured_value=captured.to_dict();oldsource=dict(kind='formula',**old);newsource=dict(kind='formula',**new)
         intent=strategy.intent(oldsource,[strategy.condition(newsource,'0','number')])
         self.store.path.unlink()
-        result=a.prepare(dict(intent=intent,detached=[captured_value]),self.store)['strategy']
+        result=a.prepare(dict(intent=intent,market='us',detached=[captured_value]),self.store)['strategy']
         self.assertEqual(result['variables']['program']['bundle']['roots'],[old,new])
         self.assertEqual(len(result['variables']['program']['bundle']['definitions']),2)
 
@@ -196,15 +193,6 @@ class AuthoringTests(unittest.TestCase):
             with self.subTest(change=change):
                 wire=capture.to_dict();change(wire)
                 with self.assertRaises((d.FormulaError,ValueError,TypeError)):s.from_wire(wire)
-
-    def test_unchanged_wire_restore_needs_no_archive_and_preserves_all_labels(self):
-        entry=self.store.create('Submitted',language.definition())
-        capture=s.capture_strategy(strategy.intent(strategy.formula(entry)),self.store)
-        wire=capture.to_dict();wire['bounds']['min_cap']=100000000;wire['bounds']['min_ev']=50000000
-        self.store.path.unlink()
-        with patch.object(library.Store,'_transaction',side_effect=AssertionError('No archive')):
-            result=a.prepare(dict(intent=a.intent(wire),original=wire),self.store)
-        self.assertEqual(result['strategy'],capture.to_dict())
 
     def test_detached_selected_edit_keeps_exact_decimal_and_dependencies_without_archive(self):
         dep=self.store.create('Submitted dependency',language.definition(language.constant('1e100')))

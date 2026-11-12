@@ -14,9 +14,9 @@ from unittest.mock import patch
 from backtest import calendar_requests, result_evidence
 from backtest.application import original_calculations, queue, result_exports, strategy_requests as s, variable_authoring
 from backtest.inputs import daily, research
-from backtest.variables import definitions as d, measures, parameters
+from backtest.variables import definitions as d, library, measures, parameters
 from test_strategy_requests import formula, intent, pipeline, rank_step
-from test_variable_definitions import constant, definition, entry
+from test_variable_definitions import constant, definition, entry, root
 from test_market_inputs import prepared_markets
 
 
@@ -33,7 +33,7 @@ def request(options):
 
 
 class MarketRequests(unittest.TestCase):
-    def test_market_admission_preserves_old_capture_and_requires_explicit_upgrade(self):
+    def test_market_admission_preserves_old_capture_and_refuses_older_formulas_abroad(self):
         original = capture(parameters.V3)
         frozen = d.canonical(original)
         self.assertEqual(s.check_options(dict(strategy=original)), original)
@@ -108,46 +108,55 @@ class MarketRequests(unittest.TestCase):
             bundle = measures.bundle([after['id']], parameters.V4)
             self.assertTrue(all(item['definition']['parameter_catalog'] == parameters.V4 for item in bundle['definitions']))
 
-    def test_explicit_composed_measure_upgrade_can_save_and_run_foreign_without_rewriting_old_revision(self):
-        before = next(item for item in measures.catalog() if item['id'] == 'gross_margin')
-        old_definition = dict(definition(dict(op='ref', **before['root'])), version=3,
-                              parameter_catalog=parameters.V3)
-        with tempfile.TemporaryDirectory() as folder:
-            from backtest.variables import library
-            store = library.Store(Path(folder) / 'variables.sqlite')
-            saved = store.create('Composed gross margin', old_definition)
-            old_root = {key: saved[key] for key in ('variable_id', 'revision')}
-            snapshot = store.authoring_snapshot(old_root)
-            upgraded = variable_authoring.validate(dict(variable_id=saved['variable_id'],
-                definition=old_definition, name=saved['name'], upgrade=True,
-                submitted=[item for item in snapshot['authored'] if item['variable_id'] != saved['variable_id']],
-                labels=[item for item in snapshot['capture']['presentation'] if item['variable_id'] != saved['variable_id']]), store)
-            self.assertEqual(upgraded['root']['variable_id'], saved['variable_id'])
-            self.assertNotEqual(upgraded['root']['revision'], saved['revision'])
-            authored = next(item['definition'] for item in upgraded['authored'] if item['variable_id'] == saved['variable_id'])
-            current = store.save(saved['variable_id'], saved['version'], saved['name'], authored)
-            captured = s.capture_strategy(dict(intent(dict(kind='formula', variable_id=current['variable_id'],
-                revision=current['revision'])), pool='cached'), store).to_dict()
-            self.assertEqual(s.check_options(dict(strategy=captured, market='hk')), captured)
-            self.assertTrue(all(item['definition']['parameter_catalog'] == parameters.V4
-                                for item in captured['variables']['program']['bundle']['definitions']))
-            self.assertEqual(store.authoring_snapshot(old_root)['authored'][0]['definition'], old_definition)
+    def saved_strategy(self, folder):
+        """The real library's shape: a /3 parameter divided by a named measure, plus one saved reference to it."""
+        store = library.Store(Path(folder) / 'variables.sqlite')
+        enterprise_value = next(item['root'] for item in measures.catalog() if item['id'] == 'enterprise_value')
+        older = lambda expression: dict(definition(expression, display='percent'), version=3, parameter_catalog=parameters.V3)
+        debt_ev = store.create('debt/EV', older(dict(op='div', left=dict(op='parameter', id='annual.total_debt'),
+                                                    right=dict(op='ref', **enterprise_value))))
+        nested = store.create('Nested debt/EV', older(dict(op='neg', arg=dict(op='ref', **root(debt_ev)))))
+        steps = pipeline(dict(kind='filter', source=formula(nested), op='gt', threshold=dict(value='0', unit='percent')),
+                         rank_step(formula(debt_ev)))
+        return store, debt_ev, nested, steps
 
-    def test_upgrade_keeps_explicit_user_dependency_revision(self):
-        from backtest.variables import library
+    def test_foreign_capture_uses_the_market_aware_form_of_every_saved_formula(self):
         with tempfile.TemporaryDirectory() as folder:
-            store = library.Store(Path(folder) / 'variables.sqlite')
-            dependency = store.create('Old dependency', definition())
-            dependency_root = {key: dependency[key] for key in ('variable_id', 'revision')}
-            value = definition(dict(op='ref', **dependency_root))
-            upgraded = variable_authoring.validate(dict(definition=value, upgrade=True), store)
-            authored = next(item['definition'] for item in upgraded['authored'] if item['variable_id'] == 'local:editor')
-            self.assertEqual(authored['expression'], dict(op='ref', **dependency_root))
-            with self.assertRaises(d.FormulaError) as caught:
-                captured = s.capture_strategy(dict(intent(dict(kind='formula', **upgraded['root'])), pool='cached'),
-                                              submitted=upgraded['authored']).to_dict()
-                s.check_options(dict(strategy=captured, market='jp'))
-            self.assertEqual(caught.exception.path, '/strategy/variables')
+            store, debt_ev, nested, steps = self.saved_strategy(folder)
+            saved = {item['variable_id']: store.authoring_snapshot(root(item))['authored'][0] for item in (debt_ev, nested)}
+            enterprise_value = next(item['root'] for item in measures.catalog(parameters.V4) if item['id'] == 'enterprise_value')
+            for market in ('hk', 'jp'):
+                with self.subTest(market=market):
+                    captured = variable_authoring.prepare(dict(intent=steps, market=market), store)['strategy']
+                    forms = {item['variable_id']: item for item in captured['variables']['program']['bundle']['definitions']}
+                    self.assertEqual(set(forms), {debt_ev['variable_id'], nested['variable_id'], enterprise_value['variable_id']})
+                    self.assertTrue(all((item['definition']['version'], item['definition']['parameter_catalog'],
+                                         item['definition']['temporal_policy']) == (3, parameters.V4, d.MARKET_TEMPORAL_POLICY)
+                                        for item in forms.values()))
+                    upgraded = forms[debt_ev['variable_id']]
+                    self.assertNotEqual(upgraded['revision'], debt_ev['revision'])
+                    self.assertEqual(upgraded['definition']['expression']['right'], dict(op='ref', **enterprise_value))
+                    self.assertEqual(forms[nested['variable_id']]['definition']['expression']['arg'], dict(op='ref', **root(upgraded)))
+                    self.assertEqual([step['source'] for step in captured['steps']],
+                                     [formula(forms[nested['variable_id']]), formula(upgraded)])
+                    self.assertEqual({item['variable_id']: item['name'] for item in captured['variables']['presentation']},
+                                     {debt_ev['variable_id']: 'debt/EV', nested['variable_id']: 'Nested debt/EV',
+                                      enterprise_value['variable_id']: 'Existing-policy enterprise value'})
+                    queued = queue.Store(Path(folder) / 'queue.sqlite').enqueue(request(dict(
+                        start='2015-01-01', end='2015-12-31', months=3, market=market, strategy=captured)))
+                    self.assertEqual(queued['options']['strategy'], captured)
+            for item in (debt_ev, nested):
+                self.assertEqual(store.get(item['variable_id'])['revision'], item['revision'])
+                self.assertEqual(store.authoring_snapshot(root(item))['authored'][0], saved[item['variable_id']])
+
+    def test_us_capture_keeps_every_formula_as_saved(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store, debt_ev, nested, steps = self.saved_strategy(folder)
+            captured = variable_authoring.prepare(dict(intent=steps, market='us'), store)['strategy']
+            self.assertEqual(captured['variables']['program']['bundle']['roots'], [root(nested), root(debt_ev)])
+            self.assertEqual(d.canonical(captured), s.capture_strategy(steps, store).to_json())
+            with self.assertRaises(ValueError):
+                variable_authoring.prepare(dict(intent=steps), store)
 
     def test_original_preview_coverage_and_usd_results_follow_recorded_market(self):
         captured = capture()

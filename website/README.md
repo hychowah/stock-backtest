@@ -10,7 +10,7 @@ Prices, valuation thresholds, returns and CAGR use USD. Foreign returns include 
 
 Foreign fiscal market cap uses annual basic weighted-average shares and the native unadjusted fiscal close. Entry rescaling uses adjusted prices. Report amounts use context-date FX for every report year; holding prices use their own observation-date FX. This is an annual-share approximation. FMP can have missing or zero-heavy fields, later revisions, incomplete listing coverage and dividend-adjustment defects. Missing required inputs stay unavailable.
 
-New formulas use catalog `financial-parameters/4` and policy `market-annual/1`, with definition version 3. Opened older formulas retain their catalog and need **Use expanded inputs** before foreign execution. Upgrade rebinds named measures. Upgrade and save user-defined references separately, then choose their new revisions. Market survives held edits, queueing, copying, comparisons, exports and saved opening.
+New formulas use catalog `financial-parameters/4` and policy `market-annual/1`, with definition version 3. Opened older formulas retain their catalog. A Hong Kong or Japan submission captures the market-aware form of every formula and its references; a US submission keeps them as saved. Saved variables and the draft are not rewritten. Market survives held edits, queueing, copying, comparisons, exports and saved opening.
 
 ## Automatic updates
 

@@ -137,10 +137,11 @@ owns validation, normalization, identities and units.
 | References | `ref` names an exact variable ID and a `sha256:` revision. "Latest" is invalid. Cycles fail. |
 | Ceilings | 256 nodes, depth 32, 32 definitions per closure, dependency depth 8, 256 KiB, 64-character raw decimal literals |
 
-New formulas use version 3 and catalog `/4`. An old definition keeps its namespace
-until the user explicitly upgrades it. No definition is rewritten. Immutable
-references may cross catalogs in US work. Foreign work requires `/4` throughout
-the closure. A requested closure larger than 32 definitions fails.
+New formulas use version 3 and catalog `/4`. An old definition keeps its namespace.
+Hong Kong and Japan runs use the current form of older formulas. No definition
+is rewritten. Immutable references may cross catalogs in US work. Foreign work
+requires `/4` throughout the closure. A requested closure larger than 32
+definitions fails.
 
 The interface is:
 

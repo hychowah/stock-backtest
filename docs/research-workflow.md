@@ -14,7 +14,7 @@ All displayed money, thresholds, holdings, returns and CAGR use USD. Foreign fis
 
 US report availability retains its strict fiscal-plus-90-day rule. HK and JP use reliable publication dates where available; otherwise four and three calendar months. Period-end placeholders do not prove publication. The 800-day current-report limit remains. Missing inputs and conflicts stay unavailable. FMP source revisions, incomplete listing history, zero-heavy fields and dividend-adjustment limits remain disclosed. See [Dividends](#dividends).
 
-New formulas use definition version 3, catalog `financial-parameters/4` and temporal policy `market-annual/1`. Catalogs /1–/3 preserve US meanings. Foreign execution requires explicit upgrade to /4. Upgrade rebinds immutable named measures to their /4 revisions. User-defined references retain their exact revisions; upgrade and save those definitions separately, then choose their new revisions. Existing captures, jobs, artifacts and durable records retain their bytes. The data-panel market selector scopes manual Update; scheduled maintenance refreshes inventories already present through its existing cycle.
+New formulas use definition version 3, catalog `financial-parameters/4` and temporal policy `market-annual/1`. Catalogs /1–/3 preserve US meanings. A Hong Kong or Japan run uses the /4 form of every formula in the strategy, including referenced saved variables and named measures. Its capture records that form; saved variables are not rewritten. Existing captures, jobs, artifacts and durable records retain their bytes. The data-panel market selector scopes manual Update; scheduled maintenance refreshes inventories already present through its existing cycle.
 
 ### Dividends
 

@@ -502,8 +502,6 @@ class StrategyTests(unittest.TestCase):
              patch.object(library.Store, '_transaction', side_effect=AssertionError('No library')):
             self.assertEqual(s.require_strategy(capture), value)
             self.assertEqual(s.from_wire(value).to_json(), capture.to_json())
-        from backtest.application import variable_authoring
-        self.assertEqual(variable_authoring.prepare(dict(intent=variable_authoring.intent(value), original=value), self.store)['strategy'], value)
         self.assertEqual(s.log_fields(dict(strategy=value, market='us')),
                          dict(market='us', ranking_source_kind='formula', step_count=4))
 

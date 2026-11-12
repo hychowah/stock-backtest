@@ -44,6 +44,10 @@ def binary(op, left, right):
     return dict(op=op, left=left, right=right)
 
 
+# sha256 of the sorted (measure ID, /4 revision) pairs, recorded before measures used upgrade.
+MARKET_MEASURE_REVISIONS = 'cede4f6021675bf828ff4e2680562f768fd7ad667dcb7758b77b649cd6e5a379'
+
+
 class DefinitionTests(unittest.TestCase):
     def assert_error(self, code, function, *args, **kwargs):
         with self.assertRaises(d.FormulaError) as caught:
@@ -348,6 +352,14 @@ class DefinitionTests(unittest.TestCase):
                 else:
                     # Date admissibility is intentionally decided at request binding.
                     d.validate(bundle(entry(case['definition'])))
+
+    def test_upgrade_keeps_the_published_market_measure_revisions(self):
+        # Saved records reference these 33 /4 named-measure revisions; measures
+        # builds them with upgrade, so the upgrade rules must keep them.
+        from backtest.variables import measures, parameters
+        current = sorted((item['id'], item['root']['revision']) for item in measures.catalog(parameters.V4))
+        self.assertEqual((len(current), hashlib.sha256(d.canonical(current).encode()).hexdigest()),
+                         (33, MARKET_MEASURE_REVISIONS))
 
 
 if __name__ == '__main__':
