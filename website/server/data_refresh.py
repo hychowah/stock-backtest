@@ -342,7 +342,9 @@ def run(emit=lambda **kw:None,stop=lambda:None,*,scope=None,resume=False):
                 state['completed_stages']=state['completed_stages'][:STAGES.index(kind)]
                 del state['work'][kind]
     def checkpoint():stop();progress.checkpoint()
-    def feedback(**values):progress.emit(**values);emit(**values)
+    def feedback(**values):
+        progress.emit(**values);emit(**values)
+        if 'kind' in values:diagnostics.work(stage=values['kind'],completed=values.get('completed',0),total=values.get('total'))
     try:
         progress.save()
         with backtest_control.cancel_when(lambda:bool(stop())):
@@ -377,6 +379,7 @@ def run(emit=lambda **kw:None,stop=lambda:None,*,scope=None,resume=False):
             for kind in ('research','daily','website'):progress.done(kind)
             with closing(daily.connect()) as db:
                 book_batch.precompute(db,feedback,checkpoint)
+            diagnostics.lap('sheets')
             progress.done('sheets')
             feedback(kind='verify',completed=0,total=1)
             if any(row['state']!='current' for row in data.derived_status()):raise ValueError('Preparation is incomplete.')

@@ -192,7 +192,7 @@ def operation(name):
     The event has the outcome, wall seconds, this thread's CPU seconds, stage
     seconds and counts. op numbers the operation within this process, so
     readers can match its progress lines. An exception records only its type. The body can note
-    its own outcome. stage(), lap(), note() and count() add to the innermost
+    its own outcome. stage(), lap(), note(), count() and work() add to the innermost
     open operation of the calling thread; outside one they do nothing. Stages
     are measured regions. They can overlap and need not add up to seconds.
     """
@@ -267,6 +267,12 @@ def count(name,amount=1):
     if state is not None:state['counts'][name]=state['counts'].get(name,0)+amount
 
 
+def work(**fields):
+    """Show the current work, such as an update stage and its counts, in this operation's progress lines."""
+    state=_operation.get()
+    if state is not None:state['work']=fields
+
+
 def _start_watcher():
     global _watcher
     if _watcher is None:
@@ -308,6 +314,7 @@ def _progress(state,now):
     if state['last_step']:record.update(last_step=state['last_step'],since_step_seconds=round(now-state['lap'],1))
     if state['stage']:record['stage']=state['stage']
     record['counts']=dict(state['counts'])
+    if state.get('work'):record['work']=dict(state['work'])
     event(state['name'],**record)
 
 

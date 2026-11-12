@@ -193,7 +193,7 @@ class DiagnosticsTests(unittest.TestCase):
             with d.operation('quick.example'):pass
             with d.operation('startup.example'):
                 with d.operation('prepare.example'):
-                    d.count('prices_parsed',3);d.lap('inputs')
+                    d.count('prices_parsed',3);d.lap('inputs');d.work(stage='sheets',completed=4,total=9)
                     with d.stage('observation_identity'):time.sleep(1)
                     d.lap('scan')
                 d.lap('prepare')  # The inner end line already covers this step.
@@ -202,9 +202,9 @@ class DiagnosticsTests(unittest.TestCase):
         # Only the innermost operation reports, naming the operations around it, then repeats.
         self.assertGreaterEqual(len(running),2)
         for line in running:
-            self.assertEqual({key:line[key] for key in ('event','state','within','last_step','stage','counts')},
+            self.assertEqual({key:line[key] for key in ('event','state','within','last_step','stage','counts','work')},
                              dict(event='prepare.example',state='running',within=['startup.example'],last_step='inputs',
-                                  stage='observation_identity',counts=dict(prices_parsed=3)))
+                                  stage='observation_identity',counts=dict(prices_parsed=3),work=dict(stage='sheets',completed=4,total=9)))
             self.assertIn('process_cpu_seconds',line)
         self.assertEqual((step['event'],step['state'],step['step']),('prepare.example','step','scan'))
         self.assertGreaterEqual(step['step_seconds'],.3)
