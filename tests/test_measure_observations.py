@@ -128,7 +128,8 @@ class OwnerExtractionTests(unittest.TestCase):
         history = [dict(row, fiscal=str(row['fiscal']), known=str(row['known'])) for row in reports]
         pairs = metrics.evaluate(obs, history)
         expected = metrics.filter_values(obs, pairs, day, lambda when, forward, slack: (when, 10. if when < day else 20.), financials, 2.,
-                                          sums=lambda when: (0., 0., 0., 0, 0, 0))
+                                          sums=lambda when: (0., 0., 0., 0, 0, 0), dividends=None,
+                                          shares=None, volumes=lambda start, end: [])
         self.assertEqual(owner['evidence']['metrics'], {key:list(value) for key,value in pairs.items()})
         self.assertEqual(owner['evidence']['filters'], expected)
         self.assertEqual(bridge.lane(owner, 'pe')['value'], 20.)
@@ -188,6 +189,15 @@ class Port:
 
     def valuation(self, symbol, day):
         return 0., 0., 0., 0, 0, 0
+
+    def dividends(self, symbol, fiscal, day):
+        return None
+
+    def shares(self, symbol, fiscal, day):
+        return None
+
+    def volumes(self, symbol, start, end):
+        return []
 
 
 class DatedOwnerTests(unittest.TestCase):

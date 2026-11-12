@@ -99,7 +99,7 @@ def builtin_catalog():
                 storage=dict(kind='metric', metric=key, component=component, scale=0)))
     dollars = {'market_cap', 'enterprise_value', 'fcf'}
     percentages = {'fcf_yield', 'profit_margin', 'operating_yield_spread_3y',
-                   'roe', 'return_1y', 'return_3y', 'ebitda_yield'}
+                   'roe', 'return_1y', 'return_3y', 'ebitda_yield', 'dividend_yield', 'turnover_1w'}
     for key, item in metrics.FILTERS.items():
         unit = 'USD' if key in dollars else 'scalar'
         display = ('usd_million' if key in dollars else

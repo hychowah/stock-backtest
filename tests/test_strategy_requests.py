@@ -68,7 +68,7 @@ class StrategyTests(unittest.TestCase):
 
     def test_builtin_descriptors_preserve_independent_pairs_and_filter_scales(self):
         items = {item['id']: item for item in s.builtin_catalog()}
-        self.assertEqual(len(items), 36)
+        self.assertEqual(len(items), 38)
         for name in ('ev_ebitda', 'ev_ebitda_3y'):
             for lane in ('yield', 'multiple'):
                 self.assertEqual(items['metric:' + name + ':' + lane]['storage'],
@@ -81,7 +81,8 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(items['filter:fcf']['unit'], 'USD')
         self.assertEqual(items['filter:fcf']['storage']['scale'], 6)
         self.assertEqual(items['filter:operating_yield_spread_3y']['display'], 'percentage_points')
-        self.assertEqual(items['filter:profit_margin']['storage']['scale'], -2)
+        for key in ('profit_margin', 'dividend_yield', 'turnover_1w'):
+            self.assertEqual((items['filter:' + key]['display'], items['filter:' + key]['storage']['scale']), ('percent', -2))
         self.assertEqual(items['filter:peg']['storage']['scale'], 0)
         items['filter:pe']['label'] = 'Changed'
         self.assertNotEqual(s.builtin_catalog()[4]['label'], 'Changed')

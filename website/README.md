@@ -232,6 +232,8 @@ See `../docs/research-workflow.md` for calculation and extension details.
 
 Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-year averages**: 1 ÷ the mean daily yield (net income, revenue or equity ÷ market cap) over the trailing years. **P/E vs its 3-year average** and the other relatives divide the current multiple by its average: below 1 means cheaper than usual. A stock has no average when it has no daily yield on or before the start of the window, or when its mean yield is not positive.
 
+**Dividend yield** is the selected report's common dividends paid ÷ market cap. **Turnover rate — 1-week average** is the mean daily volume over the last 7 calendar days ÷ the selected report's weighted-average shares. Enter both in percent.
+
 ## Custom trade dates and frequency
 
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency

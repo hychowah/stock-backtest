@@ -580,6 +580,32 @@ class BookFacts:
                             'WHERE symbol=? AND day<=? ORDER BY day DESC LIMIT 1',(symbol,str(day))).fetchone()
         return _NO_SUMS if row is None else tuple(row)
 
+    def _annual_value(self,symbol,endpoint,field,fiscal,day):
+        """(value, currency) of one saved annual field of a fiscal date, or None; a foreign value only once known before day."""
+        row=self.db.execute(f'SELECT {COLUMNS[endpoint,field]} FROM research.annual_facts WHERE symbol=? AND endpoint=? AND fiscal=?',
+                            (symbol,endpoint,str(fiscal))).fetchone()
+        if row is None or row[0] is None:return None
+        if self.market=='us':return row[0],'USD'
+        info=self.annual_metadata(symbol,endpoint,fiscal)
+        return None if info is None or info['known']>=str(day) else (row[0],info['currency'])
+
+    def dividends(self,symbol,fiscal,day):
+        """Common dividends paid of one fiscal date in USD at day, signed as reported, or None: as legacy_annual(symbol, day) gives a field."""
+        found=self._annual_value(symbol,'cash-flow-statement','commonDividendsPaid',fiscal,day)
+        return None if found is None else self.convert(*found,day)
+
+    def shares(self,symbol,fiscal,day):
+        """Annual weighted-average basic shares of one fiscal date, or None."""
+        found=self._annual_value(symbol,'income-statement','weightedAverageShsOut',fiscal,day)
+        return None if found is None else found[0]
+
+    def volumes(self,symbol,start,end):
+        """The saved session volumes of one company from start through end; local sessions only for foreign stocks."""
+        session='' if self.market=='us' else _SESSION
+        args=(symbol,str(start),str(end),*((self.market,) if self.market!='us' else ()))
+        return [row[0] for row in self.db.execute(
+            f'SELECT volume FROM research.stock_days WHERE symbol=? AND day>=? AND day<=? AND volume IS NOT NULL{session} ORDER BY day',args)]
+
     def usd_price(self,symbol,day,forward=False,slack=None):
         price=self.price(symbol,day,forward,slack)
         if price is None or self.market=='us':return price
