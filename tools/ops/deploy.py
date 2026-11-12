@@ -310,25 +310,11 @@ def git(*arguments):
     return subprocess.check_output(git_command(*arguments))
 
 
-def windows_path(path):
-    return subprocess.check_output(['wslpath', '-w', str(path)], text=True).strip()
-
-
 def linux_path(path):
     """A registered path as this WSL process reads it; a WSL path needs no conversion."""
     if str(path).startswith('/'):
         return Path(path)
     return Path(subprocess.check_output(['wslpath', '-u', str(path)], text=True).strip())
-
-
-def on_wsl_disk(config):
-    """True when the registered runtime is a WSL folder, not a native Windows one."""
-    return config['runtime'].startswith('/')
-
-
-def runtime_form(config, path):
-    """A WSL path in the form that the runtime's interpreter reads."""
-    return str(path) if on_wsl_disk(config) else windows_path(path)
 
 
 def configuration():
@@ -375,7 +361,7 @@ def spawn_server(config, arguments, supervisor):
     for name in (SUPERVISOR_ENV,REFRESH_ENV):
         if not any(part.split('/')[0].upper() == name for part in shared):shared.append(name)
     env['WSLENV'] = ':'.join(shared)
-    if on_wsl_disk(config):
+    if config['runtime'].startswith('/'):
         # The user's browser is a Windows program; the first launch opens the page in it.
         # explorer.exe reports failure after it opens a page, so do not wait for its status.
         env.setdefault('BROWSER', 'explorer.exe %s &')
@@ -575,8 +561,9 @@ def deploy(config, revision=None, *, before_publish=None):
                    source=str(ROOT), distro=config['distro']))
         if before_publish is not None:
             before_publish()
-        native(config, runtime_form(config, stage / 'bootstrap.py'), '--native-publish',
-               runtime_form(config, stage), config['runtime'])
+        # The runtime's interpreter reads the stage below its own registered path.
+        staged = config['runtime'] + '/.deployment/' + stage.name
+        native(config, staged + '/bootstrap.py', '--native-publish', staged, config['runtime'])
     except BaseException:
         # A native journal may refer to this payload. Retry must retain it.
         raise

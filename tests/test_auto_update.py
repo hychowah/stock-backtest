@@ -356,7 +356,7 @@ class CommittedUpdateTests(unittest.TestCase):
                 try:return (runtime/'served-version').read_text()==expected
                 except FileNotFoundError:return False
             clock=Mock();clock.now.return_value=datetime(2026,11,5,6,59,tzinfo=d.HONG_KONG)
-            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03),patch.object(d,'datetime',clock):
+            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03),patch.object(d,'datetime',clock):
                 thread=Thread(target=run,daemon=True);thread.start()
                 try:
                     until(lambda:version('first'))
@@ -395,7 +395,7 @@ class WslInteropTests(unittest.TestCase):
             (website/'server/app.py').write_text('from pathlib import Path\nimport time\nroot=Path(__file__).parents[2]\n'
                 'def main():\n root.joinpath("ready").write_text("yes")\n try:\n  while True:time.sleep(.02)\n'
                 ' finally:root.joinpath("closed").write_text("yes")\n')
-            config=dict(registered,runtime=d.runtime_form(registered,root));token='d'*32
+            config=dict(registered,runtime=temporary.replace('\\','/')+'/'+root.name);token='d'*32
             child=d.spawn_server(config,['--no-browser'],token)
             try:
                 deadline=time.monotonic()+10

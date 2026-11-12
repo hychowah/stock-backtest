@@ -95,7 +95,7 @@ class DeploymentRevisionTests(unittest.TestCase):
             guards = [stack.enter_context(patch.object(owner, name)) for owner, name in (
                 (Path, 'mkdir'), (deploy, 'native'), (deploy.subprocess, 'run'),
                 (deploy, 'stop_servers'), (deploy, 'cache_ownership'),
-                (runtime_access, 'ownership'), (deploy, 'install_file'), (deploy, 'windows_path'))]
+                (runtime_access, 'ownership'), (deploy, 'install_file'))]
             with self.assertRaises(error):
                 deploy.deploy(self.config, requested)
             for guard in guards:
@@ -216,7 +216,6 @@ class DeploymentRevisionTests(unittest.TestCase):
                     self.assertEqual(request['commit'], expected)
                     self.assertEqual(request['archive_sha256'], deploy.digest(Path(stage) / 'source.tar'))
                 with patch.object(deploy.subprocess, 'run', side_effect=archive) as run, \
-                        patch.object(deploy, 'windows_path', side_effect=str), \
                         patch.object(deploy, 'native', side_effect=publish) as native:
                     deploy.deploy(self.config, requested)
                 self.assertEqual(self.git.call_count, 2)
@@ -236,7 +235,7 @@ class DeploymentRevisionTests(unittest.TestCase):
 
     def test_archive_failure_does_not_request_server_shutdown(self):
         deploy.write_json(self.root / deploy.MANIFEST, self.installed)
-        with patch.object(deploy.subprocess,'run',side_effect=OSError('fixture archive failure')),patch.object(deploy,'windows_path',side_effect=str),patch.object(deploy,'native') as publish:
+        with patch.object(deploy.subprocess,'run',side_effect=OSError('fixture archive failure')),patch.object(deploy,'native') as publish:
             stop=Mock()
             with self.assertRaises(OSError):deploy.deploy(self.config,self.installed['commit'],before_publish=stop)
         stop.assert_not_called();publish.assert_not_called()
