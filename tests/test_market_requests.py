@@ -109,14 +109,17 @@ class MarketRequests(unittest.TestCase):
             self.assertTrue(all(item['definition']['parameter_catalog'] == parameters.V4 for item in bundle['definitions']))
 
     def saved_strategy(self, folder):
-        """The real library's shape: a /3 parameter divided by a named measure, plus one saved reference to it."""
+        """The real library's shape: a /3 parameter divided by a named measure, one saved reference to it, and
+        a step on the current form of that measure, so the foreign closure meets the measure twice."""
         store = library.Store(Path(folder) / 'variables.sqlite')
         enterprise_value = next(item['root'] for item in measures.catalog() if item['id'] == 'enterprise_value')
         older = lambda expression: dict(definition(expression, display='percent'), version=3, parameter_catalog=parameters.V3)
         debt_ev = store.create('debt/EV', older(dict(op='div', left=dict(op='parameter', id='annual.total_debt'),
                                                     right=dict(op='ref', **enterprise_value))))
         nested = store.create('Nested debt/EV', older(dict(op='neg', arg=dict(op='ref', **root(debt_ev)))))
+        current = next(item['root'] for item in measures.catalog(parameters.V4) if item['id'] == 'enterprise_value')
         steps = pipeline(dict(kind='filter', source=formula(nested), op='gt', threshold=dict(value='0', unit='percent')),
+                         dict(kind='filter', source=formula(current), op='gt', threshold=dict(value='50', unit='usd_million')),
                          rank_step(formula(debt_ev)))
         return store, debt_ev, nested, steps
 
@@ -138,7 +141,7 @@ class MarketRequests(unittest.TestCase):
                     self.assertEqual(upgraded['definition']['expression']['right'], dict(op='ref', **enterprise_value))
                     self.assertEqual(forms[nested['variable_id']]['definition']['expression']['arg'], dict(op='ref', **root(upgraded)))
                     self.assertEqual([step['source'] for step in captured['steps']],
-                                     [formula(forms[nested['variable_id']]), formula(upgraded)])
+                                     [formula(forms[nested['variable_id']]), formula(enterprise_value), formula(upgraded)])
                     self.assertEqual({item['variable_id']: item['name'] for item in captured['variables']['presentation']},
                                      {debt_ev['variable_id']: 'debt/EV', nested['variable_id']: 'Nested debt/EV',
                                       enterprise_value['variable_id']: 'Existing-policy enterprise value'})
@@ -153,7 +156,8 @@ class MarketRequests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             store, debt_ev, nested, steps = self.saved_strategy(folder)
             captured = variable_authoring.prepare(dict(intent=steps, market='us'), store)['strategy']
-            self.assertEqual(captured['variables']['program']['bundle']['roots'], [root(nested), root(debt_ev)])
+            current = next(item['root'] for item in measures.catalog(parameters.V4) if item['id'] == 'enterprise_value')
+            self.assertEqual(captured['variables']['program']['bundle']['roots'], [root(nested), current, root(debt_ev)])
             self.assertEqual(d.canonical(captured), s.capture_strategy(steps, store).to_json())
             with self.assertRaises(ValueError):
                 variable_authoring.prepare(dict(intent=steps), store)
