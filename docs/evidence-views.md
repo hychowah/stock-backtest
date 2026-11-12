@@ -285,7 +285,7 @@ changed edit and a copy capture a chain. An unchanged capture/2 is resubmitted
 as recorded.
 
 The offline latest screen runs only the shape that flat options express exactly:
-Filters it supports and one highest EV/EBITDA-yield Rank, first or last. Auto-run
+Filters it supports and one highest EBITDA/EV-yield Rank, first or last. Auto-run
 uses the same test. Screen latest sends every other chain to the service as a
 captured latest run. `scalar_runs` selects it from the open book: exact-session
 prices of listed companies on the market's latest cached session, with no returns.

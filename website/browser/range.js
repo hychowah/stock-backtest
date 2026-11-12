@@ -20,6 +20,10 @@ let pendingStep=null,stepSources=null,stepSourcesState='idle';
 function viewKey(){return screeningMode==='latest'?'latest':'custom';}
 const currentArtifact=()=>ResultArtifacts.forView(viewKey());
 const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.filter_catalog});
+// A metric label names the multiple (EV / EBITDA). The yield is the inverse
+// ratio, so its name swaps the two sides (EBITDA / EV).
+const inverseRatio=label=>label.split(' / ').reverse().join(' / ');
+const pairLabel=(item,component)=>{const label=typeof item==='string'?item:item.label;return (component==='yield'?inverseRatio(label):label)+' '+component;};
 const metricLabel=(id,artifact=currentArtifact())=>artifact?.catalog?.metrics[id]?.label||(typeof artifact?.catalog?.metrics[id]==='string'?artifact.catalog.metrics[id]:screeningData.metrics[id]?.label)||id;
 function currentSettings(){
   const selection=StrategyDraft.selection(),engine=EngineControls.fields();
@@ -129,7 +133,7 @@ function stepMessage(text,failed=false){const note=document.getElementById('filt
 function stepChoices(key){
   const kind=key==='new'?pendingStep:StrategyDraft.view().find(row=>row.id===key)?.kind,catalog=StrategyDraft.catalog(),groups=[];
   if(kind==='filter')groups.push({label:'Size and listing',options:Object.entries(StrategyDraft.fields).map(([field,label])=>({value:{kind:'field',field,label},label,keywords:field}))});
-  groups.push({label:'EV/EBITDA metrics',options:Object.entries(catalog.metrics).flatMap(([key,item])=>['yield','multiple'].map(component=>{const label=(typeof item==='string'?item:item.label)+' '+component;return {value:{kind:'builtin',id:'metric:'+key+':'+component,label},label,keywords:key,disabled:!screeningData.metrics[key]};}))});
+  groups.push({label:'EV/EBITDA metrics',options:Object.entries(catalog.metrics).flatMap(([key,item])=>['yield','multiple'].map(component=>{const label=pairLabel(item,component);return {value:{kind:'builtin',id:'metric:'+key+':'+component,label},label,keywords:key,detail:component==='yield'?'Higher is cheaper':'Lower is cheaper',disabled:!screeningData.metrics[key]};}))});
   groups.push({label:'Built-in values',options:Object.entries(catalog.filters).map(([field,item])=>({value:{kind:'builtin',id:'filter:'+field,label:item.label},label:item.label,keywords:field,
     detail:item.available?'':screeningData.filter_catalog[field]?'Needs annual financial data. Download it in Manage backtest data.':'Unavailable in this data',disabled:!item.available}))});
   if(stepSources){
@@ -169,7 +173,7 @@ function chooseStep(key,choice){
 function updateMetricLabels(o){
   const label=metricLabel(o.metric);
   document.querySelectorAll('[data-metric-multiple]').forEach(el=>el.textContent=label+' (×)');
-  document.querySelectorAll('[data-metric-yield]').forEach(el=>el.textContent='Selected metric yield');
+  document.querySelectorAll('[data-metric-yield]').forEach(el=>el.textContent=inverseRatio(label)+' (%)');
 }
 function setModeVisibility(){
   const latest=screeningMode==='latest';
@@ -294,7 +298,7 @@ const StrategyDraft=(()=>{
     if(source.kind==='field')return fields[source.field]||source.field;
     if(source.kind==='builtin'){
       const [,key,component]=source.id.split(':'),item=catalog().metrics[key];
-      const label=source.id.startsWith('filter:')?catalog().filters[key]?.label:item&&(typeof item==='string'?item:item.label)+' '+component;
+      const label=source.id.startsWith('filter:')?catalog().filters[key]?.label:item&&pairLabel(item,component);
       return recorded.find(item=>item.id===source.id)?.label||label||source.id;
     }
     for(const capture of detached){const found=capture.presentation.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);if(found)return found.name;}
@@ -334,7 +338,7 @@ const StrategyDraft=(()=>{
   // Exact decimal scaling: one decimal-to-binary rounding, as the server does.
   const scaled=(text,exponent)=>{const [mantissa,power='0']=String(text).trim().toLowerCase().split('e');return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(mantissa)&&/^[+-]?\d+$/.test(power)?Number(mantissa+'e'+(+power+exponent)):NaN;};
   const exponents={usd:0,USD:0,usd_million:6,percent:-2,number:0,multiple:0,scalar:0};
-  // The offline latest screen runs exactly this shape: one highest EV/EBITDA
+  // The offline latest screen runs exactly this shape: one highest EBITDA/EV
   // yield Rank, first or last, and filters the flat options already express.
   // Missing minimums become 0, which every prepared row passes.
   function flat(){

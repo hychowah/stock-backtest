@@ -25,7 +25,7 @@ const steps=()=>JSON.parse(run('JSON.stringify(StrategyDraft.view())')),stepIds=
 const stepEvent=(type,step,key,value)=>el('strategy-steps').handlers[type]({target:{dataset:{step,key},value}});
 const stepButton=(action,step)=>el('strategy-steps').handlers.click({target:{closest:()=>({dataset:{action,step}})}});
 const addStep=(kind,choice)=>{el('add-'+kind).handlers.click();run('chooseStep("new",'+JSON.stringify(choice)+')');return run('StrategyDraft.read().changed');};
-assert.deepEqual(steps().map(row=>[row.kind,row.label]),[['filter','Market cap'],['filter','Enterprise value'],['rank','EV / EBITDA yield']]);
+assert.deepEqual(steps().map(row=>[row.kind,row.label]),[['filter','Market cap'],['filter','Enterprise value'],['rank','EBITDA / EV yield']]);
 assert(el('strategy-steps').innerHTML.includes('Highest first'));
 assert.equal(el('latest-view').hidden,false);assert.equal(el('custom-view').hidden,true);assert.equal(el('schedule-controls').hidden,true);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.asof'),latestDate);

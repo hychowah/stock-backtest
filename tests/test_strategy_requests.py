@@ -73,6 +73,11 @@ class StrategyTests(unittest.TestCase):
             for lane in ('yield', 'multiple'):
                 self.assertEqual(items['metric:' + name + ':' + lane]['storage'],
                                  dict(kind='metric', metric=name, component=lane, scale=0))
+        # A yield is named by its own ratio, the inverse of the multiple.
+        self.assertEqual([items['metric:' + name]['label'] for name in (
+            'ev_ebitda:yield', 'ev_ebitda:multiple', 'ev_ebitda_3y:yield', 'ev_ebitda_3y:multiple')],
+            ['EBITDA / EV yield', 'EV / EBITDA multiple',
+             '3-year average EBITDA / EV yield', 'EV / 3-year average EBITDA multiple'])
         self.assertEqual(items['filter:fcf']['unit'], 'USD')
         self.assertEqual(items['filter:fcf']['storage']['scale'], 6)
         self.assertEqual(items['filter:operating_yield_spread_3y']['display'], 'percentage_points')

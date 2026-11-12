@@ -86,13 +86,16 @@ def builtin_catalog():
     storage.scale is the decimal exponent from the saved lane to canonical units.
     Pair components remain independent; no reciprocal is calculated. Filter lanes
     keep the financial owner's display scale. Support says nothing about coverage.
+    A metric label names the multiple (EV / EBITDA). The yield is the inverse
+    ratio, so its label swaps the two sides (EBITDA / EV).
     """
     result = []
     for key, item in metrics.METRICS.items():
-        for component, label, display in [('yield', ' yield', 'percent'),
-                                           ('multiple', ' multiple', 'multiple')]:
+        inverse = ' / '.join(reversed(item['label'].split(' / ')))
+        for component, label, display in [('yield', inverse + ' yield', 'percent'),
+                                           ('multiple', item['label'] + ' multiple', 'multiple')]:
             result.append(dict(id='metric:' + key + ':' + component,
-                label=item['label'] + label, unit='scalar', display=display,
+                label=label, unit='scalar', display=display,
                 storage=dict(kind='metric', metric=key, component=component, scale=0)))
     dollars = {'market_cap', 'enterprise_value', 'fcf'}
     percentages = {'fcf_yield', 'profit_margin', 'operating_yield_spread_3y',

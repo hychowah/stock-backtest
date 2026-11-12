@@ -173,7 +173,7 @@ class MarketDataTests(unittest.TestCase):
             db.research.execute("UPDATE metadata SET value=json_set(value,'$.latest_dates',json(?)) WHERE key='identity'",
                                 (json.dumps(dict(hk='2020-01-03',jp='2020-01-03')),))
             cases=[]
-            # The default chain run by the service: size floors, then EV/EBITDA yield highest.
+            # The default chain run by the service: size floors, then EBITDA/EV yield highest.
             chain=s.capture_strategy(pipeline(*(dict(kind='filter',source=dict(kind='field',field=field),op='ge',threshold=dict(value=value,unit='usd_million'))
                                                 for field,value in (('market_cap','100'),('enterprise_value','50'))),rank_step(last=2)))
             for code,exchange in [('us','NYSE'),('hk','HKSE'),('jp','JPX')]:
