@@ -388,8 +388,8 @@ also says **Different** marks a setting that differs. When two tests differ in
 a setting that reads the same in plain wording, that row shows the exact text.
 A measure that a test does not have shows a dash. **Clear** removes every tick;
 another market button does too. The page reads a stored result one time, when
-you select Compare or open its Details; a failed read shows its reason above
-the rows.
+it is compared or its Details opens; a failed read shows its reason above the
+rows.
 
 Comparison reads saved results without recalculation. Legacy/current calendars
 and documented defaults compare consistently. Reordered AND conditions and

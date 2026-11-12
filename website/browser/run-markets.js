@@ -5,7 +5,6 @@ const RunMarkets=(()=>{
   const labels={'':'All',us:'US',hk:'Hong Kong',jp:'Tokyo'},storageKey='runs-market',counts={},listeners=[];
   let chosen='';
   try{chosen=localStorage.getItem(storageKey)||'';}catch(_){}
-  if(!(chosen in labels))chosen='';
   function render(){
     const all=Object.values(counts).flat();
     for(const button of document.getElementById('run-markets').querySelectorAll('button[data-market]')){

@@ -59,6 +59,7 @@ const SavedBacktests=(()=>{
   function render(){
     const list=node('saved-list'),known=new Set(records.map(record=>record.id));
     for(const kept of [ticked,viewed,failed,descriptions])for(const id of [...kept.keys()])if(!known.has(id))kept.delete(id);
+    if(!ticked.size)comparing=false;
     const opened=name=>new Set([...list.querySelectorAll('details[open][data-'+name+']')].map(control=>control.dataset[name]));
     const open=opened('menu'),exactOpen=opened('exact');
     const focused=document.activeElement,focusId=focused?.id,start=focused?.selectionStart,end=focused?.selectionEnd,shown=ordered();
@@ -223,14 +224,14 @@ const SavedBacktests=(()=>{
     // row shown, or none. Another market clears every tick.
     const ticks=(ids,checked)=>{
       for(const id of ids)if(checked){ticked.add(id);failed.delete(id);}else ticked.delete(id);
-      confirmTicked=false;if(!ticked.size)comparing=false;
+      confirmTicked=false;
       render();return load();
     };
     node('saved-list').addEventListener('change',event=>{
       const id=event.target.dataset.tick;if(id)return ticks([id],event.target.checked);
     });
     node('saved-tick-all').addEventListener('change',event=>ticks(ordered().map(record=>record.id),event.target.checked));
-    RunMarkets.changed(()=>{ticked.clear();comparing=false;confirmTicked=false;render();});
+    RunMarkets.changed(()=>{ticked.clear();confirmTicked=false;render();});
     // Native toggle does not bubble: capture it on the list. Opening Details reads that row's
     // description once. A list that is drawn again fires toggle for each open Details; it starts no second read.
     node('saved-list').addEventListener('toggle',event=>{
@@ -240,8 +241,8 @@ const SavedBacktests=(()=>{
       viewed.add(id);return load();
     },true);
     node('saved-comparison').addEventListener('click',event=>{
-      const data=event.target.dataset;if(busy||!data)return;
-      if('clear' in data){ticked.clear();comparing=false;confirmTicked=false;render();}
+      const data=event.target.dataset;if(busy)return;
+      if('clear' in data){ticked.clear();confirmTicked=false;render();}
       if('compare' in data){comparing=!comparing;renderPanel();return load();}
       if('deleteTicked' in data||'keepTicked' in data){confirmTicked='deleteTicked' in data;renderPanel();}
       if('confirmTicked' in data)return removeTicked();
