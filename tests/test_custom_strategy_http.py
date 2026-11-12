@@ -38,7 +38,7 @@ class HttpTests(ExecutionTests):
             response=client.getresponse();body=response.read()
             return response.status,body,dict(response.headers)
         finally:client.close()
-    def test_http_origin_and_experimental_admission_precede_work(self):
+    def test_http_experimental_admission_precedes_work(self):
         status,body,_=self.request('/api/backtest-runs/'+'a'*32,dict(mode='custom',options=self.options(engine='experimental')))
         self.assertEqual(status,400,body)
         failure=json.loads(body)
@@ -97,7 +97,7 @@ class HttpTests(ExecutionTests):
 
 
 def load_tests(loader,tests,pattern):
-    return unittest.TestSuite([*(HttpTests(name) for name in ('test_http_origin_and_experimental_admission_precede_work',
+    return unittest.TestSuite([*(HttpTests(name) for name in ('test_http_experimental_admission_precedes_work',
         'test_http_scalar_failures_keep_diagnostics_and_legacy_error_shape',
         'test_http_job_reader_and_complete_export_are_original_bytes'))])
 

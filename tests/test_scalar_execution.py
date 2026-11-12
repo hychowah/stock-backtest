@@ -128,6 +128,15 @@ class ScalarTests(unittest.TestCase):
         old=requests.intent(requests.builtin());old['pool']='cached'
         actual,_=fixture.select(s.capture_strategy(old))
         self.assertIn('A0007',[h['symbol'] for h in actual])
+    def test_formula_leaf_reads_are_narrow_and_read_only(self):
+        statements=[]
+        self.fixture.db.set_trace_callback(statements.append)
+        try:self.fixture.select(self.fixture.capture(),latest=True)
+        finally:self.fixture.db.set_trace_callback(None)
+        self.assertFalse(any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','REPLACE','CREATE','DROP')) for s in statements))
+        leaves=[s for s in statements if 'FROM research.annual_facts' in s]
+        self.assertTrue(leaves,statements)
+        self.assertTrue(all('symbol=' in s.lower() and 'limit ' in s.lower() for s in leaves),leaves)
     def test_orphan_snapshot_rejects_complete_scope(self):
         self.fixture.db.research.execute("DELETE FROM companies WHERE symbol='A0000'")
         with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture())
