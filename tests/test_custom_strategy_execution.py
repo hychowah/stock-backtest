@@ -60,29 +60,6 @@ class ExecutionTests(unittest.TestCase):
         patch.object(original_calculations.Original,'_financial',side_effect=financial).start()
         self.calc=original_calculations.Original()
     def options(self,**changes):return dict(strategy=self.capture.to_dict(),start='2015-01-02',end='2015-01-05',months=12,**changes)
-    def test_coverage_owns_and_closes_both_private_connections(self):
-        listing=self.calc.coverage()
-        self.assertFalse(self.financial);self.assertFalse(self.opened)
-        scope=next(item for item in listing['scopes'] if item['mode']=='latest' and item['pool']=='cached')
-        value=self.calc.coverage(self.capture.to_dict(),dict(scope,generation=listing['generation']))
-        self.assertEqual(value['population'],12)
-        self.assertFalse(self.financial);self.assertFalse(self.opened)
-        with self.assertRaises(ValueError):self.calc.coverage(self.capture.to_dict(),dict(scope,generation='0'*64))
-        self.assertFalse(self.financial);self.assertFalse(self.opened)
-    def test_coverage_mid_evaluation_cancellation_closes_resources(self):
-        from backtest.application import variable_coverage
-        listing=self.calc.coverage();scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-        real=variable_coverage.columns.Formulas.evaluate;calls=[]
-        def interrupt(formulas,roots,view,checkpoint,**keywords):
-            def check():
-                calls.append(1)
-                if len(calls)==10:raise backtest_control.Cancelled()
-                checkpoint()
-            return real(formulas,roots,view,check,**keywords)
-        with patch.object(variable_coverage.columns.Formulas,'evaluate',interrupt):
-            with self.assertRaises(backtest_control.Cancelled):
-                self.calc.coverage(self.capture.to_dict(),dict(scope,generation=listing['generation']))
-        self.assertEqual(len(calls),10);self.assertFalse(self.opened);self.assertFalse(self.financial)
     def run_result(self,mode='custom',options=None,planned=None):
         stream=io.BytesIO();config=[]
         completion=self.calc.calculate_into(mode,options or self.options(),stream,None,config.append,planned=planned)
@@ -344,14 +321,6 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(self.opened);self.assertFalse(self.financial)
         with self.assertRaises(ValueError):result_evidence.open_reader(stream,max_bytes=256*1024**2)
 
-    def test_preview_future_context_is_rejected_before_financial_ownership(self):
-        import test_variable_definitions as language
-        local=language.entry(language.definition(dict(op='at',date='2020-01-01',arg=language.constant('1'))),'draft:future')
-        capture=s.capture_strategy(requests.intent(requests.formula(local)),submitted=[local])
-        with patch.object(self.calc,'_financial',side_effect=AssertionError('No financial access')):
-            with self.assertRaises(ValueError) as caught:
-                self.calc.preview(capture.to_dict(),[dict(symbol='A0000',pool='cached',mode='historical',date='2015-01-02')])
-        self.assertEqual(caught.exception.code,'FUTURE_DATE')
     def test_unknown_options_are_rejected_before_financial_ownership(self):
         with patch.object(self.calc,'_financial',side_effect=AssertionError('No financial access')):
             with self.assertRaises(ValueError):self.calc.calculate_into('custom',self.options(unknown=True),io.BytesIO(),None,None)

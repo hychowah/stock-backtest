@@ -128,36 +128,6 @@ class Original(Control):
         """
         return dict(engines=[dict(id=self.engine,calendar=self.calendar_version)],markets=['us','hk','jp'])
 
-    def preview(self, capture, roots, *, admission='interactive', engine='original', market='us'):
-        """Explain explicit Original samples under ordinary input lifetime."""
-        from backtest.application import scalar_execution
-        from backtest.inputs import fact_view, operation_inputs
-        strategy_requests.preview_engine(engine)
-        # check_options restores the capture once (one compile); the preview reuses its checked program.
-        projection=scalar_execution.check_preview(strategy_requests.check_options({'strategy':capture,'market':market}),roots)
-        with self._financial(admission,None):
-            if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
-            with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint,market=market) as view:
-                    value=scalar_execution.evaluate_preview(projection,roots,view,checkpoint=self._checkpoint)
-        return dict(value,producer=dict(engine='original',label='Original sample preview'))
-
-    def coverage(self, capture=None, scope=None, *, admission='interactive', market='us'):
-        """Discover or inspect recorded scopes under ordinary financial ownership."""
-        from backtest.application import variable_coverage
-        from backtest.inputs import fact_view, operation_inputs
-        # check_options restores the capture once (one compile); inspect reuses its checked program.
-        options={'market':market}
-        if capture is not None:options['strategy']=capture
-        checked=strategy_requests.check_options(options)
-        with self._financial(admission,None):
-            if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
-            with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint,market=market) as view:
-                    value=(variable_coverage.scopes(inputs.db,view) if checked is None else
-                           variable_coverage.inspect(checked,scope,inputs.db,view,checkpoint=self._checkpoint))
-        return dict(value,producer=dict(engine='original',label='Original coverage'))
-
     @diagnostics.operation('backtest.run')
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
                        admission='interactive', max_bytes=256*1024**2, piece_bytes=1024*1024, record_bytes=8*1024*1024):

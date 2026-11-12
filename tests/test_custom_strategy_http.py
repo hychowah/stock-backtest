@@ -1,4 +1,4 @@
-"""WSL loopback-only scalar admission, preview and immutable HTTP reader surface."""
+"""WSL loopback-only scalar admission and immutable HTTP reader surface."""
 import sys
 from pathlib import Path
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
@@ -38,22 +38,7 @@ class HttpTests(ExecutionTests):
             response=client.getresponse();body=response.read()
             return response.status,body,dict(response.headers)
         finally:client.close()
-    def test_http_preview_is_explicit_bounded_and_does_not_create_job(self):
-        roots=[dict(symbol='A0000',pool='cached',mode='historical',date='2015-01-02')]
-        status,body,_=self.request('/api/variable-preview',dict(strategy=self.capture.to_dict(),roots=roots))
-        self.assertEqual(status,200,body)
-        self.assertEqual(json.loads(body)['population'],'explicit-request-scopes')
-        self.assertEqual(json.loads(body)['producer']['engine'],'original')
-        self.assertEqual(self.manager.runs,{})
-        status,body,_=self.request('/api/variable-preview',dict(strategy=self.capture.to_dict(),roots=roots,engine='experimental'))
-        self.assertEqual(status,400,body)
-        self.assertEqual((json.loads(body)['code'],json.loads(body)['path']),('UNSUPPORTED_CAPABILITY','/engine'))
-        self.assertFalse(self.opened);self.assertFalse(self.manager.runs)
-        status,body,_=self.request('/api/variable-preview',dict(strategy=self.capture.to_dict(),roots=roots*17))
-        self.assertEqual(status,400)
-        self.assertEqual(json.loads(body)['code'],'WORK_LIMIT')
     def test_http_origin_and_experimental_admission_precede_work(self):
-        self.assertEqual(self.request('/api/variable-preview',{},headers={'Origin':'http://foreign.test'})[0],403)
         status,body,_=self.request('/api/backtest-runs/'+'a'*32,dict(mode='custom',options=self.options(engine='experimental')))
         self.assertEqual(status,400,body)
         failure=json.loads(body)
@@ -112,8 +97,8 @@ class HttpTests(ExecutionTests):
 
 
 def load_tests(loader,tests,pattern):
-    return unittest.TestSuite([*(HttpTests(name) for name in ('test_http_preview_is_explicit_bounded_and_does_not_create_job',
-        'test_http_origin_and_experimental_admission_precede_work','test_http_scalar_failures_keep_diagnostics_and_legacy_error_shape',
+    return unittest.TestSuite([*(HttpTests(name) for name in ('test_http_origin_and_experimental_admission_precede_work',
+        'test_http_scalar_failures_keep_diagnostics_and_legacy_error_shape',
         'test_http_job_reader_and_complete_export_are_original_bytes'))])
 
 if __name__=='__main__':unittest.main()

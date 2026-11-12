@@ -9,12 +9,12 @@ const exact={variable_id:'variable:one',revision:'sha256:'+'1'.repeat(64)};
 const definition={format:'variable-definition',version:1,parameter_catalog:'financial-parameters/1',temporal_policy:'annual-lag90/1',expression:{op:'constant',value:'2',unit:'scalar'},output:{unit:'scalar',display:'number'}};
 const entry={...exact,name:'Saved source',version:1,favourite:false,deleted:false};
 const capture={program:{bundle:{definitions:[{...exact,definition}]},definitions:[{...exact,unit:'scalar',display:'number'}]},presentation:[{...exact,name:entry.name}]};
-let revision=3,draftSources={},draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,authoredFailure=false,captureWait=null,coverageWait=null,previewCount=0,conflict=false,patchFailure=null,useWire=false,lastWireValidation=null;
+let revision=3,draftSources={},draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,authoredFailure=false,conflict=false,patchFailure=null,useWire=false,lastWireValidation=null;
 const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null,wire=wireOrigin?JSON.parse(fs.readFileSync(0,'utf8')):null;
 const timers=new Map();let timerId=0;
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
-const context=vm.createContext({console,document,AbortController,setTimeout:callback=>{timers.set(++timerId,callback);return timerId;},clearTimeout:id=>timers.delete(id),VariableEvidence:{preview:value=>{assert.equal(value.population,'explicit-request-scopes');return '<p>3 requested samples; not complete-pool coverage</p>';}},crypto:require('node:crypto').webcrypto,Uint8Array,fetch:async(url,options={})=>{
- const body=options.body?JSON.parse(options.body):null;calls.push({url,body,signal:options.signal});
+const context=vm.createContext({console,document,setTimeout:callback=>{timers.set(++timerId,callback);return timerId;},clearTimeout:id=>timers.delete(id),crypto:require('node:crypto').webcrypto,Uint8Array,fetch:async(url,options={})=>{
+ const body=options.body?JSON.parse(options.body):null;calls.push({url,body});
  if(useWire){
   if(options.body)assert(Buffer.byteLength(options.body)<=256*1024);
   if(url.endsWith('/authored')){const item=wire.shared.references.find(item=>item.source.variable_id===body.variable_id&&item.source.revision===body.revision);assert(item);return response(item.snapshot);}
@@ -28,10 +28,6 @@ const context=vm.createContext({console,document,AbortController,setTimeout:call
  if(url.endsWith('/validate')){if(validationWait)await validationWait();return response({root:{variable_id:body.variable_id,revision:exact.revision},output:{unit:body.definition.output.unit,display:body.definition.output.display},requirements:[],capture,authored:[...(body.submitted||[]),{variable_id:body.variable_id,revision:exact.revision,definition:body.definition}]});}
  if(url.endsWith('/save')){if(saveWait)await saveWait();return conflict?response({error:'Entry changed',code:'VERSION_CONFLICT'},409):response({...entry,name:body.name,version:2});}
  if(url.endsWith('/favourite'))return response({...entry,version:2,favourite:true});
- if(url.endsWith('/capture')){if(captureWait)await captureWait();return response({strategy:{selection:body.intent.selection,bounds:{}}});}
- if(url==='/api/variable-coverage/scopes')return response({generation:'a'.repeat(64),scopes:[{mode:'latest',context_date:'2015-01-05',pool:'cached',book:0},{mode:'historical',context_date:'2015-01-02',pool:'cached',book:2015}]});
- if(url==='/api/variable-coverage/inspect'){if(coverageWait)await coverageWait();return response({generation:body.scope.generation,projection:{content:'b'.repeat(64)},scope:body.scope,population:4,outputs:[{...exact,valid:4,unavailable:0,reasons:{}}]});}
- if(url==='/api/variable-preview'){previewCount++;return response({population:'explicit-request-scopes',roots:body.roots});}
  throw Error('Unexpected route '+url);
 }});
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/browser/variable-workspace.js'),'utf8'),context);
@@ -44,7 +40,7 @@ const check=async()=>{flush();await tick();await tick();};
 // Roles are browser step IDs, or the kind of a new step.
 const describe=role=>({s1:{title:'Step 1 · Rank',use:'Update step 1'},s2:{title:'Step 2 · Filter',use:'Update step 2'},filter:{title:'New filter',use:'Add as filter'}}[role]);
 context.draft={read:()=>({revision,detached:draftDetached}),source:role=>draftSources[role]??null,describe,patch:(change,expected)=>{if(patchFailure)throw Error(patchFailure);assert.equal(expected,revision,'Stale picker apply');applied.push(structuredClone(change));revision++;}};
-run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
+run("VariableWorkspace.init({draft})");
 (async()=>{
  await run("VariableWorkspace.open('s1')");
  assert(node('variable-dialog').open);assert.equal(document.activeElement.id,'variable-search');
@@ -94,9 +90,6 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  // A late validation cannot relabel new edits as checked.
  let release;validationWait=()=>new Promise(resolve=>release=resolve);flush();await tick();
  node('variable-name').value='Newer local name';event('variable-name','input');release();validationWait=null;await tick();assert.equal(node('variable-check').dataset.state,'pending');assert(!node('variable-explanation').textContent.includes('Results shown as'));
- node('variable-preview-symbols').value=Array(17).fill('A').join(',');await click('variable-preview');assert.equal(previewCount,0);assert(node('variable-errors').textContent.includes('1–16'));
- node('variable-preview-symbols').value='A0000,A0001,UNKNOWN';node('variable-preview-mode').value='historical';await click('variable-preview');await tick();
- assert.equal(previewCount,1);assert.equal(calls.at(-1).body.engine,'original');assert.equal(calls.at(-1).body.roots.length,3);assert.deepEqual(Object.keys(calls.at(-1).body.roots[0]).sort(),['date','mode','pool','symbol']);assert(node('variable-preview-result').innerHTML.includes('not complete-pool coverage'));
  // Exact library selection remains explicit. Save conflict preserves raw text.
  const pick={dataset:{library:exact.variable_id,revision:exact.revision},closest(){return this;}};
  event('variable-picker','click',pick);await tick();assert.equal(applied.length,0);assert.equal(node('variable-selected').textContent,'Saved in My variables');assert(node('variable-selected').title.includes(exact.revision));
@@ -131,33 +124,8 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  const authoredBefore=calls.filter(call=>call.url.endsWith('/authored')).length;
  await run("VariableWorkspace.open('s1')");assert.equal(node('variable-name').value,'Original detached name');assert.equal(node('variable-selected').textContent,'Used by this strategy · not in My variables');assert(node('variable-favourite').disabled);assert.equal(calls.filter(call=>call.url.endsWith('/authored')).length,authoredBefore);
  assert.deepEqual(JSON.parse(node('variable-json').value),definition.expression);await click('variable-apply');assert.equal(applied.length,2);assert.equal(applied.at(-1).source.revision,exact.revision);
- // Inspection must be fenced before validation or capture can yield.
  draftSources={};draftDetached=[];
- await run("VariableWorkspace.open('s1')");await click('variable-coverage-scopes');
- const inspections=()=>calls.filter(call=>call.url==='/api/variable-coverage/inspect');
- for(const stage of ['validation','capture']){
-  node('variable-coverage-scope').value='0';event('variable-coverage-scope','change');
-  const before=inspections().length;
-  const wait=()=>new Promise(resolve=>release=resolve);
-  if(stage==='validation')validationWait=wait;else captureWait=wait;
-  event('variable-coverage-inspect','click');await tick();
-  node('variable-coverage-scope').value='1';event('variable-coverage-scope','change');
-  release();validationWait=null;captureWait=null;await tick();await tick();
-  assert.equal(inspections().length,before,'Scope change during '+stage+' must prevent inspection');
-  assert.equal(node('variable-coverage-result').textContent,'');
- }
- // An uncooperative fetch can finish after abort. Its response must stay stale.
- coverageWait=()=>new Promise(resolve=>release=resolve);
- event('variable-coverage-inspect','click');await tick();const pendingInspection=inspections().at(-1);
- node('variable-coverage-scope').value='0';event('variable-coverage-scope','change');
- assert.equal(pendingInspection.signal.aborted,true);release();coverageWait=null;await tick();await tick();
- assert.equal(node('variable-coverage-result').textContent,'');
- await click('variable-coverage-inspect');await tick();assert(node('variable-coverage-result').textContent.includes('latest, 2015-01-05, cached'));
- // Rediscovery also supersedes the operation while formula validation waits.
- validationWait=()=>new Promise(resolve=>release=resolve);const beforeDiscovery=inspections().length;
- event('variable-coverage-inspect','click');await tick();await click('variable-coverage-scopes');release();validationWait=null;await tick();await tick();
- assert.equal(inspections().length,beforeDiscovery);
- assert.equal(node('variable-coverage-result').textContent,'Select a recorded scope to inspect.');
+ await run("VariableWorkspace.open('s1')");
  // Applying while the source picker is pending applies the whole formula.
  const beforePendingApply=applied.length,pendingExpression=current();operate('source');await click('variable-apply');
  assert.equal(applied.length,beforePendingApply+1);assert.equal(applied.at(-1).role,'s1');
@@ -237,5 +205,5 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
   assert.equal(calls.at(-1).body.submitted.length,9);assert.equal(calls.at(-1).body.labels.length,9);assert(!('detached' in calls.at(-1).body));
  }
  assert(!calls.some(call=>call.url.includes('/api/backtest-')));assert.equal(errors.length,0);
- console.log('Passed: automatic checks, empty-term guidance, plain save state, direct list sources, editable equation composition, term selection, parameter insertion, exact decimal edits, removal, undo/redo, tree/JSON round trip, grouping, stale validation, exact picker, explicit bounded preview, optimistic conflict, save race, favourite, apply and keyboard focus; no jobs.');
+ console.log('Passed: automatic checks, empty-term guidance, plain save state, direct list sources, editable equation composition, term selection, parameter insertion, exact decimal edits, removal, undo/redo, tree/JSON round trip, grouping, stale validation, exact picker, optimistic conflict, save race, favourite, apply and keyboard focus; no jobs.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

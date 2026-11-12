@@ -1,15 +1,14 @@
 """Complete prepared scopes to scalar selected books and detached explanations.
 
 Only this adapter combines captured source lanes. The borrowed view
-(backtest/inputs/fact_view.View) owns financial meanings and the admission of
-explicit preview roots; the column evaluator (backtest/variables/columns.py)
-owns formula values and their explanations. One global scalar selection
-follows complete evaluation of the prepared scope. A prepared scope is one
-complete pool of a stored book, named by its book id and checked once by
-book_store.require_scope. A stored row is its root's admission: books.book
-stored only the companies that books.Screen.decide admitted, with their
-candidate rank and entry valuation. The caller owns the admitted connection
-and view, cancellation and the evidence sink.
+(backtest/inputs/fact_view.View) owns financial meanings; the column evaluator
+(backtest/variables/columns.py) owns formula values and their explanations.
+One global scalar selection follows complete evaluation of the prepared scope.
+A prepared scope is one complete pool of a stored book, named by its book id
+and checked once by book_store.require_scope. A stored row is its root's
+admission: books.book stored only the companies that books.Screen.decide
+admitted, with their candidate rank and entry valuation. The caller owns the
+admitted connection and view, cancellation and the evidence sink.
 """
 from decimal import Decimal
 import hashlib
@@ -25,41 +24,10 @@ from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
-MAX_PREVIEW_BYTES = 16 * 1024 * 1024
 
 
 def _size(value):
     return len(definitions.canonical(value).encode('ascii'))
-
-
-def check_preview(checked, roots):
-    """Check a sample preview of a restored strategy before financial ownership; return its program projection.
-
-    checked is the strategy that strategy_requests.check_options restored. A
-    preview evaluates 1–16 explicit company/date roots and never certifies
-    pool coverage.
-    """
-    if type(roots) is not list or not 1 <= len(roots) <= 16:
-        raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Preview needs 1–16 explicit company/date roots.')
-    if checked['variables'] is None:
-        raise definitions.FormulaError('INVALID_STRATEGY', '/preview', 'A formula preview requires captured formula roots.')
-    projection = checked['variables']['program']
-    columns.require_roots(roots)
-    columns.Formulas(projection).require_contexts(roots)
-    return projection
-
-
-def evaluate_preview(projection, roots, view, *, checkpoint=backtest_control.checkpoint):
-    """Explain explicit checked roots with the column evaluator; no complete-pool claim is made.
-
-    A request names no book: a book id is a handle (book_store). The view
-    admits each root (books.Screen.decide); a latest root, on the latest date,
-    reads the open book's stored owner lanes.
-    """
-    block = columns.Formulas(projection).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
-    if _size(block) > MAX_PREVIEW_BYTES:
-        raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Complete preview exceeds its encoded byte ceiling.')
-    return dict(population='explicit-request-scopes', requested=roots, evaluations=[block])
 
 
 def _scope(db, capture, book, entry, exit_day=None, *, latest, market='us'):

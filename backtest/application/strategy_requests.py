@@ -494,7 +494,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
     rejected rather than guessed. Unsupported engines fail without fallback.
     Routes, jobs and queue admission use this owner for new scalar submissions.
     Return the restored strategy: one compile (from_wire) checks its formula
-    program, and preview and coverage pass the result on.
+    program, and scalar runs pass the result on.
     """
     if type(options) is not dict:
         _fail('INVALID_STRATEGY', '', 'Calculation options must be an object.')
@@ -577,13 +577,6 @@ def log_fields(options):
         chain = selection.steps(screening.legacy_specification(**fields))
         kind = 'builtin'
     return dict(market=options.get('market', 'us'), ranking_source_kind=kind, step_count=len(chain))
-
-
-def preview_engine(engine='original'):
-    """Sample preview explicitly uses Original, independent of run selection."""
-    if engine!='original':
-        _fail('UNSUPPORTED_CAPABILITY','/engine','Sample preview supports Original execution only.')
-    return engine
 
 
 def require_mode(mode):

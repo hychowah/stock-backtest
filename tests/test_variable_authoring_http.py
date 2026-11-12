@@ -19,29 +19,6 @@ import test_strategy_requests as strategy
 
 
 class AuthoringHttpTests(ExistingHttp):
-    def test_inspection_rejects_non_object_strategy_before_financial_work(self):
-        with patch.object(self.calc,'coverage',side_effect=AssertionError('Malformed inspection must not enter coverage')) as inspect:
-            for strategy in (None,False,0,'strategy',[]):
-                status,body,_=self.request('/api/variable-coverage/inspect',dict(strategy=strategy,scope='not a scope'))
-                self.assertEqual(status,400,body)
-            inspect.assert_not_called()
-        self.assertFalse(self.manager.runs);self.assertFalse(self.opened)
-    def test_coverage_transport_is_exact_and_allocates_no_job(self):
-        status,listing,_=self.request('/api/variable-coverage/scopes',{})
-        self.assertEqual(status,200,listing);listing=json.loads(listing)
-        scope=next(item for item in listing['scopes'] if item['pool']=='cached' and item['mode']=='latest')
-        payload=dict(strategy=self.capture.to_dict(),scope=dict(scope,generation=listing['generation']))
-        status,result,_=self.request('/api/variable-coverage/inspect',payload)
-        self.assertEqual(status,200,result);self.assertEqual(json.loads(result)['population'],12)
-        for bad in (dict(payload,extra=True),dict(payload,scope=dict(payload['scope'],book=False)),
-                    dict(payload,scope=dict(payload['scope'],generation='0'*64)),
-                    dict(payload,scope=dict(payload['scope'],book=float('nan'))),
-                    dict(payload,scope=dict(payload['scope'],unexpected=1)),
-                    dict(payload,scope=[])):
-            status,_,_=self.request('/api/variable-coverage/inspect',bad);self.assertEqual(status,400)
-        with patch.object(strategy_requests,'REQUEST_BYTES',16):
-            status,_,_=self.request('/api/variable-coverage/inspect',payload);self.assertEqual(status,400)
-        self.assertFalse(self.manager.runs);self.assertFalse(self.opened)
     def setUp(self):
         super().setUp();self.server.variable_store=library.Store(Path(self.folder.name)/'variables.sqlite')
     def post(self,path,value):
@@ -51,7 +28,7 @@ class AuthoringHttpTests(ExistingHttp):
         store=self.server.variable_store
         status,body,_=self.request('/api/variables',method='GET');self.assertEqual(status,200);self.assertEqual(json.loads(body),{'entries':[]})
         status,body,_=self.request('/api/variables/catalog',method='GET');self.assertEqual(status,200);self.assertEqual(len(json.loads(body)['parameters']),4)
-        with patch.object(self.calc,'preview',side_effect=AssertionError('Validation must not calculate')):
+        with patch.object(self.calc,'calculate_into',side_effect=AssertionError('Validation must not calculate')):
             status,value=self.post('/validate',dict(definition=language.definition(),name='Unsaved'))
         self.assertEqual(status,200,value);self.assertFalse(store.path.exists());self.assertFalse(self.manager.runs)
     def test_typed_formula_validates_or_returns_positioned_and_plain_errors(self):
@@ -94,7 +71,7 @@ class AuthoringHttpTests(ExistingHttp):
                            dict(op='annual',parameter='market.enterprise_value',stat='mean',count=3),
                            dict(op='annual',parameter='annual.operating_margin',stat='mean',count=0)]:
             definition=language.definition(expression);before=json.dumps(definition)
-            with patch.object(self.calc,'preview',side_effect=AssertionError('Authoring is financial-free')):
+            with patch.object(self.calc,'calculate_into',side_effect=AssertionError('Authoring is financial-free')):
                 status,error=self.post('/validate',dict(definition=definition,name='Kept draft'))
             self.assertEqual(status,400,error);self.assertIn('/expression',error['path']);self.assertEqual(json.dumps(definition),before)
         self.assertFalse(self.manager.runs);self.assertFalse(self.server.variable_store.path.exists())
@@ -177,7 +154,7 @@ class AuthoringHttpTests(ExistingHttp):
                 self.assertEqual(process.returncode,0,process.stdout+process.stderr)
         self.assertFalse(self.manager.runs);self.assertFalse(self.server.variable_store.path.exists())
 
-    def test_real_javascript_json_roundtrip_preview_submission_retry_and_queue(self):
+    def test_real_javascript_json_roundtrip_submission_retry_and_queue(self):
         def browser(value):
             process=subprocess.run(['node','-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));'],
                 input=json.dumps(value),text=True,capture_output=True,check=True)
@@ -187,8 +164,6 @@ class AuthoringHttpTests(ExistingHttp):
         status,prepared=self.post('/capture',browser(dict(intent=strategy.intent(dict(kind='formula',**checked['root'])),market='us',detached=[checked['capture']])))
         self.assertEqual(status,200,prepared)
         wire=browser(prepared['strategy']);self.assertIs(type(wire['bounds']['min_cap']),int)
-        status,body,_=self.request('/api/variable-preview',browser(dict(strategy=wire,roots=[dict(symbol='A0000',pool='legacy',mode='historical',date='2015-01-02')])))
-        self.assertEqual(status,200,body);self.assertFalse(self.manager.runs)
         # A stale tab or an API client that still sends January is refused, never converted.
         payload=browser(dict(mode='january',options=dict(strategy=wire,first=2015,last=2015)))
         status,body,_=self.request('/api/backtest-runs/'+'9'*32,payload)

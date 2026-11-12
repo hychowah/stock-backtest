@@ -1040,20 +1040,12 @@ one complete pool of a stored book, named by its book id; a latest scope names
 the open book, and `book_store.require_scope` is its one check. A book id is a
 handle, not a durable name: it names one book only while the cache keeps it,
 and SQLite can reuse a deleted id. A recorded `owner_scope.book` is a label,
-never a lookup key outside the operation or coverage generation that made it.
+never a lookup key outside the operation that made it.
 The owner lanes of a stored-book root are that book's stored lanes
 (`book_store.market_caps` and `lanes`, one read per book pool), read in place; a
 missing row never falls back to a recalculation. Every root of a latest or
-dated scope names its book in a prepared owner scope; a latest preview root
-reads the open book. A scope root's admission is its stored row, with the
-stored candidate rank and entry valuation. An explicit preview root is
-admitted by `books.Screen.decide`: a latest root by the latest book's screen
-(listed companies, the exact session), a historical root by its date's
-screen. A historical decision that reaches the entry valuation keeps the
-lookups that the view's recording facts port saw. A request names no book: a
-preview root is exactly its company, pool, mode and date. A coverage request
-names only a scope that discovery listed in the same generation (the open
-book's pools).
+dated scope names its book in a prepared owner scope. A scope root's admission
+is its stored row, with the stored candidate rank and entry valuation.
 
 Annual resolution (`financial_inputs.resolve_history`) keeps every admitted
 endpoint and fiscal date, even when every requested field is unavailable.
@@ -1105,9 +1097,8 @@ operation. The borrowed view reads each company, day and source once.
 The evaluator supports all 57 direct inputs plus operating margin, existing
 dated EV and the reusable measure adapters. The 33 named measures use immutable
 ordinary definitions and exact references. A stored-book root consumes its
-book's stored owner lanes. An explicit historical preview root and every
-derived context use dated owner policy (`books.owner_values` at the context
-date), even at the root date. Values-only evaluation builds no evidence;
+book's stored owner lanes. Every derived context uses dated owner policy
+(`books.owner_values` at the context date), even at the root date. Values-only evaluation builds no evidence;
 detail mode explains the selected rows only. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
 dates. Only those named annual adapters support annual history. A new research
@@ -1118,9 +1109,8 @@ inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,
 `definitions.require_program()`, is the one formula gate, and the one evaluator
 implements the whole language. Restored captures run through Original in
-latest, fixed and random modes; a January request is refused. Original sample
-preview and complete recorded latest coverage are separate operations. Eager scalar execution
-remains unsupported. Old definitions, captures, artifacts and durable records
+latest, fixed and random modes; a January request is refused. Eager scalar
+execution remains unsupported. Old definitions, captures, artifacts and durable records
 retain their bytes. Private synthetic tests establish source correctness, not
 native/live-cache coverage. No download, publication to main or running-server
 update is implied.

@@ -9,15 +9,12 @@ from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 import subprocess
 import unittest
-from unittest.mock import Mock
 from backtest.variables import columns, definitions as d, parameters, library
-from backtest.application import strategy_requests as s, scalar_execution, variable_authoring
+from backtest.application import strategy_requests as s, variable_authoring
 from test_columns import Company, annual
 from test_variable_definitions import definition, constant, entry, root, bundle, binary
 from test_strategy_requests import intent, formula, condition
 from test_parameter_contract import expanded
-
-ROOTS=[dict(symbol='A',pool='cached',mode='historical',date='2015-01-02')]
 
 
 def capture(entries):
@@ -47,15 +44,6 @@ class AdmissionTests(unittest.TestCase):
                 self.assertEqual(d.require_program(program),program.to_dict())
                 options=dict(strategy=captured.to_dict(),engine='original')
                 self.assertEqual(s.check_options(options),captured.to_dict())
-
-    def test_column_evaluator_accepts_constants_old_inputs_and_unused_v2_definitions(self):
-        # Evaluation of these programs reaches input admission.
-        for entries in (list(expanded_cases())[0],list(expanded_cases())[1],list(expanded_cases())[-1]):
-            program=d.validate(bundle(*entries,roots=[root(entries[0])]))
-            inputs=Mock();inputs.admit.side_effect=AssertionError('Column evaluation reached inputs')
-            with self.assertRaisesRegex(AssertionError,'Column evaluation reached inputs'):
-                scalar_execution.evaluate_preview(d.require_program(program),ROOTS,inputs)
-            inputs.admit.assert_called_once()
 
     def test_the_evaluator_implements_every_operation_statistic_and_parameter(self):
         for catalog in (parameters.V3, parameters.V4):

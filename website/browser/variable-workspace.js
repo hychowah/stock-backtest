@@ -22,7 +22,7 @@ const VariableWorkspace=(()=>{
   // Catalog descriptions can append caveats after a semicolon.
   const parameterName=item=>String(item.description).split(';')[0].trim();
   const opNames={parameter:'Parameter',constant:'Constant',add:'Add (+)',sub:'Subtract (−)',mul:'Multiply (×)',div:'Divide (÷)',positive_div:'Divide by a positive value',neg:'Negate (−)',annual:'Annual statistic',at:'Value at date',lookback:'Value months earlier',ref:'Exact saved reference'};
-  let callbacks={},catalog=null,entries=[],editor=null,role=null,draftRevision=0,generation=0,mutation=0,listRequest=0,validation=0,preview=0,editRevision=0,returnFocus=null,sourceSelection=null,authoredRequest=0,coverageAbort=null,coverageVersion=0,coverageScopes=null,checkTimer=null;
+  let callbacks={},catalog=null,entries=[],editor=null,role=null,draftRevision=0,generation=0,mutation=0,listRequest=0,validation=0,editRevision=0,returnFocus=null,sourceSelection=null,authoredRequest=0,checkTimer=null;
   // Edits are checked after a short pause; Use and Save always check first.
   const CHECK_DELAY=400;
   function message(text,error=false){node('variable-message').textContent=text;node('variable-message').className=error?'backtest-failed':'hint';}
@@ -50,7 +50,7 @@ const VariableWorkspace=(()=>{
     const local=generation;
     checkTimer=setTimeout(()=>{checkTimer=null;if(local===generation&&node('variable-dialog').open)validate().catch(failure=>{if(local===generation)error(failure);});},CHECK_DELAY);
   }
-  function invalidate(){validation++;preview++;editRevision++;coverageVersion++;coverageAbort?.abort();if(editor){editor.checked=null;node('variable-explanation').textContent=describe(editor.definition.expression);}node('variable-errors').textContent='';node('variable-preview-result').textContent='';node('variable-coverage-result').textContent='';scheduleCheck();}
+  function invalidate(){validation++;editRevision++;if(editor){editor.checked=null;node('variable-explanation').textContent=describe(editor.definition.expression);}node('variable-errors').textContent='';scheduleCheck();}
   function describe(expression){
     if(!expression||typeof expression!=='object')return 'Invalid expression';
     const op=expression.op;
@@ -137,7 +137,7 @@ const VariableWorkspace=(()=>{
     if(op==='constant')return {op,value:'1',unit:'scalar'};
     if(op==='annual')return {op,stat:'mean',count:3,parameter:old?.op==='parameter'&&old.id.startsWith('annual.')?old.id:old?.parameter||'annual.operating_margin'};
     if(op==='ref')return {op,variable_id:'',revision:''};
-    if(op==='at')return {op,date:node('variable-preview-date').value||'2025-01-02',arg:old||defaultExpression()};
+    if(op==='at')return {op,date:'2025-01-02',arg:old||defaultExpression()};
     if(op==='lookback')return {op,months:12,arg:old||defaultExpression()};
     if(op==='neg')return {op,arg:old||defaultExpression()};
     return {op,left:old||defaultExpression(),right:{op:'constant',value:'1',unit:'scalar'}};
@@ -274,39 +274,6 @@ const VariableWorkspace=(()=>{
     if(local!==generation)return;editor.entry=result;renderEditor();message(action==='delete'?'Deleted from My variables. Strategies that already use it keep their own copy.':result.favourite?'Added to favourites.':'Removed from favourites.');
     try{await refresh();}catch(_){message('Change saved. The list could not refresh; use Refresh variables.');}
   }
-  async function previewSamples(){
-    const local=generation,checked=await validate();if(!checked||local!==generation)return;
-    const symbols=node('variable-preview-symbols').value.split(',').map(s=>s.trim()).filter(Boolean);
-    if(symbols.length<1||symbols.length>16)throw Error('Preview needs 1–16 explicit company symbols.');
-    const number=++preview,rootDate=node('variable-preview-date').value,mode=node('variable-preview-mode').value;
-    const prepared=await request('/capture',{intent:{format:'strategy-intent',version:1,selection:{ranking:{source:{kind:'formula',...checked.root},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:callbacks.pool?.()||'legacy',bounds:{}},market:callbacks.market?.()||'us',detached:[checked.capture]});
-    if(local!==generation||number!==preview)return;
-    const roots=symbols.map((symbol,index)=>({symbol,pool:callbacks.pool?.()||'legacy',mode,date:rootDate}));
-    const response=await fetch('/api/variable-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:prepared.strategy,roots,engine:'original',market:callbacks.market?.()||'us'})});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);
-    if(local!==generation||number!==preview)return;
-    node('variable-preview-result').innerHTML=VariableEvidence.preview(value);
-  }
-  async function coverageCall(path,body,signal){const response=await fetch('/api/variable-coverage/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);return value;}
-  async function discoverCoverage(){
-    coverageAbort?.abort();coverageAbort=new AbortController();const number=++coverageVersion,local=generation;
-    const value=await coverageCall('scopes',{market:callbacks.market?.()||'us'},coverageAbort.signal);if(number!==coverageVersion||local!==generation)return;
-    coverageScopes=value;node('variable-coverage-scope').innerHTML=value.scopes.map((s,i)=>`<option value="${i}">${esc(s.mode)} · ${esc(s.context_date)} · ${esc(s.pool)}</option>`).join('');
-    node('variable-coverage-result').textContent='Select a recorded scope to inspect.';
-  }
-  async function inspectCoverage(){
-    if(!coverageScopes)throw Error('Find recorded scopes first.');
-    const selected=coverageScopes.scopes[Number(node('variable-coverage-scope').value)];if(!selected)throw Error('Select a recorded scope.');
-    coverageAbort?.abort();const controller=new AbortController();coverageAbort=controller;
-    const number=++coverageVersion,local=generation,discoveredGeneration=coverageScopes.generation;
-    const current=()=>number===coverageVersion&&local===generation&&!controller.signal.aborted;
-    try{
-      const checked=await validate();if(!checked||!current())return;
-      const prepared=await request('/capture',{intent:{format:'strategy-intent',version:1,selection:{ranking:{source:{kind:'formula',...checked.root},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:selected.pool,bounds:{}},market:callbacks.market?.()||'us',detached:[checked.capture]});
-      if(!current())return;
-      const value=await coverageCall('inspect',{market:callbacks.market?.()||'us',strategy:prepared.strategy,scope:{generation:discoveredGeneration,...selected}},controller.signal);if(!current())return;
-      node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
-    }catch(failure){if(current())throw failure;}
-  }
   // Every step shares the library and expanded source list.
   async function sources(){
     catalog??=await request('/catalog');
@@ -336,15 +303,15 @@ const VariableWorkspace=(()=>{
   function attempt(work){
     Promise.resolve().then(()=>{
       let pending;
-      try{pending=work();}catch(failure){if(failure.name!=='AbortError')error(failure);return;}
+      try{pending=work();}catch(failure){error(failure);return;}
       // Start the operation before capturing its session: opening or replacing
       // an editor may establish a new generation synchronously.
       const local=generation;
-      return Promise.resolve(pending).catch(failure=>{if(local===generation&&failure.name!=='AbortError')error(failure);});
+      return Promise.resolve(pending).catch(failure=>{if(local===generation)error(failure);});
     });
   }
   function init(options){
-    callbacks=options;node('variable-preview-date').value=options.asof;
+    callbacks=options;
     node('variable-close').addEventListener('click',close);node('variable-dialog').addEventListener('cancel',()=>{cancelSource();generation++;invalidate();returnFocus?.focus?.();});
     node('variable-search').addEventListener('input',renderPicker);node('variable-refresh').addEventListener('click',()=>attempt(refresh));node('variable-start-new').addEventListener('click',()=>startNew());
     node('variable-edit-selected').addEventListener('click',()=>attempt(()=>loadExact(editor.variable_id,editor.selectedRevision)));
@@ -358,8 +325,7 @@ const VariableWorkspace=(()=>{
     node('variable-name').addEventListener('input',()=>{invalidate();editor.name=node('variable-name').value;});
     for(const [id,key] of [['variable-output-unit','unit'],['variable-display','display']])node(id).addEventListener('change',()=>{editor.definition.output[key]=node(id).value;if(key==='unit')editor.definition.output.display=catalog.displays[editor.definition.output.unit][0];invalidate();renderEditor();});
     node('variable-accept-json').addEventListener('click',()=>attempt(()=>{const parsed=JSON.parse(node('variable-json').value);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Expression JSON must be an object.');remember();editor.definition.expression=parsed;editor.selectedPath='';cancelSource();invalidate();renderEditor();}));
-    node('variable-apply').addEventListener('click',()=>attempt(apply));node('variable-save').addEventListener('click',()=>attempt(()=>save(false)));node('variable-save-new').addEventListener('click',()=>attempt(()=>save(true)));node('variable-favourite').addEventListener('click',()=>attempt(()=>metadata('favourite')));node('variable-delete').addEventListener('click',()=>attempt(()=>metadata('delete')));node('variable-preview').addEventListener('click',()=>attempt(previewSamples));
-    node('variable-coverage-scopes').addEventListener('click',()=>attempt(discoverCoverage));node('variable-coverage-inspect').addEventListener('click',()=>attempt(inspectCoverage));node('variable-coverage-scope').addEventListener('change',()=>{coverageVersion++;coverageAbort?.abort();node('variable-coverage-result').textContent='';});
+    node('variable-apply').addEventListener('click',()=>attempt(apply));node('variable-save').addEventListener('click',()=>attempt(()=>save(false)));node('variable-save-new').addEventListener('click',()=>attempt(()=>save(true)));node('variable-favourite').addEventListener('click',()=>attempt(()=>metadata('favourite')));node('variable-delete').addEventListener('click',()=>attempt(()=>metadata('delete')));
   }
   return {init,open,describe,request,copy,exact,content,sources,useSource,displayName,displays:unit=>[...catalog?.displays?.[unit]||[]],builtin:id=>copy(catalog?.builtins.find(item=>item.id===id)??null)};
 })();

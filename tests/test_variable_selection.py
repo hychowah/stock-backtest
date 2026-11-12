@@ -7,7 +7,7 @@ from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d
 import test_strategy_requests as requests
 import test_variable_definitions as language
-from test_scalar_execution import Fixture, preview
+from test_scalar_execution import Fixture
 
 
 def program(expression=None, unit='scalar', display='number'):
@@ -85,28 +85,6 @@ class FormulaRootAdmissionTests(unittest.TestCase):
         constant=fixture.capture(language.constant('7'))
         stocks,_=fixture.select(constant,latest=True)
         self.assertEqual([row['symbol'] for row in stocks],['A0001','A0002','A0003'])
-        with fixture.view() as view:
-            block=preview(constant,[dict(symbol='A0000',pool='cached',mode='latest',date='2015-01-05')],view)['evaluations'][0]
-        self.assertEqual(block['results'][0]['reason'],'ROOT_NOT_ADMITTED')
-        self.assertEqual(block['observations']['roots'][0]['reason'],'NOT_LISTED')
-
-    def test_complete_population_and_legacy_buffer_cannot_expand(self):
-        fixture=Fixture();self.addCleanup(fixture.close)
-        # A0005 has no saved price file.
-        fixture.db.research.execute("DELETE FROM fact_sources WHERE symbol='A0005'")
-        roots=[dict(symbol=symbol,pool=pool,mode='historical',date='2015-01-02') for symbol,pool in
-               [('A0249','legacy'),('A0250','legacy'),('A0005','legacy'),('A0250','cached')]]
-        constant=fixture.capture(language.constant('5'),pool='legacy')
-        with fixture.view() as view:
-            block=preview(constant,roots,view)['evaluations'][0]
-            # Asking for fewer companies cannot promote one into the buffer.
-            alone=preview(constant,[roots[1]],view)['evaluations'][0]
-        self.assertEqual([row['valid'] for row in block['results']],[True,False,False,True])
-        self.assertEqual([row['reason'] for row in block['observations']['roots']],
-                         [None,'OUTSIDE_LEGACY_BUFFER','MISSING_CACHED_PRICES',None])
-        self.assertEqual(block['observations']['roots'][0]['candidate_rank'],250)
-        self.assertEqual(alone['results'][0]['reason'],'ROOT_NOT_ADMITTED')
-        self.assertEqual(alone['observations']['roots'][0]['reason'],'OUTSIDE_LEGACY_BUFFER')
 
 
 if __name__=='__main__':unittest.main()

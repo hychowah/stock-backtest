@@ -53,7 +53,7 @@ assert(html.includes('aria-label="Atomic variable capture"') && html.includes('r
 
 assert(html.includes('backtest/variables/parameters.py') && html.includes('all 57 direct inputs') && html.includes('financial-parameters/1') && html.includes('financial-parameters/2') && html.includes('77 parameter IDs') && html.includes('33 named measures') && html.includes('The shared editor offers all 57 direct inputs') && html.includes('The language check, <code>definitions.require_program</code>, is the one formula gate.') && html.includes('The one evaluator implements the whole language') && html.includes('It does not establish installed readiness or coverage'), 'Explain the captured vocabulary, the one formula gate, ordinary picker and coverage limits');
 
-assert(html.includes('Inspect recorded coverage') && html.includes('every snapshot row before formula availability') && html.includes('Results are never truncated.') && html.includes('without importing it into My variables') && html.includes('Hong Kong and Japan runs use its /4 form') && html.includes('backtest/application/variable_coverage.py'), 'Explain exact measure authoring, the automatic market-aware form and bounded complete coverage');
+assert(html.includes('without importing it into My variables') && html.includes('Hong Kong and Japan runs use its /4 form'), 'Explain exact measure authoring and the automatic market-aware form');
 
 class Element {
   constructor(dataset = {}) { this.dataset = dataset; this.attributes = {}; this.events = {}; this.textContent = ''; this.children = []; this.hidden = false; this.open = false; }
@@ -122,7 +122,7 @@ windowEvents.beforeprint();
 assert(closed.every(x => x.open));
 windowEvents.afterprint();
 assert(closed.every(x => !x.open));
-assert(html.includes('Original sample preview') && html.includes('Variable strategies run with Original in all three scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain Original preview, pinned choice and recorded producers');
+assert(html.includes('Variable strategies run with Original in all three scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain pinned choice and recorded producers');
 console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 6 setting combinations and print state.');
 
 

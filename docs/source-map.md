@@ -54,7 +54,7 @@ own the feature.
   `scalar_execution.py` reads complete prepared scopes, selects once and,
   outside random-date runs, explains the selected rows. `scalar_runs.py` shares
   the Original schedule seam. `backtest/scalar_result_evidence.py` encodes
-  scalar evidence. `variable_coverage.py` reduces recorded-scope coverage.
+  scalar evidence.
   `variable_authoring.py` serves authoring without financial work.
 - `backtest/application/formula_text.py`: typed formula text over the stored tree.
 - `backtest/application/vocabulary.py`: one plain name per formula input.

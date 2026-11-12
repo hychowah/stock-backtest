@@ -322,7 +322,7 @@ class CaptureTests(unittest.TestCase):
         from datetime import date
         from backtest.application import scalar_execution, strategy_requests
         import test_strategy_requests as requests
-        from test_scalar_execution import Fixture, preview
+        from test_scalar_execution import Fixture
         fixture = Fixture(4)
         self.addCleanup(fixture.close)
         ev = self.store.create('Captured EV', definition(dict(op='parameter', id='market.enterprise_value'), 'USD', 'usd'))
@@ -330,21 +330,18 @@ class CaptureTests(unittest.TestCase):
         intent = requests.intent(requests.formula(ev), rank_to=1)
         intent['pool'] = 'legacy'
         strategy = strategy_requests.capture_strategy(intent, self.store)
-        roots = [dict(symbol='A0001', pool='legacy', mode='historical', date='2015-01-02')]
         def run():
             with fixture.view() as view:
-                formula = preview(strategy, roots, view)
                 selected = scalar_execution.Executor(strategy, view, lambda record: None).select(
                     fixture.db, 1, date(2015, 1, 2), date(2015, 1, 5))
-            return json.dumps(formula, sort_keys=True), json.dumps(selected, sort_keys=True)
-        formula_text, selection_text = run()
-        self.assertEqual(json.loads(formula_text)['evaluations'][0]['results'][0]['value'], 180e6)
+            return json.dumps(selected, sort_keys=True)
+        selection_text = run()
         self.assertEqual(json.loads(selection_text)[0]['ranking_value'], 180e6)
         capture_text, strategy_text = capture.to_json(), strategy.to_json()
         changed = self.store.edit(ev['variable_id'], 1, definition(constant('3', 'USD'), 'USD', 'usd'))
         self.store.delete(changed['variable_id'], changed['version'])
         self.path.unlink()
-        self.assertEqual(run(), (formula_text, selection_text))
+        self.assertEqual(run(), selection_text)
         self.assertEqual(library.require_capture(capture), json.loads(capture_text))
         self.assertEqual(strategy_requests.require_strategy(strategy), json.loads(strategy_text))
 

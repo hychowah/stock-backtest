@@ -162,7 +162,7 @@ class MarketRequests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 variable_authoring.prepare(dict(intent=steps), store)
 
-    def test_original_preview_coverage_and_usd_results_follow_recorded_market(self):
+    def test_original_runs_and_usd_results_follow_recorded_market(self):
         captured = capture()
         # These fictional companies are smaller than the normal $100m floor.
         captured_intent = dict(intent(formula(captured['variables']['program']['bundle']['definitions'][0])),
@@ -174,17 +174,6 @@ class MarketRequests(unittest.TestCase):
             with patch.object(research, 'DATABASE', source), patch.object(daily, 'connect',
                     side_effect=lambda: connect(daily_path, source)):
                 service = original_calculations.Original()
-                for market, symbol in [('hk', '0001.HK'), ('jp', '1000.T')]:
-                    preview = service.preview(captured, [dict(symbol=symbol, pool='cached', mode='historical',
-                                               date='2015-07-01')], market=market)
-                    self.assertEqual(preview['evaluations'][0]['results'][0]['value'], 1.)
-                jp, hk = service.coverage(market='jp'), service.coverage(market='hk')
-                self.assertNotEqual(jp['generation'], hk['generation'])
-                self.assertEqual([scope['pool'] for scope in jp['scopes']], ['cached'])
-                self.assertNotEqual(jp['scopes'][0]['book'], hk['scopes'][0]['book'])
-                scope = dict(jp['scopes'][0], generation=jp['generation'])
-                inspected = service.coverage(captured, scope, market='jp')
-                self.assertEqual(inspected['scope']['book'], scope['book'])
                 options = dict(strategy=captured, market='jp', start='2015-07-01', end='2015-07-30', months=1)
                 output = io.BytesIO()
                 complete = service.calculate_into('custom', options, output, None, None)

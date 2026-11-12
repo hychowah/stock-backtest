@@ -25,12 +25,8 @@ const VariableEvidence=(()=>{
     const requested=block.requests[result.request],admission=block.observations.roots.find(root=>root.root===result.root),details=trace(block,result);
     return {symbol:requested.symbol,date:requested.date,label,value:result.valid?value(result.value,result.unit,result.display):'Unavailable',unit:result.unit,status:result.valid?'Available':reason(admission&&!admission.admitted?admission.reason:result.reason),...details};
   }
-  function table(samples,caption=''){
-    return (caption?'<p>'+esc(caption)+'</p>':'')+'<div class="variable-evidence-samples" aria-label="Captured variable values">'+samples.map(item=>'<article class="variable-evidence-sample"><h4>'+esc(item.symbol+' · '+item.date+(item.label?' · '+item.label:''))+'</h4><dl><div><dt>Value</dt><dd>'+esc(item.value)+'</dd></div><div><dt>Unit</dt><dd>'+esc(item.unit)+'</dd></div><div><dt>Availability</dt><dd>'+esc(item.status)+'</dd></div></dl><p>Original inputs and dates:</p>'+(item.inputs.length?'<ul>'+item.inputs.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>':'<p>No financial parameter inputs in this expression.</p>')+'<details><summary>Recorded calculation steps</summary><ol>'+item.steps.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ol>'+(item.truncated?'<p>More steps are retained in complete evidence.</p>':'')+'</details></article>').join('')+'</div>';
-  }
-  function preview(response){
-    const samples=response.evaluations.flatMap(block=>block.results.map(result=>sample(block,result)));
-    return '<p>'+esc(response.producer?.label||'Original sample preview')+'</p>'+table(samples,samples.filter(item=>item.status==='Available').length+' of '+response.requested.length+' requested samples available. Availability among these requested samples only; this is not complete-pool coverage.')+'<details><summary>Advanced · complete preview JSON</summary><pre>'+esc(JSON.stringify(response,null,2))+'</pre></details>';
+  function table(samples){
+    return '<div class="variable-evidence-samples" aria-label="Captured variable values">'+samples.map(item=>'<article class="variable-evidence-sample"><h4>'+esc(item.symbol+' · '+item.date+(item.label?' · '+item.label:''))+'</h4><dl><div><dt>Value</dt><dd>'+esc(item.value)+'</dd></div><div><dt>Unit</dt><dd>'+esc(item.unit)+'</dd></div><div><dt>Availability</dt><dd>'+esc(item.status)+'</dd></div></dl><p>Original inputs and dates:</p>'+(item.inputs.length?'<ul>'+item.inputs.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>':'<p>No financial parameter inputs in this expression.</p>')+'<details><summary>Recorded calculation steps</summary><ol>'+item.steps.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ol>'+(item.truncated?'<p>More steps are retained in complete evidence.</p>':'')+'</details></article>').join('')+'</div>';
   }
   function records(records,row,strategy){
     const labels=new Map((strategy.variables?.presentation||[]).map(item=>[item.variable_id+'@'+item.revision,item.name])),samples=[],stored=[];
@@ -53,5 +49,5 @@ const VariableEvidence=(()=>{
     }else for(const record of records)if(record.block)for(const result of record.block.results){if(samples.length===16)break;samples.push(sample(record.block,result,labels.get(result.variable_id+'@'+result.revision)||result.variable_id));}
     return '<p>'+esc(row?'Original values and inputs for '+row.symbol+'.':'Showing at most 16 captured samples from this evidence page. Choose Explain beside a stock for its qualified trace.')+'</p>'+table(samples)+(stored.length?'<ul>'+stored.map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>':'')+(!samples.length&&!stored.length?'<p>This page has no matching calculation block. Continue to the next page, or download complete evidence.</p>':'')+'<details><summary>Advanced · original evidence page JSON</summary><pre>'+esc(JSON.stringify(records,null,2))+'</pre></details>';
   }
-  return {preview,records};
+  return {records};
 })();

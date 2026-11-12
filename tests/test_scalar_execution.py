@@ -21,11 +21,6 @@ import book_store_fixture as store
 from book_store_fixture import state
 
 
-def preview(capture, roots, view):
-    """Restore, check, then explain explicit roots, as Original.preview does under cache ownership."""
-    return x.evaluate_preview(x.check_preview(s.require_strategy(capture), roots), roots, view)
-
-
 class Fixture:
     """A dated book (id 1, 2015-01-02 to 2015-01-05) and the latest book (id 2, 2015-01-05) of count companies.
 
@@ -270,25 +265,9 @@ class ScalarTests(unittest.TestCase):
         stocks,records=self.fixture.select(s.capture_strategy(intent))
         selection=next(r['value']['selected'] for r in records if r['type']=='selection')
         self.assertEqual((stocks[0]['symbol'],selection['selected'][0]['index'],selection['matches']),('A0299',299,249))
-    def test_explicit_preview_never_claims_pool_coverage(self):
-        capture=self.fixture.capture()
-        with self.fixture.view() as view:
-            result=preview(capture,[dict(symbol='A0001',pool='cached',mode='historical',date='2015-01-02')],view)
-        self.assertEqual(result['population'],'explicit-request-scopes')
-        self.assertEqual(result['evaluations'][0]['results'][0]['value'],2.)
-        with self.fixture.view() as view:
-            with self.assertRaises(d.FormulaError):preview(capture,[],view)
     def test_a_prepared_scope_is_a_stored_book_named_by_its_id(self):
         capture=self.fixture.capture()
-        latest=dict(symbol='A0001',pool='cached',mode='latest',date='2015-01-05')
         with self.fixture.view() as view:
-            result=preview(capture,[latest],view)
-            self.assertTrue(result['evaluations'][0]['results'][0]['valid'])
-            # A request names no book: a preview root with an owner scope is refused before any input is read.
-            for scope in (dict(kind='prepared',book=self.fixture.latest),dict(kind='dated')):
-                with self.assertRaises(d.FormulaError) as failure:
-                    preview(capture,[dict(latest,owner_scope=scope)],view)
-                self.assertEqual((failure.exception.code,failure.exception.path),('INVALID_SHAPE','/requests/0'))
             # The one check (book_store.require_scope): only the open book of that day and pool.
             executor=x.Executor(capture,view,lambda record:None)
             for book,day,latest_scope in ((self.fixture.dated,date(2015,1,5),True),(99,date(2015,1,5),True),
@@ -318,9 +297,6 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(receipt['source_population'],300)
         self.assertEqual(receipt['rows'],299)
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],299)
-        with self.fixture.view() as view:
-            value=preview(self.fixture.capture(),[dict(symbol='A0299',pool='cached',mode='historical',date='2015-01-02')],view)
-        self.assertTrue(value['evaluations'][0]['results'][0]['valid'])
         self.assertEqual(stocks[0]['symbol'],'A0298')
     def test_cancellation_after_first_chunk_never_returns_partial_selection(self):
         from backtest.runtime import backtest_control

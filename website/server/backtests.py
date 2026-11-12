@@ -1,12 +1,12 @@
 """Grouped HTTP adapters; application owners retain their resource lifetimes."""
 import json
 import sqlite3
-from backtest.runtime import diagnostics, backtest_control
+from backtest.runtime import diagnostics
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 from backtest.application import library as saved_backtests
 from backtest.application import durable_evidence, strategy_requests
-from backtest.application.calculation_contract import Busy, Unavailable
+from backtest.application.calculation_contract import Busy
 
 def require_calculation(self,options=None,*,planned=None):
     # Admission refuses an engine this server does not run. Readiness is
@@ -96,47 +96,6 @@ def backtest_run_request(self):
 
 def dispatch(handler,data_jobs):
     path=handler.path
-    if path in ('/api/variable-coverage/scopes','/api/variable-coverage/inspect') and handler.command=='POST':
-        origin=handler.headers.get('Origin')
-        if origin and origin!='http://'+handler.headers.get('Host',''):
-            handler.reply(403,dict(error='Open the website to inspect coverage.'));return True
-        try:
-            length=int(handler.headers.get('Content-Length','0'))
-            if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid coverage request size.')
-            request=durable_evidence.decode(handler.rfile.read(length))
-            expected=set() if path.endswith('/scopes') else {'strategy','scope'}
-            if type(request) is not dict or set(request)-{'market'}!=expected:raise ValueError('Invalid coverage request fields.')
-            if expected and type(request['strategy']) is not dict:
-                raise ValueError('Inspection requires a captured strategy object.')
-            with backtest_control.cancel_when(handler.disconnect_check()):
-                value=handler.server.calculations.coverage(request.get('strategy'),request.get('scope'),market=request.get('market','us'))
-            handler.reply(200,value)
-        except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
-            return True
-        except (Unavailable,Busy):
-            handler.reply(503,dict(error='Prepared inputs are unavailable. Retry after preparation.'))
-        except (ValueError,TypeError) as error:
-            details=strategy_requests.failure_details(error) or dict(code=None,path=None)
-            handler.reply(400,dict(error=str(error),**details))
-        return True
-    if path=='/api/variable-preview' and handler.command=='POST':
-        origin=handler.headers.get('Origin')
-        if origin and origin!='http://'+handler.headers.get('Host',''):
-            handler.reply(403,dict(error='Open the website to preview variables.'));return True
-        try:
-            length=int(handler.headers.get('Content-Length','0'))
-            if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid preview request size.')
-            request=durable_evidence.decode(handler.rfile.read(length))
-            if (type(request) is not dict or not {'strategy','roots'}<=set(request)
-                    or set(request)-{'strategy','roots','engine','market'}):raise ValueError('Expected a captured strategy and explicit preview roots.')
-            engine=strategy_requests.preview_engine(request.get('engine','original'))
-            with backtest_control.cancel_when(handler.disconnect_check()):
-                value=handler.server.calculations.preview(request['strategy'],request['roots'],engine=engine,market=request.get('market','us'))
-            handler.reply(200,value)
-        except (ValueError,TypeError) as error:
-            details=strategy_requests.failure_details(error) or dict(code=None,path=None)
-            handler.reply(400,dict(error=str(error),**details))
-        return True
     if path=='/api/backtest-capabilities' and handler.command=='GET':
         handler.reply(200,handler.server.calculations.capabilities())
     elif (path=='/api/backtest-queue' and handler.command!='DELETE') or path.startswith('/api/backtest-queue/'):

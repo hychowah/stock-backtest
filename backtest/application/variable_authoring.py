@@ -30,7 +30,7 @@ def catalog():
                 namespaces=[parameters.V1,parameters.V2,parameters.V3,parameters.V4],
                 current_parameter_catalog=parameters.V4, current_temporal_policy=definitions.MARKET_TEMPORAL_POLICY,
                 displays={unit:details['displays'] for unit,details in parameters.units(parameters.V4).items()},
-                preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,
+                strategy_bytes=strategy_requests.STRATEGY_BYTES,
                 request_bytes=strategy_requests.REQUEST_BYTES,
                 vocabulary=[dict(item, text=formula_text.spelling(item['name'])) for item in vocabulary.entries()],
                 functions=[dict(item) for item in formula_text.FUNCTIONS])

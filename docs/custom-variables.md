@@ -112,8 +112,7 @@ supported. A three-month lookback is not a quarterly statement.
 Context ownership is strict:
 
 - A stored-book root reads its book's stored owner lanes: every root of a
-  latest or dated scope, and a latest preview root. An explicit historical
-  preview root uses dated owner policy.
+  latest or dated scope.
 - Derived `at` and `lookback` contexts use dated owner policy, even when their
   date equals the root date.
 - A missing prepared company or lane is unavailable. It never falls back to
@@ -274,30 +273,19 @@ over the typed prepared facts that `backtest/inputs/facts.py` writes.
 It owns report selection, annual alignment, dated lookups and reasons; the
 borrowed `backtest/inputs/fact_view.View` reads the facts and owns admission
 and entry valuation. The same code gives
-values-only results for complete scopes and explanation blocks for selected or
-sampled rows. It reads no raw files.
+values-only results for complete scopes and explanation blocks for selected
+rows. It reads no raw files.
 
 | Path | Contract |
 |---|---|
-| Original | Default. Latest, fixed and random scalar modes; sample preview. A January request is refused at `/mode` |
+| Original | Default. Latest, fixed and random scalar modes. A January request is refused at `/mode` |
 | Experimental numerical engine | Removed. The server refuses a request that names it |
-| Sample preview | Original only, 1–16 explicit company/date roots |
 | Eager scalar `calculate()` | Unsupported |
-| Coverage inspection | Original over a complete recorded latest scope |
 
 Each backend declares its definition versions, parameters and operations.
 Unsupported work fails before execution. It never changes meaning or switches
 engine. Old Latest and January settings without an engine mean Original. The
 producer label comes only from recorded evidence.
-
-`backtest/application/variable_coverage.py` owns coverage. It discovers recorded
-latest scopes, including empty ones, and requires an exact generation
-and scope identity. The denominator is every snapshot row in the scope, before
-availability, ranking, filters and rank ranges. An empty scope reports zero and
-no percentage. Each output reports valid and unavailable counts and the first
-unavailable reason per row. `backtest/application/scalar_execution.py` owns the
-shared population reads. Inspection writes nothing and builds no new fixed or
-random books.
 
 The typed facts are part of the research database;
 [the research workflow](research-workflow.md#prepare-once) states the
@@ -313,16 +301,15 @@ The shared workspace keeps the strategy form small. The picker has **Favourites*
 semantic owners. **＋ Create a new variable…** in a step's source list, or
 **Edit formula** on a step, opens a side panel on desktop and a
 full-screen editor on small screens. The user chooses a parameter, its time basis
-and statistic, adds terms, names the variable, previews it, then applies or saves.
+and statistic, adds terms, names the variable, then applies or saves.
 
 The formula shows as an editable equation with explicit grouping and stacked
 fractions. Select a term to insert a parameter or change its time and statistic
 settings. Operation buttons extend the selected term. Undo and Redo restore
 equation edits. Only the selected term has settings below the equation.
-**Advanced JSON** edits the same expression tree. The preview shows a plain-language explanation, the
-unit, required data, available-company counts and missing reasons, and sample
-calculations with input dates. Editing, validation, preview, coverage, Save and
-Apply start no backtest. Apply goes through `StrategyDraft`, with its held
+**Advanced JSON** edits the same expression tree. The check shows a
+plain-language explanation, the unit and required data. Editing, validation,
+Save and Apply start no backtest. Apply goes through `StrategyDraft`, with its held
 queue-edit protection. Source insertion changes only the selected term. It keeps
 the Apply destination. A rejected Apply shows an error and keeps the editor open.
 

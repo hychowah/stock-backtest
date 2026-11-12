@@ -10,7 +10,6 @@ function selectMarket(value){
   const first=screeningData.bounds.first||'1996-01-01';
   for(const id of ['trade-start','trade-end']){document.getElementById(id).min=first;document.getElementById(id).max=asof||'';}
   if(asof){document.getElementById('trade-end').value=asof;const start=document.getElementById('trade-start');if(start.value<first)start.value=first;if(start.value>asof)start.value=asof;}
-  document.getElementById('variable-preview-date').value=asof||'';
   if(!asof)document.getElementById('screen-error').textContent='Prepare '+marketLabels[value]+' data from Manage backtest data before running this market.';
 }
 
@@ -591,7 +590,7 @@ const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
 ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:!StrategyDraft.flat()}));
-VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value,market:selectedMarket});
+VariableWorkspace.init({draft:StrategyDraft});
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
 document.getElementById('mode-backtest').addEventListener('click',()=>switchMode('backtest'));
