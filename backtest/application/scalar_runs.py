@@ -33,7 +33,7 @@ class TrialSink:
         self.writer.period(period)
 
 
-TRIAL_WORKERS = 8
+TRIAL_WORKERS = 6
 MIN_PARALLEL_PERIODS = 96
 _worker = None
 
@@ -43,7 +43,7 @@ def initialize_worker(path, research, expected, market, capture, record_bytes, c
     global _worker
     book_batch.follow_parent()
     db = book_batch.open_reader(path, research, expected)
-    # The parent holds cache ownership and checks freshness at the end of the operation.
+    # The parent holds cache ownership and checks freshness while it waits for trials.
     view = fact_view.View(db, lambda: None, lambda: None, market=market)
     _worker = db, configuration, scalar_execution.Executor(capture, view, None, record_bytes=record_bytes, explain=False)
 
@@ -168,7 +168,7 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
         summaries = []; execution = {}
         parallel = len(planned['samples']) >= 2 and periods >= MIN_PARALLEL_PERIODS
         trials = book_batch.evaluate_trials(db,planned,progress,book_selection=executor,trial_sink=sink,
-            stored_trials=partial(stored_trials,db,planned,capture,view.market,writer,sink,checkpoint) if parallel else None)
+            stored_trials=partial(stored_trials,db,planned,capture,view.market,writer,sink,view.validate) if parallel else None)
         # Closing the trials joins their workers before the caller releases the inputs.
         with closing(trials):
             for number,result,stats in trials:

@@ -15,6 +15,7 @@ import multiprocessing
 import os
 from pathlib import Path
 import pickle
+import signal
 import sqlite3
 import tempfile
 from threading import Thread
@@ -95,7 +96,9 @@ def open_reader(path,research,expected):
 
 
 def follow_parent():
-    """End this worker process when its parent ends."""
+    """End this worker process when its parent ends; leave Ctrl+C to the parent."""
+    # The terminal sends Ctrl+C to every process. An interrupted worker would end the run as an error, not as a stop.
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
     parent=multiprocessing.parent_process()
     if parent is not None:
         def wait():

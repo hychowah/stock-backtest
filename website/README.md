@@ -293,7 +293,7 @@ The batch plans shared missing books upfront. Worker processes calculate books
 in parallel from read-only SQLite connections. One parent saves complete trials
 in order. The running row counts completed trials and new books. A test whose
 books are all saved starts no book workers. If it has at least two trials and 96
-periods, up to eight worker processes evaluate its trials and the parent writes
+periods, up to six worker processes evaluate its trials and the parent writes
 the same result in trial order. Results include each trial's actual
 trade dates in the CSV. Select a trial and click **Show stocks and period returns**
 to inspect its usual stock tables and contribution charts. The trial opens in

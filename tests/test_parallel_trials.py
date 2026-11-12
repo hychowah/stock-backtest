@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 import io
 import json
+import pickle
 import unittest
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ from backtest import result_evidence
 from backtest.application import scalar_runs, strategy_requests
 from backtest.application.original_calculations import Original
 from backtest.inputs import research
+from backtest.variables import definitions
 from prepared_inputs_fixture import PreparedInputs, history
 from test_strategy_requests import builtin, formula, pipeline, rank_step
 import test_variable_definitions as language
@@ -66,6 +68,12 @@ class ParallelTrialTests(unittest.TestCase):
             self.assertEqual(len(parallel), len(expected))
             for actual, record in zip(parallel, expected):
                 self.assertEqual(comparable(actual), comparable(record))
+
+
+    def test_formula_error_from_a_worker_keeps_its_issues(self):
+        error = definitions.FormulaError(errors=[dict(code='FUTURE_DATE', path='/a', message='first'), dict(code='WORK_LIMIT', path='/b', message='second')])
+        returned = pickle.loads(pickle.dumps(error))
+        self.assertEqual((returned.to_dict(), str(returned), returned.code, returned.path), (error.to_dict(), 'first', 'FUTURE_DATE', '/a'))
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ count-1 annual intervals. Growth results use canonical scalar fractions.
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, localcontext
+from functools import partial
 import hashlib
 import json
 import math
@@ -58,6 +59,10 @@ class FormulaError(ValueError):
 
     def to_dict(self):
         return dict(errors=[dict(issue) for issue in self.errors])
+
+    def __reduce__(self):
+        # A worker process returns this error to its parent with every issue.
+        return partial(FormulaError, errors=self.to_dict()['errors']), ()
 
 
 @dataclass(frozen=True)
