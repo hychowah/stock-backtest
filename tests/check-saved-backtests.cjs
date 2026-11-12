@@ -19,7 +19,7 @@ const ctx=vm.createContext({document:{getElementById:node},Date,console,location
  return {ok:true,status:200,json:async()=>JSON.parse(packed)};
 }});
 ctx.ResultArtifacts={opening:()=>()=>true,release:()=>{},async use(source,consume){const response=await ctx.fetch((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+source.id);const record=await response.json();if(record.state==='archived')return {consumed:false,record};if(!record.snapshot)throw Error('This result is not ready yet.');return {consumed:true,value:consume(record.snapshot),record};}};
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/saved-backtests.js'),'utf8'),ctx);
+for(const name of ['run-markets.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),ctx);
 const call=code=>vm.runInContext(code,ctx);ctx.snapshot=snapshot;ctx.result=result;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{
@@ -150,5 +150,30 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
   await settle();assert(requests.length>beforeNotification);assert(!node('saved-list').innerHTML.includes('data-rename-input'));
   if(finish==='save')assert.equal(records.find(record=>record.id===renameTarget).name,'Typing save');
  }
- console.log('Passed: no save request from the page, a queue-saved test listed after its notification, opening and Tune from stored records, heading sorts, focus kept by id, the advertised capacity, explicit deletion, acknowledged rename/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
+ // The market switch shows the saved tests of one market; a record without a readable market shows under All only.
+ // The box in the heading ticks every row shown. Delete ticked asks one time, then deletes the ticked rows only.
+ // Another market clears every tick.
+ records=[['1','US one','us'],['2','HK one','hk'],['3','HK two','hk'],['4','Unreadable',null]].map(([digit,name,market])=>({...first,id:digit.repeat(32),name,market}));
+ await node('queue-refresh').handlers.click();
+ const markets=['','us','hk','jp'].map(market=>({dataset:{market},attributes:{},setAttribute(name,value){this.attributes[name]=value},querySelector(){return this.count||(this.count={textContent:''})}}));
+ node('run-markets').querySelectorAll=()=>markets;call('RunMarkets.init()');
+ const choose=market=>node('run-markets').handlers.click({target:{closest:()=>markets.find(button=>button.dataset.market===market)}});
+ const shown=()=>records.filter(record=>node('saved-list').innerHTML.includes('>'+record.name+'<')).map(record=>record.name).sort();
+ const bar=data=>node('saved-comparison').handlers.click({target:{dataset:data}});
+ assert.deepEqual(markets.map(button=>button.count.textContent),[4,1,2,0]);
+ choose('hk');assert.deepEqual(shown(),['HK one','HK two']);assert.equal(markets[2].attributes['aria-pressed'],'true');
+ const reads=requests.length;
+ await node('saved-tick-all').handlers.change({target:{checked:true}});
+ assert.equal(node('saved-tick-all').checked,true);assert.equal(node('saved-list').innerHTML.split(' checked').length-1,2);
+ assert(node('saved-comparison').innerHTML.includes('2 tests ticked'));assert.equal(requests.length,reads,'A tick reads nothing');
+ bar({deleteTicked:''});assert(node('saved-comparison').innerHTML.includes('Delete 2 saved backtests?'));
+ bar({keepTicked:''});assert(!node('saved-comparison').innerHTML.includes('Delete 2 saved backtests?'));assert.equal(requests.length,reads);
+ bar({deleteTicked:''});await bar({confirmTicked:''});await settle();
+ assert.deepEqual(requests.slice(reads).filter(request=>request.method==='DELETE').map(request=>request.url[15]).sort(),['2','3']);
+ assert.deepEqual(records.map(record=>record.name),['US one','Unreadable']);assert(node('saved-status').textContent.startsWith('2 saved backtests deleted.'));
+ assert(node('saved-list').innerHTML.includes('No saved Hong Kong backtests.'));assert(node('saved-comparison').hidden);
+ choose('');assert.deepEqual(shown(),['US one','Unreadable']);
+ await node('saved-list').handlers.change({target:{dataset:{tick:records[0].id},checked:true}});assert(!node('saved-comparison').hidden);
+ choose('us');assert.deepEqual(shown(),['US one']);assert(node('saved-comparison').hidden);assert(!node('saved-list').innerHTML.includes(' checked'));
+ console.log('Passed: no save request from the page, a queue-saved test listed after its notification, opening and Tune from stored records, heading sorts, focus kept by id, the advertised capacity, the market switch, ticking every row shown, Delete ticked, explicit deletion, acknowledged rename/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
 })().catch(error=>{console.error(error);process.exitCode=1});

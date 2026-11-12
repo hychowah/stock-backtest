@@ -67,6 +67,11 @@ def decode(data):
     return value
 
 
+def settings(packed,identifier):
+    """The submitted settings of a completed envelope, without reading its evidence."""
+    return _unpack(packed,identifier,MAX_EVIDENCE_BYTES)[0]['settings']
+
+
 def same(left,right):
     # Preserve number types, signed zero and missing fields; object key order
     # does not change the meaning of submitted settings.

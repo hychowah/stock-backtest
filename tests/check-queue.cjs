@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const nodes=new Map();
-function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn}});return nodes.get(id)}
+function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},querySelectorAll(){return []},addEventListener(type,fn){this.handlers[type]=fn}});return nodes.get(id)}
 const CalendarSettings=require('../website/browser/calendar-settings.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,builderShown=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false,libraryChanges=0;
@@ -63,6 +63,7 @@ const context=vm.createContext({CalendarSettings,console,crypto:{getRandomValues
 context.ResultArtifacts={opening:()=>()=>true,release:()=>{},async use(source,consume){const response=await context.fetch((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+source.id);const record=await response.json();if(record.state==='archived')return {consumed:false,record};if(!record.snapshot)throw Error('This result is not ready yet.');return {consumed:true,value:consume(record.snapshot),record};}};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/engine-controls.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-comparison.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/run-markets.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
 context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),prepareSubmission:async()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),showBuilder:()=>builderShown++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
@@ -295,5 +296,16 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   records=[row('a','failed',1),row('b','queued',2),row('c','complete',3),row('d','running',4),row('e','held',5),row('1','queued',6)];await call('BacktestQueue.refresh()');
   assert.deepEqual([...node('queue-list').innerHTML.matchAll(/data-queue-id="(.)/g)].map(match=>match[1]),['d','b','e','1','a','c']);
   await call('BacktestQueue.action("up","'+'e'.repeat(32)+'")');assert(records.find(item=>item.id[0]==='e').position<records.find(item=>item.id[0]==='b').position,'Move up still follows the waiting order');
-  console.log('Passed: snapshots, default and held-edit names, Enter as the Add button, Add and held-edit messages beside the name box, one-line rows in In progress order, exact text in one closed disclosure, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
+  // The market switch of Runs shows the tests of one market and remembers the choice. Each button counts its market.
+  records.find(item=>item.id[0]==='b').options.market='hk';await call('BacktestQueue.refresh()');
+  const markets=['','us','hk','jp'].map(market=>({dataset:{market},attributes:{},setAttribute(name,value){this.attributes[name]=value},querySelector(){return this.count||(this.count={textContent:''})}}));
+  node('run-markets').querySelectorAll=()=>markets;call('RunMarkets.init()');
+  const choose=market=>node('run-markets').handlers.click({target:{closest:()=>markets.find(button=>button.dataset.market===market)}});
+  choose('hk');
+  assert.deepEqual([...node('queue-list').innerHTML.matchAll(/data-queue-id="(.)/g)].map(match=>match[1]),['b']);
+  assert.deepEqual(markets.map(button=>[button.attributes['aria-pressed'],button.count.textContent]),[['false',6],['false',5],['true',1],['false',0]]);
+  assert.equal(storage.get('runs-market'),'hk');
+  choose('jp');assert(node('queue-list').innerHTML.includes('No Tokyo test is waiting or running.'));
+  choose('');assert.equal([...node('queue-list').innerHTML.matchAll(/data-queue-id=/g)].length,6);
+  console.log('Passed: snapshots, default and held-edit names, Enter as the Add button, Add and held-edit messages beside the name box, one-line rows in In progress order, the market switch, exact text in one closed disclosure, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -344,6 +344,8 @@ is saved there automatically. A row is one line: name,
 status, test type and trials, date window, CAGR and the time when the test was
 added or saved. CAGR is the mean trial CAGR for random dates. A running row
 shows its progress with its status, and a failed row shows the reason there.
+**All**, **US**, **Hong Kong** and **Tokyo** above the groups show the tests of
+one market, and each button shows its count. The page remembers the last choice.
 **Refresh** reads both groups again. The page has no other save. A saved record
 keeps the submitted settings, all traded stocks, and all stock and period returns.
 
@@ -375,16 +377,19 @@ when transfer recovery retries. Original queued submission receipts remain valid
 but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
-Tick saved backtests to compare them without opening a result or changing the
-form. A panel above the Saved backtests rows shows one column for each ticked
+Tick saved backtests, then select **Compare** to compare them without opening a
+result or changing the form. The box in the heading ticks every row shown.
+**Delete ticked** deletes the ticked records after one confirmation. A panel
+above the Saved backtests rows shows one column for each ticked
 test, in list order: first the requested settings that differ, or **Same
 settings**, then the headline rows. A closed disclosure contains every setting
 and, for random-date tests, six more measures; in that list, an amber row that
 also says **Different** marks a setting that differs. When two tests differ in
 a setting that reads the same in plain wording, that row shows the exact text.
-A measure that a test does not have shows a dash. **Clear** removes every tick.
-The page reads a stored result one time, when you tick its row or open its
-Details; a failed read shows its reason above the rows.
+A measure that a test does not have shows a dash. **Clear** removes every tick;
+another market button does too. The page reads a stored result one time, when
+you select Compare or open its Details; a failed read shows its reason above
+the rows.
 
 Comparison reads saved results without recalculation. Legacy/current calendars
 and documented defaults compare consistently. Reordered AND conditions and

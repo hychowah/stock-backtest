@@ -33,8 +33,9 @@ from test_saved_backtests import snapshot as legacy_snapshot
 LIMIT=4*1024**2
 
 
-def source(kind='custom',*,large=False,seed=42):
+def source(kind='custom',*,large=False,seed=42,market=None):
     stream=io.BytesIO();options=dict(start='2019-12-30',end='2020-04-02',months=1,rank_to=53)
+    if market:options['market']=market
     plan=None
     if kind=='random':
         options.update(trials=2,seed=seed)

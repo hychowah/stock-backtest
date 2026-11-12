@@ -22,6 +22,20 @@ SCHEMA = '''CREATE TABLE IF NOT EXISTS records (
 )'''
 
 
+# The stored settings of a record never change, so each server process reads the
+# market of a record one time.
+_markets={}
+
+
+def _market(identifier,packed):
+    """The market of the stored settings; None when the stored bytes cannot be read."""
+    try:
+        settings=(durable_evidence.settings(packed,identifier) if durable_evidence.is_evidence(packed)
+                  else json.loads(zlib.decompress(packed))['settings'])
+        return settings.get('market','us')
+    except (ValueError,KeyError,zlib.error):return None
+
+
 class Full(ValueError):
     pass
 
@@ -63,9 +77,15 @@ class Store:
         return dict(id=row['id'],name=row['name'],created_at=row['created_at'],**json.loads(row['info']))
 
     def list(self):
+        """Every record's metadata and the market of its stored settings."""
         if not self.path.exists():return []
         db=self.connect()
-        try:return [self.metadata(row) for row in db.execute('SELECT id,name,created_at,info FROM records ORDER BY created_at DESC,id DESC')]
+        try:
+            rows=db.execute('SELECT id,name,created_at,info FROM records ORDER BY created_at DESC,id DESC').fetchall()
+            for row in rows:
+                if row['id'] not in _markets:
+                    _markets[row['id']]=_market(row['id'],db.execute('SELECT snapshot FROM records WHERE id=?',(row['id'],)).fetchone()[0])
+            return [dict(self.metadata(row),market=_markets[row['id']]) for row in rows]
         finally:db.close()
 
     def save(self,name,snapshot):

@@ -78,7 +78,7 @@ const BacktestQueue=(()=>{
   // Rows are replaced and moved in place.
   function renderRows(rows){
     const list=node('queue-list');
-    if(!rows.length){list.innerHTML='<li class="run-empty">No test is waiting or running. Select Add to queue in Build strategy.</li>';rendered.clear();return;}
+    if(!rows.length){list.innerHTML='<li class="run-empty">No '+(RunMarkets.label()?RunMarkets.label()+' ':'')+'test is waiting or running. Select Add to queue in Build strategy.</li>';rendered.clear();return;}
     if(!list.insertBefore){list.innerHTML=rows.map(row=>row.html).join('');return;}
     const wanted=new Set(rows.map(row=>row.id));
     for(const row of [...list.children])if(!wanted.has(row.dataset.queueId)){rendered.delete(row.dataset.queueId);row.remove();}
@@ -115,9 +115,10 @@ const BacktestQueue=(()=>{
     const states={queued:'Waiting',held:'Held for editing',running:'Running',stopping:'Stopping',complete:'Complete',failed:'Failed',cancelled:'Stopped'};
     records=records.slice().sort((a,b)=>a.position-b.position);
     const waitingIds=records.filter(waiting).map(record=>record.id);
-    // Running first, then waiting in queue order, then failed, stopped and not yet moved.
-    const group=record=>['running','stopping'].includes(record.state)?0:waiting(record)?1:2;
-    const rows=[...records].sort((a,b)=>group(a)-group(b)).map(record=>{
+    // The rows of the market chosen in Runs. Running first, then waiting in queue order, then failed, stopped and not yet moved.
+    const market=record=>record.options.market??'us',group=record=>['running','stopping'].includes(record.state)?0:waiting(record)?1:2;
+    RunMarkets.report('queue',records.map(market));
+    const rows=records.filter(record=>RunMarkets.shows(market(record))).sort((a,b)=>group(a)-group(b)).map(record=>{
       const o=record.options,id=escape(record.id),name=escape(record.name),index=waitingIds.indexOf(record.id),dates=CalendarSettings.decode(o);
       const button=(action,label,disabled=false)=>`<button type="button" data-action="${action}" data-id="${id}" ${busy||disabled?'disabled':''}>${label}</button>`;
       let actions='';
@@ -254,6 +255,7 @@ const BacktestQueue=(()=>{
       event.preventDefault();if(!node('queue-add').disabled)return add();
     });
     node('queue-refresh').addEventListener('click',()=>perform(refresh));
+    RunMarkets.changed(render);
     node('queue-pause').addEventListener('click',()=>perform(()=>mutate('/pause',{paused:!paused},{success:paused?'Queue resumed.':'Queue paused. The active test can finish.'})));
     node('queue-cancel-edit').addEventListener('click',()=>editing?action('release',editing.id,BUILDER):undefined);
     node('queue-list').addEventListener('click',event=>{const target=event.target;if(target.dataset.action)return action(target.dataset.action,target.dataset.id);});

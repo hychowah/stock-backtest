@@ -63,7 +63,7 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(status,413);self.assertEqual(error['error'],saved.INLINE_LIMIT_MESSAGE)
             status,error=self.request('GET','/api/backtests/'+record['id'])
             self.assertEqual(status,400);self.assertEqual(error['error'],saved.INLINE_LIMIT_MESSAGE)
-        self.assertEqual(self.store.list(),[record]);self.assertEqual(self.store.get(record['id'])['snapshot'],value)
+        self.assertEqual(self.store.list(),[dict(record,market='us')]);self.assertEqual(self.store.get(record['id'])['snapshot'],value)
 
     def test_both_formats_roundtrip_without_rewriting_legacy_records(self):
         legacy=self.store.save('Legacy',snapshot())
@@ -76,6 +76,16 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.get(legacy['id'])['snapshot'],snapshot())
         with closing(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute('SELECT snapshot FROM records WHERE id=?',(legacy['id'],)).fetchone()[0],original)
+
+    def test_list_shows_the_market_of_the_stored_settings(self):
+        from test_durable_evidence import source
+        hong_kong=snapshot('custom');hong_kong['settings']['market']='hk'
+        records=[self.store.save('Older US',snapshot()),self.store.save('Hong Kong',hong_kong),
+                 self.store.save_evidence('Tokyo evidence',*reversed(source('custom',market='jp')[:2])),
+                 self.store.save_evidence('US evidence',*reversed(source('random')[:2])),self.store.save('Corrupt',snapshot())]
+        with closing(sqlite3.connect(self.path)) as db,db:db.execute('UPDATE records SET snapshot=? WHERE id=?',(b'corrupt',records[-1]['id']))
+        listed={row['name']:row['market'] for row in saved.Store(self.path).list()}
+        self.assertEqual(listed,{'Older US':'us','Hong Kong':'hk','Tokyo evidence':'jp','US evidence':'us','Corrupt':None})
 
     def test_limit_never_evicts_and_deleting_one_frees_one_slot(self):
         records=[self.store.save('Book '+str(i),snapshot()) for i in range(100)]

@@ -9,6 +9,10 @@
 .backtest-queue>.toolbar>div:last-child{display:flex;flex-wrap:wrap;gap:8px}
 .run-group{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#57716b;margin:16px 0 4px}
 #saved-panel>.run-group{display:inline-block;margin:0 12px 4px 0}
+/* The market switch above both groups. */
+.run-markets{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.run-markets button{padding:0 10px;font-size:14px}
+.run-markets span{opacity:.75}
 #saved-heading+.hint{display:inline}
 #queue-list,#saved-list{list-style:none;margin:0;padding:0}
 .run-empty{padding:12px 0;border-top:1px solid #e2e7df;font-size:13px;color:#617172}
@@ -36,6 +40,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .run-head:has(~ol>.run-empty,~ul>.run-empty){display:none}
 .run-head button{border:0;border-radius:4px;background:none;min-height:32px;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;text-align:left;color:#1d5a49;white-space:nowrap}
 .run-head button:hover{text-decoration:underline}
+.run-head>input{order:-1}
 .run-head>span.run-cagr{color:inherit}
 .run-head::before{content:'Sort'}
 /* The row control: a Details button at the end of the row line. Its width is in
@@ -62,8 +67,8 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 /* The panel of the ticked saved backtests sits above their rows. */
 .saved-comparison{margin:4px 0 12px;padding:10px 14px;border:1px solid #d5dfcd;border-radius:8px;background:#f8faf5;font-size:13px}
 .saved-comparison>p{margin:0}
-.comparison-bar{display:flex;align-items:center;gap:12px;min-height:32px;margin-bottom:4px;color:#192b31}
-.comparison-bar>span{flex:1;font-size:12px;color:#617172}
+.comparison-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-height:32px;margin-bottom:4px;color:#192b31}
+.comparison-bar>[role=status]{flex:1;font-size:12px;color:#617172}
 .comparison-bar>button{min-height:32px;padding:4px 12px}
 .comparison-notice{font-size:12px;line-height:1.5;color:#78561b}
 .comparison-scroll{max-width:100%;overflow-x:auto}
@@ -87,7 +92,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
   #workspace-runs .run-head{grid-template-rows:auto;font-size:13px}
   #workspace-runs .run-head>*{font-size:11px}
   #workspace-runs li>.run-type,#workspace-runs li>.run-window,#workspace-runs li>.run-time{font-size:12px}
-  #workspace-runs .run-row>.run-name,#workspace-runs .run-head>:first-child{grid-column:2}
+  #workspace-runs .run-row>.run-name,#workspace-runs .run-head>span:first-child{grid-column:2}
   #workspace-runs .run-status{flex-direction:column;flex-wrap:nowrap;align-items:flex-start;padding:5px 0}
   #workspace-runs .run-type,#workspace-runs .run-window,#workspace-runs .run-time{overflow:hidden;text-overflow:ellipsis}
   #workspace-runs .run-cagr{text-align:right}

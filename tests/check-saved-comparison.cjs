@@ -23,13 +23,14 @@ const context=vm.createContext({document:{getElementById:node},location:{protoco
  else value=record;
  return {ok:status<400,status,json:async()=>copy(value)};
 }});
-for(const name of ['result-artifacts.js','backtest-comparison.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
+for(const name of ['result-artifacts.js','backtest-comparison.js','run-markets.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
 const run=code=>vm.runInContext(code,context);run('ResultArtifacts.opening=()=>{throw Error("Compact inspection cannot get a main-view ticket")};ResultArtifacts.publish=()=>{throw Error("Compact inspection cannot publish")};');
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 // The panel as text: one entry per table row, or the whole panel.
 const panel=()=>node('saved-comparison').innerHTML,text=html=>html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().replace(/&(lt|gt|amp);/g,(_,name)=>({lt:'<',gt:'>',amp:'&'}[name]));
 const rows=html=>html.split('<tr').slice(1).map(row=>text('<tr'+row.split('</tr>')[0]));
 const tick=(id,checked=true)=>node('saved-list').handlers.change({target:{dataset:{tick:id},checked}});
+const compare=()=>node('saved-comparison').handlers.click({target:{dataset:{compare:''}}});
 const loads=id=>requests.filter(request=>request.url==='/api/backtests/'+id&&request.method==='GET').length;
 const refresh=()=>node('queue-refresh').handlers.click();
 // Details of a row: the toggle of its control, and the markup of that row.
@@ -64,11 +65,14 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  // A tick of that row reads nothing more. One tick shows the top line only; a tick stays usable while a list action runs.
  holdList=true;const busy=refresh();await settle();assert(releaseList);
  await tick(ids[0]);releaseList();await busy;
- assert(!node('saved-comparison').hidden);assert.equal(text(panel()),'1 test ticked. Tick another to compare. Clear');assert(!panel().includes('<table'));
+ assert(!node('saved-comparison').hidden);assert.equal(text(panel()),'1 test ticked. Tick another to compare. Compare Delete ticked Clear');assert(!panel().includes('<table'));
+ assert(panel().includes('data-compare disabled'),'Compare needs two ticks');
  assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2]),acquired.length],[1,0,0,0]);
  let top,all;
- // Two ticks: one column per test. The first rows are exactly the settings that differ, then the headlines.
- await tick(ids[2]);assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2])],[1,0,1]);
+ // A tick reads nothing. Compare reads the ticked tests: one column per test. The first rows are exactly the
+ // settings that differ, then the headlines.
+ await tick(ids[2]);assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2])],[1,0,0]);assert(!panel().includes('<table'));
+ await compare();assert.deepEqual([loads(ids[0]),loads(ids[1]),loads(ids[2])],[1,0,1]);
  [top,all]=panel().split('<details');
  assert.deepEqual(rows(top),['Saved a Saved c','Settings that differ','Last rank 25 50','Additional AND conditions <Original & cash flow> > -2 None','Setting: future_setting <img src=x onerror=bad> Not recorded',
   'Headline','Strategy CAGR 12.00% 20.00%','SPY CAGR 8.00% 8.00%','Difference vs SPY +4.00 pp +12.00 pp','Growth of $1 $2.00 $2.00']);
@@ -86,10 +90,10 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  // One loader reads one result at a time. A compact result uses a temporary reader, which closes after the read.
  // During a read the panel keeps the tests that it shows; its top line names the read.
  const shown=panel().split('</div>').slice(1).join('</div>');
- holdAcquire=true;const third=tick(ids[1]);await settle();assert(releaseAcquire);assert(text(panel()).startsWith('3 tests ticked Reading 1 stored result… Clear'));
+ holdAcquire=true;const third=tick(ids[1]);await settle();assert(releaseAcquire);assert(text(panel()).startsWith('3 tests ticked Reading 1 stored result… Hide comparison Delete ticked Clear'));
  assert.equal(panel().split('</div>').slice(1).join('</div>'),shown,'The comparison below the top line does not change during a read');
  const extra='9'.repeat(32);records.push(make(extra));await refresh();const fourth=tick(extra);await settle();assert.equal(loads(extra),0,'The next read waits for the current one');
- assert(text(panel()).startsWith('4 tests ticked Reading 2 stored results… Clear'));assert.equal(rows(panel())[0],'Renamed <comparison> Saved c');
+ assert(text(panel()).startsWith('4 tests ticked Reading 2 stored results… Hide comparison Delete ticked Clear'));assert.equal(rows(panel())[0],'Renamed <comparison> Saved c');
  releaseAcquire();await third;await fourth;assert.equal(loads(extra),1);assert.equal(acquired.length,1);assert.deepEqual(released,acquired);
  await tick(extra,false);
  // Tests of different types line up on the shared headline keys; a measure that a test lacks shows a dash.
@@ -131,9 +135,9 @@ const row=id=>{const html=node('saved-list').innerHTML,start=html.indexOf('data-
  // Recorded facts are not requested settings: two random tests with equal settings and fresh dates have the same
  // settings. The recorded date sets still show, marked, in the full list.
  const fresh=['1','2'].map((digit,index)=>{const record=make(digit.repeat(32),'random',3);record.snapshot.result.configuration.seed=42+index;return record;});
- records.push(...fresh);await refresh();await tick(fresh[0].id);await tick(fresh[1].id);
+ records.push(...fresh);await refresh();await tick(fresh[0].id);await tick(fresh[1].id);assert(!panel().includes('<table'),'Clear ends the comparison');await compare();
  [top,all]=panel().split('<details');
  assert.deepEqual(rows(top).slice(0,3),['Saved 1 Saved 2','Same settings','Headline']);assert(rows(all).includes('Recorded random date set Different 42 43'));
  assert.deepEqual(released,acquired);assert.equal(comparisonPublished,0);assert.equal(main.result.cagr,.99);
- console.log('Passed: no read before a tick or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, the short list of other measures for random dates, marked setting differences only, Clear, rename/sort identity, failed reads not kept and read again by a new tick or a reopened Details, released readers and unchanged main view.');
+ console.log('Passed: no read before Compare or an open Details, one read per test by one serial loader, Details with the settings in the row and every recorded row in a closed disclosure, one tick without a table, a panel that keeps its tests during a read, differing requested settings first with recorded facts in the full list, shared headline keys, the short list of other measures for random dates, marked setting differences only, Clear, rename/sort identity, failed reads not kept and read again by a new tick or a reopened Details, released readers and unchanged main view.');
 })().catch(error=>{console.error(error);process.exitCode=1});

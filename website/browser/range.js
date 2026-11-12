@@ -642,6 +642,7 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
   settingsChanged();
 });
 
+RunMarkets.init();
 SavedBacktests.init({open:restoreSavedBacktest,copy:copySavedBacktestSettings});
 BacktestQueue.init({changed:Workspaces.queueStatus,libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
   showBuilder:()=>Workspaces.show('builder'),

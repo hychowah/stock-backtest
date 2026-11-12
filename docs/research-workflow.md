@@ -399,7 +399,7 @@ backtest mode starts nothing outside the queue.
 Use **Add to queue** in Build strategy for fixed or random-date tests. Select the custom calendar,
 set parameters and add the current test. Change settings to add more tests.
 **Runs & saved** shows the waiting and running tests under In progress and the saved
-results under Saved backtests. The line below the Add to queue button shows the result
+results under Saved backtests. The market buttons above them show the tests of one market. The line below the Add to queue button shows the result
 of each addition and of a held edit.
 The queue is the only way to run a dated test. Queue tests run one at a time. Browser closure
 does not affect them. Keep the server computer awake and its terminal open.
