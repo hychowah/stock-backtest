@@ -63,7 +63,7 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(status,413);self.assertEqual(error['error'],saved.INLINE_LIMIT_MESSAGE)
             status,error=self.request('GET','/api/backtests/'+record['id'])
             self.assertEqual(status,400);self.assertEqual(error['error'],saved.INLINE_LIMIT_MESSAGE)
-        self.assertEqual(self.store.list(),[dict(record,market='us')]);self.assertEqual(self.store.get(record['id'])['snapshot'],value)
+        self.assertEqual(self.store.list(),[dict(record,market='us',locked=False)]);self.assertEqual(self.store.get(record['id'])['snapshot'],value)
 
     def test_both_formats_roundtrip_without_rewriting_legacy_records(self):
         legacy=self.store.save('Legacy',snapshot())
@@ -191,6 +191,20 @@ class StoreTests(unittest.TestCase):
         with patch.object(serve,'SAVED_BACKTESTS',self.store),patch.object(serve.cache_access,'access',side_effect=AssertionError('Library must not acquire financial cache')):
             getattr(handler,'do_'+method)()
         return responses[0]
+
+    def test_http_lock_keeps_a_record_until_it_is_unlocked(self):
+        record=self.store.save('Keep',snapshot());target='/api/backtests/'+record['id']
+        self.assertEqual(self.store.list()[0]['locked'],False)
+        status,reply=self.request('POST',target,body=dict(locked=True))
+        self.assertEqual(status,200);self.assertEqual(reply,dict(id=record['id'],locked=True))
+        self.assertEqual(self.store.list()[0]['locked'],True)
+        status,reply=self.request('DELETE',target)
+        self.assertEqual(status,400);self.assertIn('Unlock',reply['error'])
+        self.assertEqual(self.store.get(record['id'])['snapshot'],snapshot())
+        self.assertEqual(self.request('POST','/api/backtests/'+'f'*32,body=dict(locked=True))[0],404)
+        self.assertEqual(self.request('POST',target,body=dict(locked=False))[0],200)
+        self.assertEqual(self.store.list()[0]['locked'],False)
+        self.assertEqual(self.request('DELETE',target)[0],200)
 
     def test_http_save_list_get_delete_and_foreign_origin(self):
         status,record=self.request('POST',body=dict(name='My strategy',snapshot=snapshot()))

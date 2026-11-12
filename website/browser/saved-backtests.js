@@ -1,8 +1,9 @@
 /* The library stores complete results on the local service, never browser quota.
    A queue test is saved there when it finishes; this page saves nothing itself.
    Its records are the Saved backtests rows of Runs. Details of a row shows the
-   settings of that test in place. The bar above the rows compares or deletes the
-   ticked rows. Details and Compare read one description per saved id. */
+   settings of that test in place. The bar above the rows compares, locks or deletes
+   the ticked rows; a locked row cannot be deleted. Details and Compare read one
+   description per saved id. */
 const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -70,8 +71,8 @@ const SavedBacktests=(()=>{
       const kind={january:'January',custom:'Fixed dates',random:'Random'+(record.trials?' · '+escape(record.trials)+' trials':' dates')}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const button=(key,label)=>'<button type="button" id="saved-do-'+key+'-'+id+'" data-'+key+'="'+id+'">'+label+'</button>';
-      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this saved backtest?</span>'+button('confirm','Delete record')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+button('delete','Delete');
-      return '<li class="run-row"><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Tick '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">Saved</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Details of '+name+'">Details</summary>'+settings(record,exactOpen.has(record.id))+'<div class="run-actions">'+actions+'</div></details></li>';
+      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+id+'" data-rename-input="'+id+'" value="'+escape(renaming.name)+'" maxlength="120"></label>'+button('save-name','Save name')+button('cancel-name','Cancel'):pendingDelete===record.id?'<span>Delete this saved backtest?</span>'+button('confirm','Delete record')+button('keep','Keep'):button('copy','Tune')+button('rename','Rename')+(record.locked?'':button('delete','Delete'));
+      return '<li class="run-row"'+(record.locked?' data-state="locked"':'')+'><input type="checkbox" id="saved-tick-'+id+'" data-tick="'+id+'" aria-label="Tick '+name+'"'+(ticked.has(record.id)?' checked':'')+'><button type="button" class="run-name" id="saved-open-'+id+'" data-open="'+id+'" title="Open the result of '+name+'"><span>'+name+'</span></button><span class="run-status"><span class="queue-state">'+(record.locked?'Locked':'Saved')+'</span></span><span class="run-type">'+kind+'</span><span class="run-window">'+escape(record.start+' → '+record.end)+'</span><span class="run-cagr"'+(record.kind==='random'?' title="Mean trial CAGR"':'')+'>'+cagr+'</span><span class="run-time" title="'+escape(new Date(record.created_at).toLocaleString())+'">'+escape(when(record.created_at))+'</span><details class="run-menu" data-menu="'+id+'"'+(open.has(record.id)?' open':'')+'><summary id="saved-menu-'+id+'" aria-label="Details of '+name+'">Details</summary>'+settings(record,exactOpen.has(record.id))+'<div class="run-actions">'+actions+'</div></details></li>';
     }).join('')||'<li class="run-empty">'+(RunMarkets.label()&&records.length?'No saved '+RunMarkets.label()+' backtests.':'No saved backtests yet.')+'</li>';
     // Ticks stay usable while a list action runs.
     list.querySelectorAll('button,input:not([type=checkbox])').forEach(control=>control.disabled=busy);
@@ -79,20 +80,21 @@ const SavedBacktests=(()=>{
     if(focusId&&!busy){const restored=node(focusId);restored?.focus?.({preventScroll:true});if(start!==null&&start!==undefined)restored?.setSelectionRange?.(start,end);}
     update();
   }
-  // The bar of the ticked tests: Compare, Delete ticked and Clear. After Compare the
-  // panel compares the ticked tests whose descriptions are read: one column per test
-  // in list order, with the requested settings that differ, then the headlines, then
-  // a short list of other measures and every setting in a closed disclosure. Only
-  // setting rows carry the difference marker. While another description is read,
-  // the panel keeps what it shows and its top line says so. A redraw keeps the open
-  // disclosure.
+  // The bar of the ticked tests: Compare, Lock ticked (Unlock ticked when every
+  // ticked row is locked), Delete ticked and Clear. Delete ticked leaves the locked
+  // rows. After Compare the panel below the column headings compares the ticked
+  // tests whose descriptions are read: one column per test in list order, with the
+  // requested settings that differ, then the headlines, then a short list of other
+  // measures and every setting in a closed disclosure. Only setting rows carry the
+  // difference marker. While another description is read, the panel keeps what it
+  // shows and the bar says so. A redraw keeps the open disclosure.
   function renderPanel(){
-    const panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),ready=chosen.filter(record=>descriptions.has(record.id));
+    const bar=node('saved-bar'),panel=node('saved-comparison'),chosen=ordered().filter(record=>ticked.has(record.id)),ready=chosen.filter(record=>descriptions.has(record.id));
     const [disclosure]=panel.querySelectorAll('details');
     if(disclosure)allOpen=disclosure.open;
-    panel.hidden=!chosen.length;
-    if(!chosen.length){panel.innerHTML='';return;}
-    const reading=comparing?chosen.length-ready.length:0,disabled=busy?' disabled':'';
+    bar.hidden=!chosen.length;
+    if(!chosen.length){bar.innerHTML=panel.innerHTML='';panel.hidden=true;return;}
+    const reading=comparing?chosen.length-ready.length:0,disabled=busy?' disabled':'',deletable=chosen.filter(record=>!record.locked).length,locking=deletable>0;
     let body='';
     if(comparing&&ready.length>1){
       // Recorded facts, such as a fresh random date set, are not requested settings: they show in the full list only.
@@ -106,10 +108,11 @@ const SavedBacktests=(()=>{
         '<details'+(allOpen?' open':'')+'><summary>'+more+'</summary>'+table(more+' of the ticked tests',(compared.measures.length?group('More measures',compared.measures):'')+group('Settings',[{label:'Saved ID',cells:ready.map(record=>record.id)},...compared.parameters],true))+'</details>';
     }
     const note=chosen.length===1?'Tick another to compare.':reading?'Reading '+(reading>1?reading+' stored results':'1 stored result')+'…':'';
-    const count=chosen.length>1?chosen.length+' saved backtests':'1 saved backtest';
-    const actions=confirmTicked?'<span>Delete '+count+'?</span><button type="button" id="saved-confirm-ticked" data-confirm-ticked'+disabled+'>Delete '+count+'</button><button type="button" id="saved-keep-ticked" data-keep-ticked'+disabled+'>Keep</button>'
-      :'<button type="button" id="saved-compare" data-compare'+(chosen.length<2?' disabled':disabled)+'>'+(comparing?'Hide comparison':'Compare')+'</button><button type="button" id="saved-delete-ticked" data-delete-ticked'+disabled+'>Delete ticked</button><button type="button" id="saved-clear" data-clear'+disabled+'>Clear</button>';
-    panel.innerHTML='<div class="comparison-bar"><strong>'+(chosen.length>1?chosen.length+' tests ticked':'1 test ticked.')+'</strong><span role="status">'+note+'</span>'+actions+'</div>'+body;
+    const count=deletable>1?deletable+' saved backtests':'1 saved backtest';
+    const actions=confirmTicked?'<span>Delete '+count+'?'+(deletable<chosen.length?' Locked tests stay.':'')+'</span><button type="button" id="saved-confirm-ticked" data-confirm-ticked'+disabled+'>Delete '+count+'</button><button type="button" id="saved-keep-ticked" data-keep-ticked'+disabled+'>Keep</button>'
+      :'<button type="button" id="saved-compare" data-compare'+(chosen.length<2?' disabled':disabled)+'>'+(comparing?'Hide comparison':'Compare')+'</button><button type="button" id="saved-lock-ticked" data-lock-ticked="'+locking+'"'+disabled+'>'+(locking?'Lock ticked':'Unlock ticked')+'</button><button type="button" id="saved-delete-ticked" data-delete-ticked'+(deletable?disabled:' disabled')+'>Delete ticked</button><button type="button" id="saved-clear" data-clear'+disabled+'>Clear</button>';
+    bar.innerHTML='<strong>'+(chosen.length>1?chosen.length+' tests ticked':'1 test ticked.')+'</strong><span role="status">'+note+'</span>'+actions;
+    panel.innerHTML=body;panel.hidden=!body;
   }
   // One loader reads the description of each row that the user compares or opened,
   // one at a time and one time. A row that nobody compares or opened is never read.
@@ -180,9 +183,21 @@ const SavedBacktests=(()=>{
       void reconcile(success,ticket);
     });
   }
-  // Delete ticked removes the ticked rows one at a time after one confirmation.
+  // Lock ticked locks or unlocks the ticked rows one at a time.
+  async function lockTicked(locked){
+    const ids=ordered().filter(record=>ticked.has(record.id)&&Boolean(record.locked)!==locked).map(record=>record.id);
+    await perform(async ticket=>{
+      for(const id of ids){
+        await request('/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked})});
+        mutation++;records=records.map(record=>record.id===id?{...record,locked}:record);
+      }
+      const success=(ids.length>1?ids.length+' saved backtests':'Saved backtest')+(locked?' locked.':' unlocked.');message(success);
+      void reconcile(success,ticket);
+    });
+  }
+  // Delete ticked removes the ticked rows that are not locked, one at a time after one confirmation.
   async function removeTicked(){
-    const ids=ordered().filter(record=>ticked.has(record.id)).map(record=>record.id);
+    const ids=ordered().filter(record=>ticked.has(record.id)&&!record.locked).map(record=>record.id);
     confirmTicked=false;
     await perform(async ticket=>{
       for(const [index,id] of ids.entries()){
@@ -240,10 +255,16 @@ const SavedBacktests=(()=>{
       if(descriptions.has(id)||failed.has(id)||!records.some(record=>record.id===id))return;
       viewed.add(id);return load();
     },true);
-    node('saved-comparison').addEventListener('click',event=>{
+    // Compare clicked below the top of Saved backtests scrolls up to the comparison.
+    node('saved-bar').addEventListener('click',event=>{
       const data=event.target.dataset;if(busy)return;
       if('clear' in data){ticked.clear();confirmTicked=false;render();}
-      if('compare' in data){comparing=!comparing;renderPanel();return load();}
+      if('compare' in data){
+        comparing=!comparing;renderPanel();
+        if(comparing&&node('saved-panel').getBoundingClientRect().top<0)node('saved-panel').scrollIntoView();
+        return load();
+      }
+      if(data.lockTicked)return lockTicked(data.lockTicked==='true');
       if('deleteTicked' in data||'keepTicked' in data){confirmTicked='deleteTicked' in data;renderPanel();}
       if('confirmTicked' in data)return removeTicked();
     });

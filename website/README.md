@@ -379,7 +379,10 @@ original bytes when duplicate queue evidence is released.
 
 Tick saved backtests, then select **Compare** to compare them without opening a
 result or changing the form. The box in the heading ticks every row shown.
-**Delete ticked** deletes the ticked records after one confirmation. A panel
+**Lock ticked** locks the ticked records: a locked row says **Locked** and has
+no Delete until **Unlock ticked**. **Delete ticked** deletes the ticked records
+that are not locked after one confirmation. The heading, this bar and the
+column headings stay at the top of the window while the rows scroll. A panel
 above the Saved backtests rows shows one column for each ticked
 test, in list order: first the requested settings that differ, or **Same
 settings**, then the headline rows. A closed disclosure contains every setting

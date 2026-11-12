@@ -11,7 +11,7 @@ const ctx=vm.createContext({document:{getElementById:node},Date,console,location
  const id=url.split('/')[3],method=options.method||'GET';let value;
  if(method==='GET'&&!id&&failList)throw Error('List disconnected');
  assert(id||method==='GET','The page saves nothing itself');
- if(method==='POST'){const request=JSON.parse(options.body),record=records.find(r=>r.id===id);record.name=request.name;const {snapshot,...metadata}=record;value=metadata;}
+ if(method==='POST'){const request=JSON.parse(options.body),record=records.find(r=>r.id===id);if('locked' in request){record.locked=request.locked;value={id,locked:request.locked};}else{record.name=request.name;const {snapshot,...metadata}=record;value=metadata;}}
  else if(method==='DELETE'){records=records.filter(r=>r.id!==id);value={deleted:true};}
  else value=id?records.find(r=>r.id===id):{limit:100,records:records.map(({snapshot,...metadata})=>metadata)};
  const packed=JSON.stringify(value);
@@ -151,29 +151,40 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
   if(finish==='save')assert.equal(records.find(record=>record.id===renameTarget).name,'Typing save');
  }
  // The market switch shows the saved tests of one market; a record without a readable market shows under All only.
- // The box in the heading ticks every row shown. Delete ticked asks one time, then deletes the ticked rows only.
- // Another market clears every tick.
+ // Lock ticked locks the ticked rows: a locked row says Locked and its Details has no Delete. The box in the
+ // heading ticks every row shown. Delete ticked asks one time, then deletes the ticked rows that are not locked.
+ // Unlock ticked unlocks them. Another market clears every tick.
  records=[['1','US one','us'],['2','HK one','hk'],['3','HK two','hk'],['4','Unreadable',null]].map(([digit,name,market])=>({...first,id:digit.repeat(32),name,market}));
  await node('queue-refresh').handlers.click();
  const markets=['','us','hk','jp'].map(market=>({dataset:{market},attributes:{},setAttribute(name,value){this.attributes[name]=value},querySelector(){return this.count||(this.count={textContent:''})}}));
  node('run-markets').querySelectorAll=()=>markets;call('RunMarkets.init()');
  const choose=market=>node('run-markets').handlers.click({target:{closest:()=>markets.find(button=>button.dataset.market===market)}});
  const shown=()=>records.filter(record=>node('saved-list').innerHTML.includes('>'+record.name+'<')).map(record=>record.name).sort();
- const bar=data=>node('saved-comparison').handlers.click({target:{dataset:data}});
+ const bar=data=>node('saved-bar').handlers.click({target:{dataset:data}});
  assert.deepEqual(markets.map(button=>button.count.textContent),[4,1,2,0]);
  choose('hk');assert.deepEqual(shown(),['HK one','HK two']);assert.equal(markets[2].attributes['aria-pressed'],'true');
+ const hkOne='2'.repeat(32),savedRow=id=>{const html=node('saved-list').innerHTML;return html.slice(html.indexOf('id="saved-tick-'+id),html.indexOf('</li>',html.indexOf('id="saved-tick-'+id)));};
+ await node('saved-list').handlers.change({target:{dataset:{tick:hkOne},checked:true}});
+ assert(node('saved-bar').innerHTML.includes('>Lock ticked<'));
+ await bar({lockTicked:'true'});await settle();
+ assert.equal(records.find(record=>record.id===hkOne).locked,true);assert.equal(node('saved-status').textContent,'Saved backtest locked.');
+ assert(savedRow(hkOne).includes('>Locked<'));assert(!savedRow(hkOne).includes('data-delete='));assert(savedRow('3'.repeat(32)).includes('data-delete='));
+ assert(node('saved-bar').innerHTML.includes('>Unlock ticked<'));assert(node('saved-bar').innerHTML.includes('data-delete-ticked disabled'),'Every ticked row is locked');
  const reads=requests.length;
  await node('saved-tick-all').handlers.change({target:{checked:true}});
  assert.equal(node('saved-tick-all').checked,true);assert.equal(node('saved-list').innerHTML.split(' checked').length-1,2);
- assert(node('saved-comparison').innerHTML.includes('2 tests ticked'));assert.equal(requests.length,reads,'A tick reads nothing');
- bar({deleteTicked:''});assert(node('saved-comparison').innerHTML.includes('Delete 2 saved backtests?'));
- bar({keepTicked:''});assert(!node('saved-comparison').innerHTML.includes('Delete 2 saved backtests?'));assert.equal(requests.length,reads);
+ assert(node('saved-bar').innerHTML.includes('2 tests ticked'));assert(node('saved-bar').innerHTML.includes('>Lock ticked<'));assert.equal(requests.length,reads,'A tick reads nothing');
+ bar({deleteTicked:''});assert(node('saved-bar').innerHTML.includes('Delete 1 saved backtest? Locked tests stay.'));
+ bar({keepTicked:''});assert(!node('saved-bar').innerHTML.includes('Delete 1 saved backtest?'));assert.equal(requests.length,reads);
  bar({deleteTicked:''});await bar({confirmTicked:''});await settle();
- assert.deepEqual(requests.slice(reads).filter(request=>request.method==='DELETE').map(request=>request.url[15]).sort(),['2','3']);
- assert.deepEqual(records.map(record=>record.name),['US one','Unreadable']);assert(node('saved-status').textContent.startsWith('2 saved backtests deleted.'));
- assert(node('saved-list').innerHTML.includes('No saved Hong Kong backtests.'));assert(node('saved-comparison').hidden);
+ assert.deepEqual(requests.slice(reads).filter(request=>request.method==='DELETE').map(request=>request.url[15]),['3']);
+ assert.deepEqual(records.map(record=>record.name),['US one','HK one','Unreadable']);assert(node('saved-status').textContent.startsWith('Saved backtest deleted.'));
+ await bar({lockTicked:'false'});await settle();assert.equal(records.find(record=>record.id===hkOne).locked,false);assert.equal(node('saved-status').textContent,'Saved backtest unlocked.');
+ bar({deleteTicked:''});await bar({confirmTicked:''});await settle();
+ assert.deepEqual(records.map(record=>record.name),['US one','Unreadable']);
+ assert(node('saved-list').innerHTML.includes('No saved Hong Kong backtests.'));assert(node('saved-bar').hidden);
  choose('');assert.deepEqual(shown(),['US one','Unreadable']);
- await node('saved-list').handlers.change({target:{dataset:{tick:records[0].id},checked:true}});assert(!node('saved-comparison').hidden);
- choose('us');assert.deepEqual(shown(),['US one']);assert(node('saved-comparison').hidden);assert(!node('saved-list').innerHTML.includes(' checked'));
- console.log('Passed: no save request from the page, a queue-saved test listed after its notification, opening and Tune from stored records, heading sorts, focus kept by id, the advertised capacity, the market switch, ticking every row shown, Delete ticked, explicit deletion, acknowledged rename/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
+ await node('saved-list').handlers.change({target:{dataset:{tick:records[0].id},checked:true}});assert(!node('saved-bar').hidden);
+ choose('us');assert.deepEqual(shown(),['US one']);assert(node('saved-bar').hidden);assert(!node('saved-list').innerHTML.includes(' checked'));
+ console.log('Passed: no save request from the page, a queue-saved test listed after its notification, opening and Tune from stored records, heading sorts, focus kept by id, the advertised capacity, the market switch, ticking every row shown, Lock and Unlock ticked, Delete ticked that leaves locked rows, explicit deletion, acknowledged rename/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
 })().catch(error=>{console.error(error);process.exitCode=1});

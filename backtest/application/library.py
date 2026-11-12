@@ -67,6 +67,8 @@ class Store:
         try:
             db.execute(SCHEMA)
             db.execute("CREATE TABLE IF NOT EXISTS queue_imports (source_id TEXT PRIMARY KEY, saved_id TEXT NOT NULL)")
+            # A locked record cannot be deleted. Older library files gain this table on open.
+            db.execute("CREATE TABLE IF NOT EXISTS locked_backtests (id TEXT PRIMARY KEY)")
             durable_evidence.install(db)
             return db
         except BaseException:
@@ -77,15 +79,16 @@ class Store:
         return dict(id=row['id'],name=row['name'],created_at=row['created_at'],**json.loads(row['info']))
 
     def list(self):
-        """Every record's metadata and the market of its stored settings."""
+        """Every record's metadata, its lock and the market of its stored settings."""
         if not self.path.exists():return []
         db=self.connect()
         try:
             rows=db.execute('SELECT id,name,created_at,info FROM records ORDER BY created_at DESC,id DESC').fetchall()
+            locked={row[0] for row in db.execute('SELECT id FROM locked_backtests')}
             for row in rows:
                 if row['id'] not in _markets:
                     _markets[row['id']]=_market(row['id'],db.execute('SELECT snapshot FROM records WHERE id=?',(row['id'],)).fetchone()[0])
-            return [dict(self.metadata(row),market=_markets[row['id']]) for row in rows]
+            return [dict(self.metadata(row),market=_markets[row['id']],locked=row['id'] in locked) for row in rows]
         finally:db.close()
 
     def save(self,name,snapshot):
@@ -227,12 +230,28 @@ class Store:
             return self.metadata(row)
         finally:db.close()
 
+    def lock(self,identifier,locked):
+        """Lock or unlock a record; the record itself does not change."""
+        self.check_id(identifier)
+        if not self.path.exists():raise Missing('Saved backtest not found.')
+        db=self.connect()
+        try:
+            with db:
+                if db.execute('SELECT 1 FROM records WHERE id=?',(identifier,)).fetchone() is None:
+                    raise Missing('Saved backtest not found.')
+                if locked:db.execute('INSERT OR IGNORE INTO locked_backtests VALUES(?)',(identifier,))
+                else:db.execute('DELETE FROM locked_backtests WHERE id=?',(identifier,))
+            return dict(id=identifier,locked=locked)
+        finally:db.close()
+
     def delete(self,identifier):
         self.check_id(identifier)
         if not self.path.exists():raise Missing('Saved backtest not found.')
         db=self.connect()
         try:
             with db:
+                if db.execute('SELECT 1 FROM locked_backtests WHERE id=?',(identifier,)).fetchone():
+                    raise ValueError('Unlock this saved backtest before deleting it.')
                 durable_evidence.delete(db,identifier)
                 if db.execute('DELETE FROM records WHERE id=?',(identifier,)).rowcount!=1:
                     raise Missing('Saved backtest not found.')
