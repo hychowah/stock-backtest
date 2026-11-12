@@ -1,7 +1,7 @@
 <dialog id="variable-dialog" aria-labelledby="variable-dialog-title">
   <div class="variable-dialog-head"><h2 id="variable-dialog-title">Variable</h2><div class="variable-head-actions"><button type="button" id="variable-favourite" hidden>☆ Favourite</button><button type="button" id="variable-delete" hidden>Delete</button><button type="button" id="variable-close">Close</button></div></div>
   <div class="variable-form">
-    <label for="variable-name">Name</label><input id="variable-name" maxlength="120" autocomplete="off" placeholder="Optional">
+    <label for="variable-name">Name</label><input id="variable-name" maxlength="120" autocomplete="off" placeholder="Optional. If empty, the formula is the name.">
     <label for="variable-formula">Formula</label>
     <div class="filter-combo"><textarea id="variable-formula" rows="2" spellcheck="false" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="variable-suggestions" placeholder="For example: Total debt / Enterprise value"></textarea><div id="variable-suggestions" class="filter-options" role="listbox" aria-label="Suggestions" hidden></div></div>
     <div id="variable-check" class="variable-check" data-state="empty"><span id="variable-check-text" role="status" aria-live="polite">Type a formula</span> <label id="variable-display-label" hidden>· Show as <select id="variable-display"></select></label><span id="variable-fixes"></span></div>

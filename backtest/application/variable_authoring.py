@@ -15,8 +15,6 @@ def catalog():
     """Editor descriptors: input names, function words, displays and built-in steps."""
     return dict(builtins=strategy_requests.builtin_catalog(),
                 displays={unit:details['displays'] for unit,details in parameters.units(parameters.V4).items()},
-                strategy_bytes=strategy_requests.STRATEGY_BYTES,
-                request_bytes=strategy_requests.REQUEST_BYTES,
                 vocabulary=[dict(item, text=formula_text.spelling(item['name'])) for item in vocabulary.entries()],
                 functions=[dict(item) for item in formula_text.FUNCTIONS])
 
@@ -157,12 +155,6 @@ def detached(request):
                       if (item['variable_id'],item['revision']) == (selected['variable_id'],selected['revision']))
     return dict(selected=selected,name=label['name'],authored=authored['definitions'],capture=checked,
                 text=formula_text.to_text(definition, checked['presentation']))
-
-
-def authoring_snapshot(request, store):
-    """Read an exact saved revision for editing, with its text as detached prints it."""
-    snapshot = store.authoring_snapshot(request)
-    return dict(snapshot, text=detached(dict(root=snapshot['selected'], capture=snapshot['capture']))['text'])
 
 
 def prepare(request, store, *, checkpoint=backtest_control.checkpoint):

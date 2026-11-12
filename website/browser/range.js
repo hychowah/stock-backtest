@@ -153,7 +153,7 @@ const firstControl=id=>StrategyDraft.view().find(row=>row.id===id)?.kind==='rank
 function chooseStep(key,choice){
   const role=key==='new'?pendingStep:key;
   stepMessage('');
-  if(choice.kind==='create'){void VariableWorkspace.open(role);return;}
+  if(choice.kind==='create'){void VariableWorkspace.open(role,null);return;}
   const expected=StrategyDraft.read().revision;
   if(choice.kind==='builtin'||choice.kind==='field'){
     const id=StrategyDraft.patch({role,source:choice.kind==='field'?{kind:'field',field:choice.field}:{kind:'builtin',id:choice.id}},expected);
@@ -308,6 +308,11 @@ const StrategyDraft=(()=>{
     if(source.kind==='builtin')return builtinDescriptor(source.id);
     for(const capture of [...detached].reverse()){const found=capture.program.definitions.find(item=>exactKey(item)===exactKey(source));if(found)return found;}
     return null;
+  }
+  // A formula step's exact root and the capture that holds it, as the editor opens it.
+  function formula(role){
+    const {variable_id,revision}=steps.find(item=>item.id===role).source,root={variable_id,revision};
+    return copy({root,capture:[...detached].reverse().find(capture=>capture.program.definitions.some(item=>exactKey(item)===exactKey(root)))});
   }
   const shown=step=>step.submitted_threshold||step.threshold;
   // An edited threshold drops the values derived from its earlier submission.
@@ -581,7 +586,7 @@ const StrategyDraft=(()=>{
     if(at<0)return {title:'New '+role,use:'Add as '+role};
     return {title:'Step '+(at+1)+' · '+(steps[at].kind==='rank'?'Rank':'Filter'),use:'Update step '+(at+1)};
   }
-  return {restore,beginQueuedEdit,catalog,fields,read:()=>({revision,changed,detached:copy(detached)}),source:role=>copy(steps.find(item=>item.id===role)?.source??null),describe,
+  return {restore,beginQueuedEdit,catalog,fields,read:()=>({revision,changed,detached:copy(detached)}),formula,describe,
     patch,edit,commitRange,move,remove,reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,touch,render};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
@@ -619,7 +624,7 @@ stepList.addEventListener('click',event=>{
   const {action,step}=target.dataset;
   stepMessage('');
   if(action==='cancel'){pendingStep=null;renderSteps();document.getElementById('add-filter').focus?.();return;}
-  if(action==='edit'){void VariableWorkspace.open(step);return;}
+  if(action==='edit'){void VariableWorkspace.open(step,StrategyDraft.formula(step));return;}
   if(action==='up'||action==='down'){StrategyDraft.move(step,action==='up'?-1:1);settingsChanged();}
   if(action==='remove'){StrategyDraft.remove(step);settingsChanged();}
 });

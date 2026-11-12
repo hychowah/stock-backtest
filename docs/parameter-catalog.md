@@ -11,8 +11,7 @@ Captured programs run through Original in Latest, fixed and random modes; a
 January request is refused. Catalogs `/3` and `/4` each contain 77 IDs. New
 definitions use `/4` and `market-annual/1`; Hong Kong and Japan runs use the
 `/4` form of older definitions. A capture retains the 32-definition
-ceiling. Eager scalar execution remains unsupported. Inspection evaluates complete recorded
-latest scopes with their generation, denominator and unavailable reasons.
+ceiling. Eager scalar execution remains unsupported.
 These source capabilities establish no installed readiness or live-cache coverage.
 
 This inventory maps documented fields from existing FMP routes. Include an input

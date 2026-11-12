@@ -19,7 +19,7 @@ const exact={variable_id:'variable:one',revision:'sha256:'+'1'.repeat(64)};
 const saved={...exact,name:'debt/EV',text:'debt/EV',version:1,favourite:false,deleted:false};
 const capture={program:{bundle:{definitions:[{...exact,definition:{}}]},definitions:[{...exact,unit:'scalar',display:'percent'}]},presentation:[{...exact,name:saved.name}]};
 const openedText='Total debt / Enterprise value';
-let revision=3,draftSources={},draftDetached=[],validationWait=null,useWire=false,lastWireValidation=null;
+let revision=3,openedName='debt/EV',validationWait=null,useWire=false,lastWireValidation=null;
 const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null,wire=wireOrigin?JSON.parse(fs.readFileSync(0,'utf8')):null;
 const timers=new Map();let timerId=0;
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
@@ -38,8 +38,8 @@ const context=vm.createContext({console,document,setTimeout:callback=>{timers.se
  }
  if(url.endsWith('/catalog'))return response(ownerCatalog);
  if(url==='/api/variables')return response(body?{...saved,variable_id:'variable:new',name:body.name}:{entries:[saved]});
- if(url.endsWith('/detached')){assert.deepEqual(body.root,exact);return response({selected:exact,name:'debt/EV',authored:[{...exact,definition:{output:{unit:'scalar',display:'multiple'}}}],capture,text:openedText});}
- if(url.endsWith('/authored'))return response({entry:saved,selected:exact,authored:[{...exact,definition:{}}],capture,text:openedText});
+ if(url.endsWith('/detached')){assert.deepEqual(body.root,exact);return response({selected:exact,name:openedName,authored:[{...exact,definition:{output:{unit:'scalar',display:'multiple'}}}],capture,text:openedText});}
+ if(url.endsWith('/authored'))return response({entry:saved,selected:exact,authored:[{...exact,definition:{}}],capture});
  if(url.endsWith('/validate')){
   if(validationWait)await validationWait();
   const at=body.formula.text.indexOf('Revnue');
@@ -62,7 +62,7 @@ const shown=()=>node('variable-suggestions').hidden?'':node('variable-suggestion
 const checkLine=()=>node('variable-check-text').textContent;
 const validations=()=>calls.filter(call=>call.url.endsWith('/validate'));
 const describe=role=>({s1:{title:'Step 1 · Rank',use:'Update step 1'},filter:{title:'New filter',use:'Add as filter'}}[role]);
-context.draft={read:()=>({revision,detached:draftDetached}),source:role=>draftSources[role]??null,describe,patch:(change,expected)=>{assert.equal(expected,revision,'Stale apply');applied.push(structuredClone(change));revision++;}};
+context.draft={read:()=>({revision}),describe,patch:(change,expected)=>{assert.equal(expected,revision,'Stale apply');applied.push(structuredClone(change));revision++;}};
 run("VariableWorkspace.init({draft})");
 (async()=>{
  if(!wire){
@@ -113,13 +113,20 @@ run("VariableWorkspace.init({draft})");
   await click('variable-apply');assert.equal(applied.length,1);assert.equal(applied[0].role,'filter');assert.equal(applied[0].source.variable_id,'variable:new');
   assert(!node('variable-dialog').open);assert.equal(document.activeElement.id,'opener');
   // Edit formula opens the step's capture; using it unchanged keeps its revision.
-  draftSources={s1:{kind:'formula',...exact}};draftDetached=[capture];
-  await run("VariableWorkspace.open('s1')");assert.equal(formula.value,openedText);assert.equal(node('variable-name').value,'debt/EV');
+  context.base={root:exact,capture};
+  await run("VariableWorkspace.open('s1',base)");assert.equal(formula.value,openedText);assert.equal(node('variable-name').value,'debt/EV');
   assert.deepEqual(validations().at(-1).body.base,{root:exact,capture});assert.equal(validations().at(-1).body.formula.display,'multiple');
   assert.equal(node('variable-apply').textContent,'Update step 1');
   await click('variable-apply');assert.deepEqual(applied.at(-1).source,{kind:'formula',...exact});
+  // Create on a formula step opens an empty formula.
+  const detachedCount=calls.filter(call=>call.url.endsWith('/detached')).length;
+  await run("VariableWorkspace.open('s1',null)");assert.equal(formula.value,'');assert.equal(node('variable-name').value,'');
+  assert.equal(calls.filter(call=>call.url.endsWith('/detached')).length,detachedCount);assert.equal(node('variable-apply').textContent,'Update step 1');
+  // A name that only repeats the formula is the automatic one: the field stays empty after the check.
+  openedName=openedText;await run("VariableWorkspace.open('s1',base)");openedName='debt/EV';
+  assert.equal(checkLine(),'✓ Ready · Result: ratio');assert.equal(node('variable-name').value,'');assert.equal(validations().at(-1).body.name,'');
   // Close discards edits and never checks in the background.
-  await run("VariableWorkspace.open('s1')");type('Total debt');await click('variable-close');const before=calls.length;await pause();assert.equal(calls.length,before);assert.equal(applied.length,2);
+  await run("VariableWorkspace.open('s1',base)");type('Total debt');await click('variable-close');const before=calls.length;await pause();assert.equal(calls.length,before);assert.equal(applied.length,2);
   // Step list choices: formula-only inputs and saved variables.
   const listed=await run('VariableWorkspace.sources()');
   assert(listed.inputs.some(item=>item.name==='Revenue'));assert(!listed.inputs.some(item=>item.name==='Enterprise value'||item.name==='P/S'));
@@ -130,12 +137,12 @@ run("VariableWorkspace.init({draft})");
   context.stale=revision-1;await assert.rejects(run("VariableWorkspace.useSource('s1',choice,stale)"),/Stale apply/);
  }else{
   // Over the wire: a large step capture opens as text and is used unchanged.
-  useWire=true;draftSources={s1:wire.shared.editor_source};draftDetached=[wire.shared.editor_capture];
-  await run("VariableWorkspace.open('s1')");
+  useWire=true;const {kind,...root}=wire.shared.editor_source;context.base={root,capture:wire.shared.editor_capture};
+  await run("VariableWorkspace.open('s1',base)");
   assert(formula.value.length>0);assert.deepEqual(lastWireValidation.root,{variable_id:wire.shared.editor_source.variable_id,revision:wire.shared.editor_source.revision});
   assert.deepEqual(lastWireValidation.capture,wire.shared.editor_capture);
   await click('variable-apply');assert.deepEqual(applied.at(-1).source,wire.shared.editor_source);
  }
  assert(!calls.some(call=>call.url.includes('/api/backtest-')));
- console.log('Passed: empty start, suggestions and saved names by typed spelling, linked step labels, no built-ins, automatic and stale checks, error suggestion spans, input insertion, save, favourite, delete, use, unchanged reopen, close and list sources; no jobs.');
+ console.log('Passed: empty start, suggestions and saved names by typed spelling, linked step labels, no built-ins, automatic and stale checks, error suggestion spans, input insertion, save, favourite, delete, use, unchanged reopen, empty create on a formula step, no automatic name, close and list sources; no jobs.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

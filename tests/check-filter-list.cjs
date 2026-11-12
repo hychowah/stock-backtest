@@ -18,7 +18,7 @@ let sourcesFailure=true,useFailure=null;
 const workspace={
   builtin:id=>builtins[id]?structuredClone(builtins[id]):null,displays:unit=>({USD:['usd','usd_million']}[unit]||[]),
   displayName:value=>({multiple:'Multiple (×)',usd:'US dollars',usd_million:'$ million',percent:'Percent (%)'}[value]||value),
-  open:async role=>{opened.push(role);},content:()=>({submitted:[],labels:[]}),
+  open:async(role,base)=>{opened.push(JSON.parse(JSON.stringify({role,base})));},content:()=>({submitted:[],labels:[]}),
   sources:async()=>{if(sourcesFailure)throw Error('offline');return {library:[{variable_id:'variable:saved',revision:'sha256:'+'c'.repeat(64),name:'Saved margin',favourite:true}],inputs:[{id:'measure:gross_margin',name:'Gross margin',category:'Margins and returns'},{id:'annual.revenue',name:'Revenue',category:'Income statement'}]};},
   useSource:async(role,choice,expected)=>{chosen.push({role,choice});if(useFailure)throw useFailure;vm.runInContext('StrategyDraft',context).patch({role,source:{kind:'formula',...revenue},capture,authored:capture.program.bundle.definitions},expected);}
 };
@@ -96,10 +96,11 @@ const ids=()=>rows().map(row=>row.id);
  assert.equal(rows()[3].label,'P/E (×)');assert.equal(rows()[3].formula,false);assert.equal(rows()[3].value,'500');assert.equal(rows()[3].id,variable);
  // Edit formula and Create open the editor for the same step.
  fire('focusin',search(variable));type(variable,'revenue');press(variable,'Enter');await tick();
- fire('click',button({action:'edit',step:variable}));assert.equal(opened.at(-1),variable);
+ fire('click',button({action:'edit',step:variable}));assert.deepEqual(opened.at(-1),{role:variable,base:{root:revenue,capture}});
  add('filter');fire('focusin',search('new'));type('new','create');press('new','Enter');assert.equal(opened.length,1,'Typing never selects an action');
- press('new','ArrowDown');press('new','Enter');assert.equal(opened.at(-1),'filter');
+ press('new','ArrowDown');press('new','Enter');assert.deepEqual(opened.at(-1),{role:'filter',base:null});
  fire('click',button({action:'cancel'}));assert(!list.innerHTML.includes('filter-search-new'));
+ fire('focusin',search(variable));type(variable,'revenue');press(variable,'ArrowDown');press(variable,'Enter');assert.deepEqual(opened.at(-1),{role:variable,base:null},'Create on a formula step opens empty');
  // A failed choice reports itself and leaves the strategy unchanged.
  const before=JSON.stringify(rows());
  useFailure=Object.assign(Error('stale'),{code:'STALE_DRAFT'});

@@ -249,8 +249,6 @@ class _Reader:
             parts.append(']')
             at = end + 2
         self.at = end + 1
-        if not ''.join(parts).strip():
-            _fail('SYNTAX', start, self.at, 'Put a name between [ and ].')
         return ''.join(parts)
 
     def suggest(self, key, choices, suffix=''):

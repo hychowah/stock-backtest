@@ -1103,9 +1103,9 @@ detail mode explains the selected rows only. Report EBITDA uses broad accepted r
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
 dates. Only those named annual adapters support annual history. A new research
 schema or daily cache version ([Prepare once](#prepare-once)) makes
-incompatible caches rebuild; durable records keep their formats. Version-3
-authoring exposes all 57 direct
-inputs, policy adapters and 33 exact measures. The original four-item catalog
+incompatible caches rebuild; durable records keep their formats. Typed
+formulas name each `/4` input once (`backtest/application/vocabulary.py`).
+The original four-item catalog
 remains available for legacy definitions. The language check,
 `definitions.require_program()`, is the one formula gate, and the one evaluator
 implements the whole language. Restored captures run through Original in

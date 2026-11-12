@@ -94,9 +94,9 @@ class FormulaTextTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         store = library.Store(Path(folder.name) / 'variables.sqlite')
         entry = store.create('debt/EV', saved)
-        opened = variable_authoring.authoring_snapshot({key: entry[key] for key in ('variable_id', 'revision')}, store)
-        self.assertEqual(opened['text'], 'Total debt / Enterprise value')
+        opened = store.authoring_snapshot({key: entry[key] for key in ('variable_id', 'revision')})
         base = dict(root=opened['selected'], capture=opened['capture'])
+        self.assertEqual(variable_authoring.detached(base)['text'], 'Total debt / Enterprise value')
         def check(text, display='percent'):
             return variable_authoring.validate(dict(formula=dict(text=text, display=display), base=base, name='debt/EV',
                                                     variable_id=entry['variable_id']), store)

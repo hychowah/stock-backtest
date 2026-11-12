@@ -103,6 +103,8 @@ if(process.argv[2]==='--builtins-parity'){
  edit(rankA,'rank_from','20');edit(rankA,'rank_to','40');edit(rankC,'direction','lowest');edit(filterB,'op','lt');edit(filterB,'value','12');edit(filterD,'op','ge');edit(filterD,'value','5');run('StrategyDraft.render()');
  assert.deepEqual(shape(),[['rank','EV/EBITDA yield','highest',20,40],['filter','P/E','lt','12','multiple'],['rank','EV/3y EBITDA multiple','lowest',1,50],['filter','Original submitted label','ge','5','percent']]);
  assert.equal(view()[3].title,exact.variable_id+' @ '+exact.revision);assert(view()[3].units.includes('number'));
+ // Edit formula opens the step's exact root with the capture that holds it.
+ assert.deepEqual(copy(run(`StrategyDraft.formula('${filterD}')`)),{root:{variable_id:exact.variable_id,revision:exact.revision},capture:detached});
  assert.equal(run('StrategyDraft.flat()'),null);assert.equal(node('auto-run').disabled,true);assert(node('auto-run-note').textContent.includes('paused'));
  assert.equal(node('strategy-heading').textContent,'Lowest EV/3y EBITDA multiple');
  // Latest picks for a chain outside the offline shape run on the service

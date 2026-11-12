@@ -19,7 +19,7 @@ const VariableWorkspace=(()=>{
   const fold=text=>text.replace(/\s+/g,' ').toLowerCase();
   // Edits are checked after a short pause; Use and Save check first when needed.
   const CHECK_DELAY=400;
-  let callbacks={},catalog=null,entries=[],words=[],editor=null,role=null,draftRevision=0,generation=0,validation=0,edits=0,returnFocus=null,checkTimer=null,suggestions=null;
+  let callbacks={},catalog=null,entries=[],words=[],editor=null,role=null,draftRevision=0,generation=0,validation=0,returnFocus=null,checkTimer=null,suggestions=null;
   function message(text,error=false){node('variable-message').textContent=text;node('variable-message').className=error?'backtest-failed':'hint';}
   async function request(path,body){
     const response=await fetch('/api/variables'+path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
@@ -34,7 +34,7 @@ const VariableWorkspace=(()=>{
   }
   // Text, name and display edits all make a new check.
   function edited(){
-    edits++;validation++;editor.checked=null;clearTimeout(checkTimer);checkTimer=null;
+    validation++;editor.checked=null;clearTimeout(checkTimer);checkTimer=null;
     if(!editor.text.trim()){showCheck('empty','Type a formula');return;}
     showCheck('pending','Checking…');
     const local=generation;
@@ -128,24 +128,28 @@ const VariableWorkspace=(()=>{
     entries=list.entries;words=choices();renderInputs();
   }
   // role is fixed for one open window: a step ID, or the kind of a new step.
-  async function open(selectedRole){
-    const draft=callbacks.draft.read(),selected=callbacks.draft.source(selectedRole);
-    const captured=selected?.kind==='formula'?draft.detached.find(capture=>capture.program.bundle.definitions.some(item=>item.variable_id===selected.variable_id&&item.revision===selected.revision)):null;
-    role=selectedRole;draftRevision=draft.revision;returnFocus=document.activeElement;const local=++generation,opened=edits;
+  // base {root, capture} opens that formula; null opens an empty one. The
+  // fields take typing once the opened text is in place.
+  async function open(selectedRole,base){
+    role=selectedRole;draftRevision=callbacks.draft.read().revision;returnFocus=document.activeElement;const local=++generation;
     editor=blank();hide();
-    node('variable-dialog-title').textContent=callbacks.draft.describe(role).title;node('variable-apply').textContent=callbacks.draft.describe(role).use;
-    node('variable-name').value='';node('variable-formula').value='';showCheck('empty','Type a formula');message('');renderEntry();
+    const {title,use}=callbacks.draft.describe(role);
+    node('variable-dialog-title').textContent=title;node('variable-apply').textContent=use;
+    for(const id of ['variable-name','variable-formula'])Object.assign(node(id),{value:'',readOnly:!!base});
+    showCheck('empty','Type a formula');message('');renderEntry();
     node('variable-dialog').showModal?.();if(!node('variable-dialog').open)node('variable-dialog').setAttribute('open','');
     node('variable-formula').focus();
     try{
       catalog??=await request('/catalog');
-      const [list,formula]=await Promise.all([request(''),captured?request('/detached',{root:{variable_id:selected.variable_id,revision:selected.revision},capture:captured}):null]);
+      const [list,formula]=await Promise.all([request(''),base&&request('/detached',base)]);
       if(local!==generation)return;
       entries=list.entries;words=choices();renderInputs();
-      if(formula&&opened===edits){
-        const definition=formula.authored.find(item=>item.variable_id===formula.selected.variable_id&&item.revision===formula.selected.revision).definition;
-        Object.assign(editor,{name:formula.name,variable_id:formula.selected.variable_id,text:formula.text,display:definition.output.display,base:{root:formula.selected,capture:formula.capture},
-          entry:entries.find(entry=>entry.variable_id===formula.selected.variable_id)||null});
+      if(formula){
+        const {variable_id,revision}=base.root,definition=formula.authored.find(item=>item.variable_id===variable_id&&item.revision===revision).definition;
+        // A name that only repeats the formula was given automatically, so the field stays empty.
+        const named=fold(formula.name).replace(/ /g,'')!==fold(formula.text).replace(/ /g,'');
+        Object.assign(editor,{name:named?formula.name:'',variable_id,text:formula.text,display:definition.output.display,base,entry:entries.find(entry=>entry.variable_id===variable_id)||null});
+        for(const id of ['variable-name','variable-formula'])node(id).readOnly=false;
         node('variable-name').value=editor.name;node('variable-formula').value=editor.text;renderEntry();await validate();
       }
     }catch(failure){if(local===generation)message(failure.message,true);}
@@ -178,8 +182,7 @@ const VariableWorkspace=(()=>{
   // Every step shares the library and the formula-only inputs.
   async function sources(){
     catalog??=await request('/catalog');
-    const library=await request('');
-    return {library:library.entries.filter(entry=>!entry.deleted),inputs:catalog.vocabulary.filter(item=>item.term&&!item.builtins.length)};
+    return {library:(await request('')).entries,inputs:catalog.vocabulary.filter(item=>item.term&&!item.builtins.length)};
   }
   // One list choice becomes an exact checked source, as Use in the window would.
   // expected fences the draft revision.

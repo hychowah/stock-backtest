@@ -4,8 +4,9 @@
 
 #scalar-evidence-view,#scalar-explanation,#scalar-explanation-content{min-width:0;max-width:100%;overflow-wrap:anywhere}#scalar-explanation-content p,#scalar-explanation-content li{white-space:normal;overflow-wrap:anywhere}.variable-evidence-samples{display:grid;gap:12px}.variable-evidence-sample{min-width:0;padding:12px;border:1px solid #dce5df;border-radius:7px}.variable-evidence-sample h4{margin:0 0 8px;overflow-wrap:anywhere}.variable-evidence-sample dl{display:flex;gap:8px 20px;flex-wrap:wrap;margin:0}.variable-evidence-sample dl div{min-width:90px}.variable-evidence-sample dt{font-size:12px;color:#536762}.variable-evidence-sample dd{margin:0;font-weight:600}.variable-evidence-sample ul{margin:8px 0}.variable-evidence-sample ol{margin:8px 0;font-size:13px}
 
-/* The variable window: name, typed formula, its check and how it was read. */
-#variable-dialog{width:min(860px,calc(100vw - 32px));max-height:calc(100dvh - 28px);border:1px solid #cbd9cf;border-radius:12px;padding:20px;color:#173d32;background:#fbfcf8;box-sizing:border-box}
+/* The variable window: name, typed formula, its check and how it was read.
+   Its top stays fixed, so a new check line or picture grows it downward only. */
+#variable-dialog{width:min(860px,calc(100vw - 32px));margin:12dvh auto auto;max-height:calc(88dvh - 14px);border:1px solid #cbd9cf;border-radius:12px;padding:20px;color:#173d32;background:#fbfcf8;box-sizing:border-box}
 #variable-dialog::backdrop{background:#102e25aa}
 #variable-dialog button:focus-visible{outline:3px solid #267d63;outline-offset:2px}
 .variable-dialog-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}

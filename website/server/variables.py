@@ -31,7 +31,7 @@ def dispatch(handler):
             if parts==['validate']:value=variable_authoring.validate(request,store)
             elif parts==['capture']:value=variable_authoring.prepare(request,store)
             elif parts==['detached']:value=variable_authoring.detached(request)
-            elif parts==['authored']:value=variable_authoring.authoring_snapshot(request,store)
+            elif parts==['authored']:value=store.authoring_snapshot(request)
             elif not parts:value=store.create(request.get('name'),request.get('definition'),favourite=request.get('favourite',False))
             elif len(parts)==2:
                 identifier,action=parts;version=request.get('version')
