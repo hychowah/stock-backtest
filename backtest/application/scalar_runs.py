@@ -2,14 +2,20 @@
 
 The caller owns admitted connections, borrowed observation view and output writer.
 Calendar sampling, trial book publication and portfolio arithmetic remain delegated
-owners. This module never owns a library lookup.
+owners. This module never owns a library lookup. A large random-date run whose
+books are all stored evaluates its trials in worker processes (stored_trials).
 """
+from collections import deque
+from concurrent.futures import ProcessPoolExecutor, TimeoutError
+from contextlib import closing, contextmanager
 from datetime import date
+from functools import partial
+import multiprocessing
 import time
 
 from backtest import selection, calendar_requests
 from backtest.application import scalar_execution, strategy_requests
-from backtest.inputs import facts
+from backtest.inputs import daily, fact_view, facts
 from backtest.variables import definitions
 from backtest.runtime import diagnostics
 from backtest.engines.original import schedules, robustness, book_batch, curves
@@ -25,6 +31,79 @@ class TrialSink:
         self.counts[0] += 1; self.counts[1] += period['names'] == 0
         self.counts[2] += period['names'] < self.requested
         self.writer.period(period)
+
+
+TRIAL_WORKERS = 8
+MIN_PARALLEL_PERIODS = 96
+_worker = None
+
+
+def initialize_worker(path, research, expected, market, capture, record_bytes, configuration):
+    """Give a trial worker its own reader, view and executor of the parent's admitted inputs."""
+    global _worker
+    book_batch.follow_parent()
+    db = book_batch.open_reader(path, research, expected)
+    # The parent holds cache ownership and checks freshness at the end of the operation.
+    view = fact_view.View(db, lambda: None, lambda: None, market=market)
+    _worker = db, configuration, scalar_execution.Executor(capture, view, None, record_bytes=record_bytes, explain=False)
+
+
+def worker_trial(number, scopes):
+    """Evaluate one whole trial; return its result and its evidence and period records in order.
+
+    scopes is the number of scopes of the earlier trials: the executor numbers
+    scopes across the run. Nothing is written.
+    """
+    db, configuration, executor = _worker
+    records = []
+    executor.number = scopes
+    executor.sink = lambda record: records.append((True, record))
+    result = book_batch.evaluate_trial(db, configuration, configuration['samples'][number - 1], book_selection=executor,
+                                       emit_period=lambda period: records.append((False, period)))
+    return result, records
+
+
+@contextmanager
+def stored_trials(db, planned, capture, market, writer, sink, checkpoint):
+    """Yield the worker count and the results of stored-book trials, in trial order.
+
+    Each worker evaluates whole trials with the serial code and writes
+    nothing. The parent replays a trial's records into the writer and the sink
+    in their original order, so the stream equals the serial stream. A trial
+    has one scope for each date of its sample. At most twice the worker count
+    of trials is in flight. A Stop waits for the running trials.
+    """
+    workers = min(TRIAL_WORKERS, len(planned['samples']))
+    pool = ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context('spawn'),
+        initializer=initialize_worker, initargs=(book_batch.database_path(db), book_batch.database_path(db, 'research'),
+            daily.binding(db), market, capture, writer.record_bytes, planned))
+    pending = deque(); remaining = enumerate(planned['samples'], 1); scopes = 0
+    def submit():
+        nonlocal scopes
+        number, dates = next(remaining, (None, ()))
+        if number is not None:
+            pending.append(pool.submit(worker_trial, number, scopes)); scopes += len(dates)
+    def ordered():
+        for unused in range(2 * workers): submit()
+        number = 0
+        while pending:
+            future = pending.popleft(); number += 1
+            with diagnostics.stage('trials'):
+                while True:
+                    try: result, records = future.result(timeout=.25); break
+                    except TimeoutError: checkpoint()
+                submit()
+                sink.start_trial(number)
+                for evidence, record in records:
+                    (writer.evidence if evidence else sink.period)(record)
+            yield result
+    results = ordered()
+    try:
+        yield workers, results
+    finally:
+        results.close()
+        for future in pending: future.cancel()
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def check_size(writer, executor, periods, days):
@@ -82,17 +161,23 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
                 strategy_requests.validate_recorded(options,planned)
                 planned = calendar_requests.validate_plan(sessions,planned,checkpoint=checkpoint)
         end = date.fromisoformat(planned['window_end'])
-        check_size(writer, executor, sum(len(sample) for sample in planned['samples']),
+        periods = sum(len(sample) for sample in planned['samples'])
+        check_size(writer, executor, periods,
                    sum(len(curves.days(sessions, date.fromisoformat(sample[0]), end)) for sample in planned['samples']))
         if configuration:configuration(planned)
         summaries = []; execution = {}
-        for number,result,stats in book_batch.evaluate_trials(db,planned,progress,book_selection=executor,trial_sink=sink):
-            # The recorded plan retains its original labels; this trial retains
-            # the new submission's exact capture after a presentation-only edit.
-            result['options'] = result_options
-            summaries.append(robustness.summarize(result,number,planned['samples'][number-1],period_counts=sink.counts))
-            writer.end_trial(result)
-            execution = dict(stats)
+        parallel = len(planned['samples']) >= 2 and periods >= MIN_PARALLEL_PERIODS
+        trials = book_batch.evaluate_trials(db,planned,progress,book_selection=executor,trial_sink=sink,
+            stored_trials=partial(stored_trials,db,planned,capture,view.market,writer,sink,checkpoint) if parallel else None)
+        # Closing the trials joins their workers before the caller releases the inputs.
+        with closing(trials):
+            for number,result,stats in trials:
+                # The recorded plan retains its original labels; this trial retains
+                # the new submission's exact capture after a presentation-only edit.
+                result['options'] = result_options
+                summaries.append(robustness.summarize(result,number,planned['samples'][number-1],period_counts=sink.counts))
+                writer.end_trial(result)
+                execution = dict(stats)
         if len(summaries) != planned['requested']:
             raise ValueError('Completed scalar trial count differs from its recorded plan.')
         summary = robustness.summarize_trials(planned,summaries,started)

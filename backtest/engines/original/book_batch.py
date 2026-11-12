@@ -9,7 +9,7 @@ to a temporary local file.
 from collections import deque
 from bisect import bisect_right
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import date
 import multiprocessing
 import os
@@ -94,16 +94,21 @@ def open_reader(path,research,expected):
         db.close();raise
 
 
-def initialize_worker(path,research,expected,market='us'):
-    global _reader,_facts
+def follow_parent():
+    """End this worker process when its parent ends."""
     parent=multiprocessing.parent_process()
     if parent is not None:
-        def follow_parent():
+        def wait():
             parent.join()
             # Closing the launcher can kill the parent before executor cleanup.
             # These children only read, so exit promptly and release their locks.
             os._exit(0)
-        Thread(target=follow_parent,daemon=True).start()
+        Thread(target=wait,daemon=True).start()
+
+
+def initialize_worker(path,research,expected,market='us'):
+    global _reader,_facts
+    follow_parent()
     _reader=open_reader(path,research,expected)
     _facts=facts.BookFacts(_reader,market)
 
@@ -252,10 +257,24 @@ def _precompute_market(db,emit,checkpoint,market_id):
     checkpoint()
 
 
-def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection=None,trial_sink=None):
-    """Yield ordinary backtest results after each trial's missing books commit."""
+def evaluate_trial(db,configuration,dates,**selection_args):
+    """One trial's ordinary backtest over its sampled dates."""
+    if 'calendar' in configuration:
+        return schedules.backtest_calendar(db,calendar=configuration['calendar'],dates=dates,**selection_args,**configuration['options'])
+    return schedules.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],
+                                    months=configuration['months'],**selection_args,**configuration['options'])
+
+
+def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection=None,trial_sink=None,stored_trials=None):
+    """Yield ordinary backtest results after each trial's missing books commit.
+
+    When no book is missing, stored_trials() supplies the trials instead: a
+    context of its worker count and the results in trial order. Its owner
+    starts each trial on the sink and emits its periods.
+    """
     planned=plan(db,configuration,book_selection)
     count=worker_count(db,planned['jobs'],workers)
+    supplied=stored_trials() if stored_trials is not None and not planned['jobs'] else nullcontext()
     stats=dict(workers=count,unique_books=planned['unique_books'],missing_books=len(planned['jobs']),
                reused_books=planned['reused_books'],saved_books=0,calculation_wait_seconds=0.,write_seconds=0.)
     completed=0;calculated=0;number=0;last_notice=0.
@@ -270,7 +289,9 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
         now=time.perf_counter()
         if force or now-last_notice>=.2:
             event('preparation');last_notice=now
-    with calculations(db,planned['jobs'],count,notice) as results:
+    with calculations(db,planned['jobs'],count,notice) as results,supplied as ready:
+        if ready is not None:
+            count,ready=ready;stats['workers']=count
         for number,(dates,missing) in enumerate(zip(configuration['samples'],planned['trials']),1):
             backtest_control.checkpoint()
             started=time.perf_counter();event('progress')
@@ -296,13 +317,11 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
                         backtest_control.checkpoint()
                     stats['write_seconds']+=time.perf_counter()-writing
                     stats['saved_books']+=len(missing)
-            if trial_sink is not None:trial_sink.start_trial(number)
-            selection_args = dict(book_selection=book_selection, emit_period=trial_sink.period if trial_sink is not None else None) if book_selection is not None or trial_sink is not None else {}
-            if 'calendar' in configuration:
-                result=schedules.backtest_calendar(db,calendar=configuration['calendar'],dates=dates,**selection_args,**configuration['options'])
+            if ready is not None:result=next(ready)
             else:
-                result=schedules.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],
-                                       months=configuration['months'],**selection_args,**configuration['options'])
-            result['seconds']=time.perf_counter()-started
+                if trial_sink is not None:trial_sink.start_trial(number)
+                selection_args = dict(book_selection=book_selection, emit_period=trial_sink.period if trial_sink is not None else None) if book_selection is not None or trial_sink is not None else {}
+                result=evaluate_trial(db,configuration,dates,**selection_args)
+                result['seconds']=time.perf_counter()-started
             completed+=1;event('progress')
             yield number,result,stats

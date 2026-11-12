@@ -42,7 +42,8 @@ Random batches plan unique missing books upfront. Read-only worker processes
 calculate ahead; one parent writes complete trials in order. Calculations do not
 hold a write transaction. Price lookups share one short read transaction per
 book, released before the result returns to the writer. The parent stages large trials in a temporary local
-file before their atomic save. Replays start no workers when all books are saved.
+file before their atomic save. Replays start no book workers when all books are saved;
+a large strategy replay evaluates its trials in read-only worker processes that write nothing.
 
 See [sheet repair and cache reuse](../docs/research-workflow.md#custom-trade-dates-and-rebalance-intervals).
 

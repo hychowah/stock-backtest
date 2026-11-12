@@ -487,14 +487,17 @@ transactions. New books for a whole trial are staged before its atomic commit;
 large trials spill to a temporary file. No calculation holds the writer lock.
 The automatic policy uses up to eight workers for at least 16 missing books,
 bounded by CPU count. Smaller batches stay serial. Workers monitor parent lifetime
-and exit if the launcher is forcibly closed. Cached-only batches launch no processes. Each individual trial commits its books,
+and exit if the launcher is forcibly closed. Cached-only batches launch no book workers. A cached-only strategy batch
+of at least two trials and 96 periods evaluates its trials in up to eight read-only worker processes
+(`backtest/application/scalar_runs.py`); the parent writes their records in trial order, so the result equals
+a one-process run. Each individual trial commits its books,
 so a disconnected/stopped batch can be repeated with the same seed and reuse
 completed work. Prefetched books for later trials are not saved if the batch is
 stopped first. The running queue row counts completed trials and new books.
 The result exports dates, seed, frequency and trial outcomes. Trial inspection
 reads the stored rows of the completed result.
 Test sampling, statistics, interruption and the stream contract with
-`python3 tests/test_robustness.py` and `python3 tests/test_book_batch.py`; test incremental decoding and distribution
+`python3 tests/test_robustness.py`, `python3 tests/test_book_batch.py` and `python3 tests/test_parallel_trials.py`; test incremental decoding and distribution
 rendering with `node tests/check-robustness.cjs`.
 
 Random batches choose a fresh system-generated seed by default; the actual key
