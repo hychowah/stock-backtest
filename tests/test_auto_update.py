@@ -162,6 +162,13 @@ class UpdateTests(unittest.TestCase):
         self.assertIn(d.SUPERVISOR_ENV,run.call_args.kwargs['env']['WSLENV'].split(':'))
         self.assertNotIn('stdout',run.call_args.kwargs)
 
+    def test_only_a_wsl_runtime_server_gets_the_windows_browser_command(self):
+        for runtime,expected in (('/home/fixture/runtime','explorer.exe %s &'),('C:/Fixture/runtime',None)):
+            with self.subTest(runtime=runtime),patch.dict(os.environ),patch.object(d.subprocess,'Popen',return_value=Child()) as run:
+                os.environ.pop('BROWSER',None)
+                d.spawn_server(dict(self.config,runtime=runtime),[],'a'*32)
+                self.assertEqual(run.call_args.kwargs['env'].get('BROWSER'),expected)
+
     def test_scheduled_refresh_does_not_require_a_new_flag_in_older_applications(self):
         with patch.object(d.subprocess,'Popen',return_value=Child()) as run:
             d.spawn_server(self.config,['--no-browser','--refresh-data'],'a'*32)
@@ -388,7 +395,7 @@ class WslInteropTests(unittest.TestCase):
             (website/'server/app.py').write_text('from pathlib import Path\nimport time\nroot=Path(__file__).parents[2]\n'
                 'def main():\n root.joinpath("ready").write_text("yes")\n try:\n  while True:time.sleep(.02)\n'
                 ' finally:root.joinpath("closed").write_text("yes")\n')
-            config=dict(registered,runtime=d.windows_path(root));token='d'*32
+            config=dict(registered,runtime=d.runtime_form(registered,root));token='d'*32
             child=d.spawn_server(config,['--no-browser'],token)
             try:
                 deadline=time.monotonic()+10

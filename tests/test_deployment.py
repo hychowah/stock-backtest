@@ -443,6 +443,47 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.root / 'website/runtime_access.py').read_bytes(),
                          (ROOT / 'website/runtime_access.py').read_bytes())
 
+    def committed_source(self, source):
+        """A private repository that holds the deployment tool and its support modules."""
+        git = shutil.which('git')
+        if git is None:
+            self.skipTest('Git is required for the committed-source fixture.')
+        for name in ('tools/deploy.py', 'tools/ops/deploy.py', 'tools/__init__.py', 'tools/ops/__init__.py',
+                     'website/__init__.py', 'website/server/__init__.py', 'website/runtime_access.py',
+                     'website/server/launcher.py', 'backtest/__init__.py', 'backtest/paths.py',
+                     'backtest/runtime/__init__.py', 'backtest/runtime/cache_access.py'):
+            destination = source / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, destination)
+        subprocess.run([git, 'init', '-q', '--separate-git-dir', str(source / '.git-local'), str(source)], check=True)
+        def command(*args):
+            return [git, '--git-dir=' + str(source / '.git-local'), '--work-tree=' + str(source), *args]
+        for key, value in (('user.name', 'Fixture'), ('user.email', 'fixture@example.invalid'), ('core.autocrlf', 'false')):
+            subprocess.run(command('config', key, value), check=True)
+        subprocess.run(command('add', 'tools', 'website', 'backtest'), check=True)
+        subprocess.run(command('commit', '-qm', 'Private new-layout fixture'), check=True)
+        return command, subprocess.check_output(command('rev-parse', 'HEAD')).decode().strip()
+
+    @unittest.skipUnless(os.name == 'posix', 'A WSL runtime is served by the Linux interpreter.')
+    def test_wsl_runtime_is_published_by_this_interpreter_without_path_conversion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'source'
+            command, commit = self.committed_source(source)
+            config = dict(source=str(source), runtime=str(self.root), distro='Fixture', python=sys.executable)
+            real = subprocess.check_output
+            def no_conversion(arguments, *args, **kwargs):
+                self.assertNotEqual(arguments[0], 'wslpath')
+                return real(arguments, *args, **kwargs)
+            with patch.object(deploy, 'ROOT', source), patch.object(deploy, 'git_command', side_effect=command), \
+                    patch.object(deploy.subprocess, 'check_output', side_effect=no_conversion), \
+                    patch.object(deploy, 'say'):
+                deploy.deploy(config, commit)
+                self.assertEqual(deploy.deployment_revision(config), commit)
+            self.assertEqual(deploy.read_json(self.root / deploy.MANIFEST)['commit'], commit)
+            self.assertEqual((self.root / 'tools/ops/deploy.py').read_bytes(), (ROOT / 'tools/ops/deploy.py').read_bytes())
+            self.assertFalse((self.root / deploy.PENDING).exists())
+            self.assertEqual(list((self.root / '.deployment').iterdir()), [self.stage])
+
     def test_genuine_old_controller_publishes_selected_new_layout(self):
         """616b6ef really extracts the selected stable entry as one file."""
         import importlib.util
@@ -451,23 +492,8 @@ class DeploymentTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('frozen_old_controller',historical)
         old = importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
         with tempfile.TemporaryDirectory() as temporary:
-            source=Path(temporary)/'source';source.mkdir()
-            names=('tools/deploy.py','tools/ops/deploy.py','tools/__init__.py','tools/ops/__init__.py',
-                'website/__init__.py','website/server/__init__.py','website/runtime_access.py',
-                'website/server/launcher.py','backtest/__init__.py','backtest/paths.py',
-                'backtest/runtime/__init__.py','backtest/runtime/cache_access.py')
-            for name in names:
-                destination=source/name;destination.parent.mkdir(parents=True,exist_ok=True)
-                shutil.copy2(ROOT/name,destination)
-            git=shutil.which('git')
-            if git is None:self.skipTest('Git is required for the genuine old-controller archive fixture.')
-            subprocess.run([git,'init','-q','--separate-git-dir',str(source/'.git-local'),str(source)],check=True)
-            def command(*args):return [git,'--git-dir='+str(source/'.git-local'),'--work-tree='+str(source),*args]
-            for key,value in (('user.name','Fixture'),('user.email','fixture@example.invalid'),('core.autocrlf','false')):
-                subprocess.run(command('config',key,value),check=True)
-            subprocess.run(command('add','tools','website','backtest'),check=True)
-            subprocess.run(command('commit','-qm','Private new-layout fixture'),check=True)
-            commit=subprocess.check_output(command('rev-parse','HEAD')).decode().strip()
+            source=Path(temporary)/'source'
+            command,commit=self.committed_source(source)
             config=dict(source=str(source),runtime=str(self.root),distro='Fixture',python=sys.executable)
             def native(config,*arguments):
                 subprocess.run([sys.executable,'-B',*map(str,arguments)],check=True,capture_output=True)

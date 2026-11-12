@@ -142,6 +142,8 @@ The lock is acquired before the application module is imported. `website/serve.p
 
 The ignored `data/workspace.json` records `source` (the WSL path), `distro`, `runtime` (the Windows path) and `python` (the native interpreter path). The source checkout and runtime each have this machine-local registration. The deployment tool does not copy it from Git.
 
+The runtime can also be a folder on the WSL disk. Register its WSL path (it starts with `/`) as `runtime` and the WSL interpreter, for example `/usr/bin/python3`, as `python`. The deployment tool then publishes, checks and starts that runtime with the WSL interpreter. These steps use no WSL-to-Windows interop. The publication journal, the source lock and the daily update work the same way. The first launch opens the page in the Windows browser; that is the only use of interop. Keep such a runtime on the WSL disk, not below `/mnt/c`: file access through `/mnt/c` is slower than both native Windows and WSL.
+
 The original folder keeps its source, history and saved data. Its old `backtest-web.cmd` can launch that retained copy explicitly. Its code predates deployment ownership. Use it as a separate fallback; do not point the new deployment target at that source repository. A rollback to another deployed revision requires that revision to contain the workspace deployment tools.
 
 The architecture guide describes the current split.

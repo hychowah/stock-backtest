@@ -34,7 +34,7 @@ saved results or rebuild the website. Use `scripts/research.py prepare` and
 ## WSL deployment
 
 `deploy.py` publishes a committed source revision from the WSL checkout to the
-registered native Windows runtime. It also starts that runtime and dispatches
+registered runtime: a native Windows folder or a folder on the WSL disk. It also starts that runtime and dispatches
 saved-data checks. Standalone publication and installed checks do not download
 market data. With `--start`, the supervisor refreshes FMP inputs during scheduled
 maintenance at 07:00 Hong Kong time, even with no new commit. See

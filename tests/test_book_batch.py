@@ -54,7 +54,8 @@ class BookBatchTests(unittest.TestCase):
     def file_copy(self):
         folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
         path=Path(folder.name)/'daily.sqlite'
-        db=sqlite3.connect(path);self.db.backup(db);db.row_factory=sqlite3.Row
+        # A URI connection, as in a daily connection: only then does every SQLite build accept the attach URI.
+        db=sqlite3.connect(path.resolve().as_uri(),uri=True);self.db.backup(db);db.row_factory=sqlite3.Row
         # Research is read-only, as in a daily connection: a trial write locks only the cache.
         daily.attach(db,self.research)
         self.addCleanup(db.close)

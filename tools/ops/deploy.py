@@ -1,6 +1,9 @@
-"""Publish one Git commit to the registered native Windows workspace.
+"""Publish one Git commit to the registered runtime workspace.
 
-The WSL checkout owns source history. Windows owns data and its verified report.
+The WSL checkout owns source history. The runtime owns data and its verified
+report. The runtime is a native Windows folder, served by the registered Windows
+interpreter through WSL interop, or a folder on the WSL disk, served by this
+distro's interpreter with no interop.
 Publication stops authenticated servers, owns source exclusively, then owns the
 financial cache. An unfinished journal blocks startup and is completed on retry.
 Only manifest-owned source can be replaced or deleted. No working-tree bytes,
@@ -312,7 +315,20 @@ def windows_path(path):
 
 
 def linux_path(path):
+    """A registered path as this WSL process reads it; a WSL path needs no conversion."""
+    if str(path).startswith('/'):
+        return Path(path)
     return Path(subprocess.check_output(['wslpath', '-u', str(path)], text=True).strip())
+
+
+def on_wsl_disk(config):
+    """True when the registered runtime is a WSL folder, not a native Windows one."""
+    return config['runtime'].startswith('/')
+
+
+def runtime_form(config, path):
+    """A WSL path in the form that the runtime's interpreter reads."""
+    return str(path) if on_wsl_disk(config) else windows_path(path)
 
 
 def configuration():
@@ -359,6 +375,10 @@ def spawn_server(config, arguments, supervisor):
     for name in (SUPERVISOR_ENV,REFRESH_ENV):
         if not any(part.split('/')[0].upper() == name for part in shared):shared.append(name)
     env['WSLENV'] = ':'.join(shared)
+    if on_wsl_disk(config):
+        # The user's browser is a Windows program; the first launch opens the page in it.
+        # explorer.exe reports failure after it opens a page, so do not wait for its status.
+        env.setdefault('BROWSER', 'explorer.exe %s &')
     return subprocess.Popen([str(linux_path(config['python'])), '-X', 'utf8', '-B',
                              config['runtime'] + '/website/serve.py', '--managed', *arguments],
                             cwd=linux_path(config['runtime']),
@@ -555,7 +575,8 @@ def deploy(config, revision=None, *, before_publish=None):
                    source=str(ROOT), distro=config['distro']))
         if before_publish is not None:
             before_publish()
-        native(config, windows_path(stage / 'bootstrap.py'), '--native-publish', windows_path(stage), config['runtime'])
+        native(config, runtime_form(config, stage / 'bootstrap.py'), '--native-publish',
+               runtime_form(config, stage), config['runtime'])
     except BaseException:
         # A native journal may refer to this payload. Retry must retain it.
         raise
@@ -579,7 +600,7 @@ def native_launch(arguments, revision=None, latest=False):
 
 
 def check_runtime():
-    """Run saved-data and lifecycle checks against the installed Windows code."""
+    """Run saved-data and lifecycle checks against the installed runtime code."""
     support(ROOT)
     runtime_access = support_module('website.runtime_access')
     with runtime_access.ownership(ROOT):
@@ -599,7 +620,7 @@ def main():
     parser.add_argument('--revision', help='Select a committed revision; with --start, freeze this launch instead of following main')
     parser.add_argument('--start', action='store_true', help='Update committed main and FMP data daily at 07:00 Hong Kong time; --revision freezes the launch')
     parser.add_argument('--latest', action='store_true', help='With --start, install the latest committed main now instead of the installed revision')
-    parser.add_argument('--check', action='store_true', help='Deploy, then check installed native Windows paths and lifecycle')
+    parser.add_argument('--check', action='store_true', help='Deploy, then check installed runtime paths and lifecycle')
     parser.add_argument('--native-publish', nargs=2, help=argparse.SUPPRESS)
     parser.add_argument('--native-launch', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--native-check', action='store_true', help=argparse.SUPPRESS)
