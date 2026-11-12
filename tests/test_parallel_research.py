@@ -22,7 +22,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
 from backtest.inputs import research
-try:research.prepare(Path(sys.argv[2]),workers=int(sys.argv[3]))
+# Three workers for this small universe, or the one-process build.
+if sys.argv[3]=='parallel':research.MIN_PARALLEL_COMPANIES,research.WORKERS=1,3
+try:research.prepare(Path(sys.argv[2]))
 except Exception as error:raise SystemExit(type(error).__name__+': '+str(error))
 '''
 # The universe order is not the symbol order, and NONE has no annual statement.
@@ -83,12 +85,12 @@ class ParallelResearchTests(unittest.TestCase):
         for currency,rate in (('JPY',100),('HKD',8)):
             save(market.fx_path(raw,currency),[dict(date=day,close=rate) for day in days])
 
-    def build(self,name,workers):
-        return subprocess.run([sys.executable,'-c',BUILD,str(self.application),str(self.data/name),str(workers)],
+    def build(self,name,mode):
+        return subprocess.run([sys.executable,'-c',BUILD,str(self.application),str(self.data/name),mode],
                               capture_output=True,text=True,cwd=self.application)
 
     def test_parallel_cold_build_equals_the_serial_build(self):
-        serial=self.build('serial.sqlite',1);parallel=self.build('parallel.sqlite',3)
+        serial=self.build('serial.sqlite','serial');parallel=self.build('parallel.sqlite','parallel')
         self.assertEqual((serial.returncode,serial.stderr),(0,''));self.assertEqual((parallel.returncode,parallel.stderr),(0,''))
         expected=snapshot(self.data/'serial.sqlite')
         self.assertEqual([name for name,(_,rows) in expected.items() if not rows],[],'Each table needs rows for this comparison.')
@@ -107,14 +109,14 @@ class ParallelResearchTests(unittest.TestCase):
 
     def test_failed_range_gives_the_serial_error_and_keeps_the_database(self):
         (self.raw/'px'/'OSCAR.json').write_text('not a saved price file')
-        for name,workers in (('serial.sqlite',1),('parallel.sqlite',3)):
-            with self.subTest(workers=workers):
+        for name,mode in (('serial.sqlite','serial'),('parallel.sqlite','parallel')):
+            with self.subTest(mode=mode):
                 # A database of an earlier schema version makes the next build cold.
                 with closing(sqlite3.connect(self.data/name)) as db:
                     db.execute('CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
                     db.execute("INSERT INTO metadata VALUES('version','1')");db.commit()
                 before=(self.data/name).read_bytes()
-                result=self.build(name,workers)
+                result=self.build(name,mode)
                 self.assertEqual(result.returncode,1)
                 self.assertEqual(result.stderr.strip(),'ValueError: Saved file raw/px/OSCAR.json is unreadable. Use the data panel to download it again.')
                 self.assertEqual((self.data/name).read_bytes(),before)

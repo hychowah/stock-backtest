@@ -54,7 +54,7 @@ SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
 '''
-# A cold build of at least MIN_PARALLEL_COMPANIES uses up to WORKERS processes.
+# A cold build of at least MIN_PARALLEL_COMPANIES uses WORKERS processes.
 # SQLite attaches at most 10 files: the build file and one file for each range.
 WORKERS = 8
 MIN_PARALLEL_COMPANIES = 2000
@@ -281,7 +281,7 @@ def _start_worker(stop):
 def _build_range(path, symbols):
     """In a worker: build one symbol range into its own file and return its spiked series."""
     with backtest_control.cancel_when(_stopped.is_set):
-        return _build(Path(path),False,lambda **kw:None,1,frozenset(symbols))
+        return _build(Path(path),False,lambda **kw:None,frozenset(symbols))
 
 
 def _build_ranges(temporary, ranges, progress, total):
@@ -309,17 +309,13 @@ def _build_ranges(temporary, ranges, progress, total):
 
 @cache_access.exclusive
 @diagnostics.operation('prepare.research')
-def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None, workers=None):
-    """Reconcile saved facts atomically; force also checks unchanged inputs.
-
-    workers is the process count of a cold build; None uses WORKERS (at most
-    one for each CPU thread) from MIN_PARALLEL_COMPANIES companies, else one.
-    """
+def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
+    """Reconcile saved facts atomically; force also checks unchanged inputs."""
     if (RAW/'metrics.jsonl').exists():cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
-    _build(Path(path),force,progress,workers)
+    _build(Path(path),force,progress)
 
 
-def _build(path, force, progress, workers, only=None):
+def _build(path, force, progress, only=None):
     """The build of prepare. A range worker builds only the companies in only; the spiked series return to its parent."""
     started=time.perf_counter()
     progress(kind='research',completed=0,total=None)
@@ -442,8 +438,8 @@ def _build(path, force, progress, workers, only=None):
                       for market_id,group in foreign_universes.items() for symbol,company in sorted(group.items())]
         annual_endpoints=[endpoint for endpoint,fields in financial_inputs.ENDPOINTS.items()
                           if fields or financial_inputs.observation_fields().get(endpoint)]
-        if workers is None:workers=(os.cpu_count() or 1) if len(companies)>=MIN_PARALLEL_COMPANIES else 1
-        ranges=_ranges(sorted({symbol for symbol,_,_ in companies}),sources,min(workers,WORKERS)) if cold and workers>1 else []
+        parallel=cold and only is None and len(companies)>=MIN_PARALLEL_COMPANIES
+        ranges=_ranges(sorted({symbol for symbol,_,_ in companies}),sources,WORKERS) if parallel else []
         if ranges:
             # The range files give the rows and sums that the two per-company loops write below.
             spiked=_build_ranges(temporary,ranges,progress,len(companies))
