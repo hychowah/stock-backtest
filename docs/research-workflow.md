@@ -205,9 +205,14 @@ the runtime's raw cache (US and Hong Kong files of 2026-11-09), with the
 valuation-averages source, eight calculation workers and other load on the
 machine:
 
-- A cold research build took 551–597 s, of which the valuation-sum fold took
-  about 239 s. Peak memory was 0.5 GB. `research.sqlite` is 4.12 GB, of which
-  `valuation_sums` (25.5 million rows) is about 1.6 GB.
+- A cold research build took 551–597 s in one process, of which the
+  valuation-sum fold took about 239 s. Peak memory was 0.5 GB.
+  `research.sqlite` is 4.12 GB, of which `valuation_sums` (25.5 million rows)
+  is about 1.6 GB.
+- With eight range workers on a quiet machine (files of 2026-11-11), a cold
+  research build took 138 s, against 520 s in one process. No process used
+  more than 0.5 GB. The rows are equal; the file is 3.8 GB because the
+  ranges arrive in key order.
 - Precomputing all 15,396 historical sheets took 1,226 s. `schedules.sqlite`
   is 10.8 GB.
 - An update from the 2026-10-21 files (US only) to those files took 584 s
