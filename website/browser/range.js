@@ -128,7 +128,7 @@ function renderSteps(){
 }
 function stepMessage(text,failed=false){const note=document.getElementById('filter-message');note.textContent=text;note.className=failed?'error':'hint';}
 // Every source a step can use, in one searchable list. Built-in sources need
-// no service; variables, measures and parameters come from the local service.
+// no service; saved variables and financial inputs come from the local service.
 function stepChoices(key){
   const kind=key==='new'?pendingStep:StrategyDraft.view().find(row=>row.id===key)?.kind,catalog=StrategyDraft.catalog(),groups=[];
   if(kind==='filter')groups.push({label:'Size and listing',options:Object.entries(StrategyDraft.fields).map(([field,label])=>({value:{kind:'field',field,label},label,keywords:field}))});
@@ -138,12 +138,10 @@ function stepChoices(key){
   if(stepSources){
     const library=[...stepSources.library].sort((a,b)=>(b.favourite?1:0)-(a.favourite?1:0));
     groups.push({label:'My variables',options:library.map(entry=>({value:{kind:'library',variable_id:entry.variable_id,revision:entry.revision,label:entry.name},label:(entry.favourite?'★ ':'')+entry.name,detail:'Saved variable'}))});
-    groups.push({label:'Measures',options:stepSources.measures.map(item=>({value:{kind:'measure',id:item.id,label:item.name},label:item.name,detail:'Measure · '+VariableWorkspace.displayName(item.display),keywords:item.description}))});
-    groups.push({label:'Financial parameters',options:stepSources.parameters.map(item=>({value:{kind:'parameter',id:item.id,label:item.name},label:item.name,keywords:item.id,
-      detail:[item.source?.endpoint,item.unit==='scalar'?'ratio':item.unit,item.note].filter(Boolean).join(' · ')}))});
+    groups.push({label:'Financial inputs',options:stepSources.inputs.map(item=>({value:{kind:'input',id:item.id,label:item.name},label:item.name,detail:item.category}))});
   }
-  const note=stepSourcesState==='loading'?'Loading saved variables, measures and parameters…':stepSourcesState==='failed'?'Saved variables, measures and parameters need the local service. Built-in sources work offline.':'';
-  return {groups,note,actions:stepSourcesState==='failed'?[]:[{value:{kind:'create'},label:'＋ Create a new variable…',detail:'Build a formula in the variable editor, then use it in this step.'}]};
+  const note=stepSourcesState==='loading'?'Loading saved variables and financial inputs…':stepSourcesState==='failed'?'Saved variables and financial inputs need the local service. Built-in sources work offline.':'';
+  return {groups,note,actions:stepSourcesState==='failed'?[]:[{value:{kind:'create'},label:'＋ Create a new variable…',detail:'Type a formula, then use it in this step.'}]};
 }
 function loadStepSources(){
   if(stepSourcesState==='loading')return;

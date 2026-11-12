@@ -1,36 +1,14 @@
-<dialog id="variable-dialog" aria-labelledby="variable-dialog-title" aria-describedby="variable-dialog-help">
-  <div class="variable-dialog-head"><div><h2 id="variable-dialog-title">Variable</h2><p id="variable-dialog-help" class="hint">Start from a saved variable, a measure or a parameter on the left, or build a formula. The formula is checked as you edit.</p></div><button type="button" id="variable-close" aria-label="Close variable workspace">Close</button></div>
-  <p id="variable-message" role="status" aria-live="polite"></p>
-  <div class="variable-workspace-grid">
-    <section aria-label="Variable picker"><label>Search parameters and variables <input id="variable-search" type="search" autocomplete="off" placeholder="Revenue, EBITDA, debt…"></label><button type="button" id="variable-refresh">Refresh variables</button><div id="variable-picker" class="variable-picker" tabindex="0" aria-label="Variable choices"></div></section>
-    <section aria-label="Variable editor">
-      <div class="variable-identity"><label>Variable name <input id="variable-name" maxlength="120" value="Operating margin"></label><div class="variable-identity-state"><span id="variable-selected" class="variable-state">New variable · not saved</span><button type="button" id="variable-favourite" disabled hidden>☆ Favourite</button><button type="button" id="variable-delete" disabled hidden>Delete from My variables</button></div></div>
-      <div class="variable-toolbar"><button type="button" id="variable-start-new">Start a blank variable</button><button type="button" id="variable-edit-selected" hidden>Revert to saved version</button></div>
-      <section class="variable-composer" aria-label="Equation editor">
-        <div class="variable-composer-heading"><h3>Equation</h3><span>Choose a term. Add an operation or insert a parameter.</span></div>
-        <div id="variable-equation-tools" class="variable-toolbar" aria-label="Equation operations">
-          <button type="button" data-equation-action="source">Insert parameter</button>
-          <button type="button" data-equation-action="add" aria-label="Add to selected term">+</button>
-          <button type="button" data-equation-action="sub" aria-label="Subtract from selected term">−</button>
-          <button type="button" data-equation-action="mul" aria-label="Multiply selected term">×</button>
-          <button type="button" data-equation-action="div" aria-label="Divide selected term">÷</button>
-          <button type="button" data-equation-action="neg" aria-label="Negate selected term">−( )</button>
-          <button type="button" data-equation-action="constant">Number</button>
-          <button type="button" data-equation-action="remove">Remove term</button>
-          <button type="button" id="variable-equation-undo" data-equation-action="undo" disabled>Undo</button>
-          <button type="button" id="variable-equation-redo" data-equation-action="redo" disabled>Redo</button>
-        </div>
-        <div id="variable-equation" class="variable-equation" tabindex="0" role="group" aria-label="Editable equation" aria-describedby="variable-equation-help"></div>
-        <p id="variable-equation-help" class="hint">Click a parameter to replace it or change its settings. Click an operator or fraction bar to select a group. Parentheses show which terms belong together.</p>
-        <div class="variable-term-settings"><h4>Selected term</h4><div id="variable-tree" class="variable-tree"></div></div>
-      </section>
-      <div class="variable-output"><label>Result unit <select id="variable-output-unit"><option value="scalar">Scalar (ratio)</option><option value="USD">USD</option><option value="USD/share">USD per share</option><option value="share">Shares</option></select></label><label>Show results as <select id="variable-display"><option value="percent">Percent</option><option value="number">Number</option><option value="multiple">Multiple</option><option value="percentage_points">Percentage points</option><option value="usd">USD</option><option value="usd_million">USD millions</option><option value="usd_per_share">USD per share</option><option value="shares">Shares</option></select></label></div>
-      <details id="variable-advanced"><summary>Advanced JSON · same expression tree</summary><label>Expression JSON <textarea id="variable-json" rows="10" spellcheck="false"></textarea></label><button type="button" id="variable-accept-json">Use JSON expression</button></details>
-      <details class="variable-timing"><summary>How annual values are dated</summary><p class="hint">Annual values use the latest eligible annual report: 90-day lag, availability strictly before the screen date, and at most 800 days old. Annual statistics require every consecutive fiscal year. Month lookbacks reconstruct an earlier date; they do not use quarterly or TTM accounts. Calendar-series statistics are not supported.</p></details>
-      <section id="variable-check" class="variable-check" data-state="pending" aria-labelledby="variable-check-title"><strong id="variable-check-title" role="status">Checking the formula…</strong><p id="variable-explanation"></p></section><div id="variable-errors" role="alert"></div>
-      <div class="variable-actions"><span id="variable-check-chip" class="variable-check-chip" data-state="pending" aria-hidden="true">Checking…</span><div class="variable-toolbar"><button type="button" id="variable-save">Save to My variables</button><button type="button" id="variable-save-new" hidden>Save as a new variable</button></div><button type="button" id="variable-apply" class="primary">Use for ranking</button></div>
-      <p id="variable-actions-help" class="hint">Use changes this strategy only. Nothing runs until you select Screen latest or Add to queue. Saving is optional: it keeps the variable in My variables for other strategies.</p>
-    </section>
+<dialog id="variable-dialog" aria-labelledby="variable-dialog-title">
+  <div class="variable-dialog-head"><h2 id="variable-dialog-title">Variable</h2><div class="variable-head-actions"><button type="button" id="variable-favourite" hidden>☆ Favourite</button><button type="button" id="variable-delete" hidden>Delete</button><button type="button" id="variable-close">Close</button></div></div>
+  <div class="variable-form">
+    <label for="variable-name">Name</label><input id="variable-name" maxlength="120" autocomplete="off" placeholder="Optional">
+    <label for="variable-formula">Formula</label>
+    <div class="filter-combo"><textarea id="variable-formula" rows="2" spellcheck="false" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="variable-suggestions" placeholder="For example: Total debt / Enterprise value"></textarea><div id="variable-suggestions" class="filter-options" role="listbox" aria-label="Suggestions" hidden></div></div>
+    <div id="variable-check" class="variable-check" data-state="empty"><span id="variable-check-text" role="status" aria-live="polite">Type a formula</span> <label id="variable-display-label" hidden>· Show as <select id="variable-display"></select></label><span id="variable-fixes"></span></div>
+    <div id="variable-picture" class="variable-picture" aria-label="How the formula was read"></div>
   </div>
+  <div class="variable-actions"><button type="button" id="variable-save">Save to My variables</button><button type="button" id="variable-save-new" hidden>Save as new</button><button type="button" id="variable-apply" class="primary">Use</button></div>
+  <p id="variable-message" role="status" aria-live="polite"></p>
+  <details id="variable-inputs"><summary>All inputs</summary><div id="variable-input-list"></div></details>
 </dialog>
 <section id="scalar-evidence-view" class="panel" hidden aria-label="Immutable variable results"><div class="toolbar"><h2 id="scalar-evidence-heading">Variable results</h2><div><button type="button" id="scalar-download-rows">Download selected CSV</button><button type="button" id="scalar-download-returns">Download returns CSV</button><button type="button" id="scalar-download-evidence">Download complete evidence</button></div></div><p id="scalar-result-producer" class="hint" aria-live="polite"></p><p id="scalar-evidence-summary"></p><p id="scalar-evidence-message" role="status"></p><div id="scalar-screen-results" hidden><div class="latest-table" tabindex="0" role="region" aria-label="Variable screen rows"><table class="stock-table"><thead><tr><th>Rank</th><th>Symbol</th><th>Company</th><th>Ranking value</th><th>Unit</th><th>Direction</th><th>Details</th></tr></thead><tbody id="scalar-screen-rows"></tbody></table></div><div class="variable-toolbar"><button type="button" id="scalar-screen-back">Previous stocks</button><span id="scalar-screen-page"></span><button type="button" id="scalar-screen-next">Next stocks</button></div></div><details id="scalar-explanation"><summary>Original formula and calculation evidence</summary><div id="scalar-explanation-content"></div></details></section>

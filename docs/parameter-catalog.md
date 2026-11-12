@@ -2,10 +2,9 @@
 
 Checked: 2026-11-08.
 
-The current `/4` editor exposes owner descriptions for all 57 direct inputs,
-existing-policy adapters and 33 exact named measures through the shared editor.
-Categories, search, units and supported history choices use the same semantic
-owners as execution. A catalog entry does not establish installed readiness or
+The formula editor names each `/4` input once in plain words
+(`backtest/application/vocabulary.py`); this inventory keeps the owner
+descriptions. A catalog entry does not establish installed readiness or
 observed coverage.
 
 Captured programs run through Original in Latest, fixed and random modes; a

@@ -199,8 +199,8 @@ Rank and permits at most 50 steps. Each Rank keeps its inclusive range from the
 incoming survivors. The last Rank sets final order, ranks and ranking value.
 Later Filters keep these ranks and add no replacements.
 
-Sources name built-in IDs or exact formula revisions. Financial parameters and
-measures remain formula captures. Stored Universe fields use
+Sources name built-in IDs or exact formula revisions. Financial inputs remain
+formula captures. Stored Universe fields use
 `{kind: "field", field: "market_cap"}` or `enterprise_value`, `sector`, `exchange`.
 Numeric Filters permit `lt`, `gt`, `le` and `ge`. They keep submitted units,
 canonical thresholds and exact stored comparison scales. Sector and exchange

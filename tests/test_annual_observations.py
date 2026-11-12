@@ -260,8 +260,7 @@ class AnnualFormulaTests(unittest.TestCase):
                 self.assertEqual(member['evidence']['fields'], {name: state(rows[endpoint][0][name])})
                 self.assertEqual(member['evidence']['source'], dict(endpoint=endpoint,
                     sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid'))
-        self.assertEqual(variable_authoring.catalog()['parameters'], columns.catalog()[:4])
-        self.assertEqual([item['description'] for item in variable_authoring.catalog()['parameters']],
+        self.assertEqual([item['description'] for item in columns.catalog()[:4]],
             ['Selected annual revenue', 'Selected annual operating income',
              'Operating income / positive revenue', 'Existing dated enterprise value'])
         self.assertEqual(variable_authoring.catalog()['displays']['share'],

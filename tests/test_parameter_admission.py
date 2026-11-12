@@ -109,10 +109,7 @@ class AdmissionTests(unittest.TestCase):
         expected=['annual.revenue','annual.operating_income','annual.operating_margin','market.enterprise_value']
         self.assertEqual(len(columns.catalog()),77)
         self.assertEqual([item['id'] for item in columns.catalog()][:4],expected)
-        value=variable_authoring.catalog()
-        self.assertEqual([item['id'] for item in value['parameters']],expected)
-        self.assertEqual(value['operations'],sorted(d.OPERATIONS))
-        self.assertEqual(value['displays']['share'],parameters.units(parameters.V3)['share']['displays'])
+        self.assertEqual(variable_authoring.catalog()['displays']['share'],parameters.units(parameters.V3)['share']['displays'])
         for catalog in (parameters.V1,parameters.V2):
             quantity=entry(dict(definition(constant('100','USD'),'USD','usd'),parameter_catalog=catalog))
             captured=s.capture_strategy(intent(formula(quantity),[condition(formula(quantity),'0.0001','usd_million')]),submitted=[quantity])

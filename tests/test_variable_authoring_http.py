@@ -9,7 +9,7 @@ from contextlib import closing
 import unittest
 from unittest.mock import patch
 from backtest.variables import library, definitions
-from backtest.application import variable_authoring, strategy_requests
+from backtest.application import strategy_requests
 from backtest.application import queue, library as saved
 from threading import Event
 from types import SimpleNamespace
@@ -27,9 +27,9 @@ class AuthoringHttpTests(ExistingHttp):
     def test_list_catalog_and_validation_leave_absent_library_absent(self):
         store=self.server.variable_store
         status,body,_=self.request('/api/variables',method='GET');self.assertEqual(status,200);self.assertEqual(json.loads(body),{'entries':[]})
-        status,body,_=self.request('/api/variables/catalog',method='GET');self.assertEqual(status,200);self.assertEqual(len(json.loads(body)['parameters']),4)
+        status,body,_=self.request('/api/variables/catalog',method='GET');self.assertEqual(status,200);self.assertIn('Revenue',[item['text'] for item in json.loads(body)['vocabulary']])
         with patch.object(self.calc,'calculate_into',side_effect=AssertionError('Validation must not calculate')):
-            status,value=self.post('/validate',dict(definition=language.definition(),name='Unsaved'))
+            status,value=self.post('/validate',dict(formula=dict(text='1'),name='Unsaved'))
         self.assertEqual(status,200,value);self.assertFalse(store.path.exists());self.assertFalse(self.manager.runs)
     def test_typed_formula_validates_or_returns_positioned_and_plain_errors(self):
         status,value=self.post('/validate',dict(formula=dict(text='Total debt / positive(Total assets)',display='multiple'),name=''))
@@ -61,24 +61,16 @@ class AuthoringHttpTests(ExistingHttp):
         status,captured=self.post('/capture',request);self.assertEqual(status,200,captured)
         self.server.variable_store.rename(entry['variable_id'],entry['version'],'Later name')
         self.assertEqual(captured['strategy']['variables']['presentation'][0]['name'],'Submitted');self.assertFalse(self.manager.runs)
-    def test_structured_units_and_unsupported_parameters_are_not_generic_failures(self):
-        status,error=self.post('/validate',dict(definition=language.definition(dict(op='parameter',id='quarterly.revenue'))))
-        self.assertEqual(status,400);self.assertEqual(error['code'],'UNKNOWN_PARAMETER');self.assertTrue(error['errors']);self.assertIn('/expression',error['path'])
-        status,error=self.post('/validate',dict(definition=language.definition(dict(op='parameter',id='annual.revenue'))))
-        self.assertEqual(status,400);self.assertEqual(error['code'],'UNIT_MISMATCH')
-    def test_group_and_time_errors_leave_the_editor_request_unchanged_without_work(self):
-        for expression in [dict(op='add',left=dict(op='parameter',id='annual.revenue'),right=dict(op='parameter',id='annual.operating_margin')),
-                           dict(op='annual',parameter='market.enterprise_value',stat='mean',count=3),
-                           dict(op='annual',parameter='annual.operating_margin',stat='mean',count=0)]:
-            definition=language.definition(expression);before=json.dumps(definition)
+    def test_group_and_time_errors_are_plain_sentences_without_work(self):
+        for text in ['Revenue + Operating margin','average(Enterprise value, 3 years)','average(Operating margin, 0 years)']:
             with patch.object(self.calc,'calculate_into',side_effect=AssertionError('Authoring is financial-free')):
-                status,error=self.post('/validate',dict(definition=definition,name='Kept draft'))
-            self.assertEqual(status,400,error);self.assertIn('/expression',error['path']);self.assertEqual(json.dumps(definition),before)
+                status,error=self.post('/validate',dict(formula=dict(text=text),name='Kept draft'))
+            self.assertEqual(status,400,error);self.assertNotIn('start',error['errors'][0]);self.assertTrue(error['error'])
         self.assertFalse(self.manager.runs);self.assertFalse(self.server.variable_store.path.exists())
     def test_origin_and_complete_request_bounds_precede_mutation(self):
         status,body,_=self.request('/api/variables',dict(name='Rejected',definition=language.definition()),headers={'Origin':'http://foreign.test'})
         self.assertEqual(status,403);self.assertFalse(self.server.variable_store.path.exists())
-        status,error=self.post('/validate',dict(definition=language.definition(),unused='x'*(256*1024)))
+        status,error=self.post('/validate',dict(formula=dict(text='1'),unused='x'*(256*1024)))
         self.assertEqual(status,400);self.assertFalse(self.server.variable_store.path.exists())
     def test_missing_dependency_save_rejects_and_does_not_drop_local_definition(self):
         dep=language.entry(identity='local:dependency');definition=language.definition(language.reference(dep))
@@ -94,7 +86,8 @@ class AuthoringHttpTests(ExistingHttp):
             status,opened=self.post('/detached',dict(root=exact,capture=snapshot['capture']))
         self.assertEqual(status,200,opened);self.assertEqual(opened['name'],'Original captured name');self.assertEqual(opened['selected'],exact)
         definition=opened['authored'][0]['definition'];self.assertEqual(definition['expression']['value'],'1e100')
-        status,checked=self.post('/validate',dict(variable_id=exact['variable_id'],definition=definition,name=opened['name'],detached=[opened['capture']]))
+        status,checked=self.post('/validate',dict(variable_id=exact['variable_id'],formula=dict(text=opened['text'],display='number'),name=opened['name'],
+                                                  base=dict(root=opened['selected'],capture=opened['capture'])))
         self.assertEqual(status,200,checked);self.assertEqual(checked['root'],exact);self.assertFalse(self.server.variable_store.path.exists());self.assertFalse(self.manager.runs)
     def test_damaged_store_is_preserved_and_reported(self):
         self.server.variable_store.path.write_bytes(b'not a sqlite library')
@@ -143,9 +136,10 @@ class AuthoringHttpTests(ExistingHttp):
         self.assertLess(len(json.dumps(combined,separators=(',',':')).encode()),192*1024)
         expressions=[language.reference(item) for item in roots]
         while len(expressions)>1:expressions=[language.binary('add',expressions[i],expressions[i+1]) for i in range(0,len(expressions),2)]
-        editor_definition=language.definition(expressions[0]);editor_id='draft:editor'
-        editor_expected=variable_authoring.validate(dict(definition=editor_definition,variable_id=editor_id,name='Editor shared references',submitted=[dep,*roots],labels=labels),self.server.variable_store)
-        shared=dict(references=references,strategy=combined,editor_source=dict(kind='formula',**editor_expected['root']),editor_expected=editor_expected)
+        editor=language.entry(language.definition(expressions[0]),'draft:editor')
+        editor_capture=library.capture_submitted([language.root(editor)],submitted=[dep,*roots,editor],
+                                                 labels=[*labels,dict(language.root(editor),name='Editor shared references')]).to_dict()
+        shared=dict(references=references,strategy=combined,editor_source=dict(kind='formula',**language.root(editor)),editor_capture=editor_capture)
         payload=dict(large=large,small=small,two=two,builtins=strategy_requests.builtin_catalog(),shared=shared)
         with patch.object(self.calc,'calculate',side_effect=AssertionError('Draft capture never calculates')),patch.object(library.Store,'_transaction',side_effect=AssertionError('Complete local authoring never reads an archive')):
             for script in ['check-strategy-draft.cjs','check-variable-workspace.cjs']:
@@ -159,7 +153,7 @@ class AuthoringHttpTests(ExistingHttp):
             process=subprocess.run(['node','-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));'],
                 input=json.dumps(value),text=True,capture_output=True,check=True)
             return json.loads(process.stdout)
-        status,checked=self.post('/validate',dict(definition=language.definition(),name='Browser meaning'))
+        status,checked=self.post('/validate',dict(formula=dict(text='1'),name='Browser meaning'))
         self.assertEqual(status,200,checked)
         status,prepared=self.post('/capture',browser(dict(intent=strategy.intent(dict(kind='formula',**checked['root'])),market='us',detached=[checked['capture']])))
         self.assertEqual(status,200,prepared)

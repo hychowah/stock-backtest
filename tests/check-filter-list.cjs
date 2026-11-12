@@ -19,7 +19,7 @@ const workspace={
   builtin:id=>builtins[id]?structuredClone(builtins[id]):null,displays:unit=>({USD:['usd','usd_million']}[unit]||[]),
   displayName:value=>({multiple:'Multiple (×)',usd:'US dollars',usd_million:'$ million',percent:'Percent (%)'}[value]||value),
   open:async role=>{opened.push(role);},content:()=>({submitted:[],labels:[]}),
-  sources:async()=>{if(sourcesFailure)throw Error('offline');return {library:[{variable_id:'variable:saved',revision:'sha256:'+'c'.repeat(64),name:'Saved margin',favourite:true}],measures:[{id:'gross_margin',name:'Gross margin',display:'percent',description:'Gross margin'}],parameters:[{id:'adapter.test',kind:'adapter',name:'Policy adapter',unit:'scalar'},{id:'annual.revenue',name:'Revenue',note:'',unit:'USD',source:{endpoint:'income-statement'}}]};},
+  sources:async()=>{if(sourcesFailure)throw Error('offline');return {library:[{variable_id:'variable:saved',revision:'sha256:'+'c'.repeat(64),name:'Saved margin',favourite:true}],inputs:[{id:'measure:gross_margin',name:'Gross margin',category:'Margins and returns'},{id:'annual.revenue',name:'Revenue',category:'Income statement'}]};},
   useSource:async(role,choice,expected)=>{chosen.push({role,choice});if(useFailure)throw useFailure;vm.runInContext('StrategyDraft',context).patch({role,source:{kind:'formula',...revenue},capture,authored:capture.program.bundle.definitions},expected);}
 };
 const context=vm.createContext({console,document,StockScreener:require('../website/browser/screener.js'),
@@ -66,7 +66,7 @@ const ids=()=>rows().map(row=>row.id);
  search('new').focus();fire('focusin',search('new'));await tick();await tick();
  // Re-rendering removes the focused field (focusout) and refocuses its successor.
  fire('focusout',search('new'));run('renderSteps()');await later();assert.equal(node('filter-options-new').hidden,false);
- for(const text of ['My variables','★ Saved margin','Measures','Gross margin','Financial parameters','Revenue','income-statement','Policy adapter','EV/EBITDA yield','EV/EBITDA multiple','Market cap','Sector','＋ Create a new variable…'])assert(options('new').includes(text),'Missing '+text);
+ for(const text of ['My variables','★ Saved margin','Financial inputs','Gross margin','Revenue','Income statement','EV/EBITDA yield','EV/EBITDA multiple','Market cap','Sector','＋ Create a new variable…'])assert(options('new').includes(text),'Missing '+text);
  assert(/aria-disabled="true"><span>Return on average equity/.test(options('new')),'Unavailable built-ins stay visible but cannot be chosen');
  // Typing filters by every word; Escape restores the row's label.
  type('new','reve');assert(options('new').includes('Revenue'));assert(!options('new').includes('P/E'));assert(options('new').includes('Create a new variable'));
@@ -81,10 +81,10 @@ const ids=()=>rows().map(row=>row.id);
  add('filter');fire('focusin',search('new'));type('new','equity');press('new','Enter');assert.equal(ids().length,4);
  const disabled={dataset:{option:'0'},closest:selector=>selector==='.filter-options'?{}:disabled};fire('mousedown',disabled);assert.equal(ids().length,4);
  press('new','Escape');
- // A parameter makes a variable step; built-in and variable steps share the list.
+ // A financial input makes a variable step; built-in and variable steps share the list.
  type('new','revenue');assert(options('new').includes('aria-selected="true"><span>Revenue'));
  press('new','ArrowDown');assert(options('new').includes('aria-selected="true"><span>＋ Create'));press('new','ArrowUp');press('new','Enter');await tick();
- assert.equal(chosen.at(-1).role,'filter');assert.equal(chosen.at(-1).choice.kind,'parameter');
+ assert.equal(chosen.at(-1).role,'filter');assert.equal(chosen.at(-1).choice.kind,'input');
  const variable=ids()[3];assert.deepEqual(ids(),[cap,ev,pe,variable,rank]);assert(!list.innerHTML.includes('filter-search-new'));
  assert(list.innerHTML.includes('value="P/E (×)"'));assert(list.innerHTML.includes('value="Revenue"'));assert(list.innerHTML.includes('id="step-edit-'+variable+'"'));assert(!list.innerHTML.includes('id="step-edit-'+pe+'"'));
  assert(list.innerHTML.includes('>$ million</option>'));assert(list.innerHTML.includes('>US dollars</option>'));
@@ -116,7 +116,7 @@ const ids=()=>rows().map(row=>row.id);
  node('filter-message').textContent='old';select('step-remove-'+sector);assert(!ids().includes(sector));assert.equal(node('filter-message').textContent,'');assert.equal(document.activeElement.id,'step-remove-'+rank);
  // A Rank uses the same list without size and listing fields, and keeps its own order and range.
  add('rank');assert(list.innerHTML.includes('New rank'));fire('focusin',search('new'));
- assert(!options('new').includes('Size and listing'));assert(options('new').includes('EV/EBITDA metrics'));assert(options('new').includes('Policy adapter'));
+ assert(!options('new').includes('Size and listing'));assert(options('new').includes('EV/EBITDA metrics'));assert(options('new').includes('Gross margin'));
  type('new','saved margin');press('new','Enter');await tick();
  assert.equal(chosen.at(-1).role,'rank');assert.equal(chosen.at(-1).choice.kind,'library');
  const second=ids().at(-1);assert.equal(rows().at(-1).kind,'rank');assert.equal(document.activeElement.id,'step-direction-'+second);
@@ -124,5 +124,5 @@ const ids=()=>rows().map(row=>row.id);
  edit(second,'rank_from','60');assert.deepEqual([rows().at(-1).rank_from,rows().at(-1).rank_to],[60,60],'A committed first rank above the last moves the last');
  edit(second,'rank_to','20');assert.deepEqual([rows().at(-1).rank_from,rows().at(-1).rank_to],[20,20]);
  assert(list.innerHTML.includes('id="step-rank_from-'+second+'"'));assert(list.innerHTML.includes('Highest first'));
- console.log('Passed: one ordered step list for built-in, field, saved, measure and parameter sources; word search, keyboard choice, disabled options, offline note and retry, insertion before the last Rank, units, equality choices, moves with focus, edit/create, failures, removal and Rank ranges.');
+ console.log('Passed: one ordered step list for built-in, field, saved and financial-input sources; word search, keyboard choice, disabled options, offline note and retry, insertion before the last Rank, units, equality choices, moves with focus, edit/create, failures, removal and Rank ranges.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

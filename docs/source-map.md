@@ -12,7 +12,7 @@ This map lists the current source owners.
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
 | Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
 | Strategy draft, the Filter and Rank step chain, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `filter-picker.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
-| Shared variable editor/picker, detached readable traces and financial-free authoring | `website/browser/variable-workspace.js`, `variable-evidence.js`, `backtest/application/variable_authoring.py`, `website/server/variables.py` |
+| Typed formula editor, detached readable traces and financial-free authoring | `website/browser/variable-workspace.js`, `variable-evidence.js`, `backtest/application/variable_authoring.py`, `website/server/variables.py` |
 | Durable variable revisions, metadata and exact formula resolution | `backtest/variables/library.py`, `backtest/variables/definitions.py` |
 | Plain browser assets and standalone HTML fragments | `website/browser/` |
 | Detached database projections, static rendering, assets, exports and freshness | `website/rendering/` |
@@ -60,7 +60,7 @@ own the feature.
 - `backtest/application/vocabulary.py`: one plain name per formula input.
 - `website/server/variables.py` adapts the HTTP routes. `website/browser/range.js`
   (`StrategyDraft`) owns the draft and the step chain. `filter-picker.js` searches
-  and chooses step sources. `variable-workspace.js` is the shared editor.
+  and chooses step sources. `variable-workspace.js` is the typed formula editor.
   `evidence-results.js` and `variable-evidence.js` present stored results and
   readable traces without calculating.
 

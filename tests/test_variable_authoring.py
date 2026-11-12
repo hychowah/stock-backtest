@@ -9,8 +9,8 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
-from backtest.variables import columns, definitions as d, library, measures
-from backtest.application import variable_authoring as a
+from backtest.variables import definitions as d, library, measures, parameters
+from backtest.application import formula_text, variable_authoring as a
 from backtest.application import strategy_requests as s
 import test_variable_definitions as language
 import test_strategy_requests as strategy
@@ -20,17 +20,14 @@ class AuthoringTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
         self.store=library.Store(Path(self.folder.name)/'variables.sqlite')
-    def test_all_exact_measures_validate_save_reopen_capture_without_import(self):
-        catalog=a.catalog();descriptors=catalog['measures'];self.assertEqual(len(descriptors),33)
-        self.assertEqual({item['id'] for item in catalog['expanded_parameters']},{item['id'] for item in columns.catalog()})
+    def test_all_exact_measures_save_reopen_capture_without_import(self):
+        descriptors=measures.catalog(parameters.V4);self.assertEqual(len(descriptors),33)
         for measure in descriptors:
             with self.subTest(measure=measure['id']):
                 root=measure['root']
                 definition=dict(format='variable-definition',version=3,parameter_catalog='financial-parameters/3',
                     temporal_policy=d.TEMPORAL_POLICY,expression=dict(op='ref',**root),
                     output=dict(unit=measure['unit'],display=measure['display']))
-                validated=a.validate(dict(definition=definition,name=measure['name'],
-                    submitted=measure['submitted'],labels=measure['labels']),self.store)
                 saved=self.store.create(measure['name'],definition)
                 selected={key:saved[key] for key in ('variable_id','revision')}
                 reopened=self.store.authoring_snapshot(selected)
@@ -39,10 +36,9 @@ class AuthoringTests(unittest.TestCase):
                 self.assertEqual(capture,reopened['capture'])
                 with patch.object(measures,'exact',side_effect=AssertionError('Detached restore read registry')):
                     self.assertEqual(a.detached(dict(root=selected,capture=capture))['selected'],selected)
-                self.assertEqual(validated['output']['unit'],measure['unit'])
         self.assertEqual(len(self.store.list()),33)
     def test_measure_wrong_revision_and_corrupt_archive_are_never_hidden(self):
-        measure=a.catalog()['measures'][0];root=measure['root']
+        measure=measures.catalog(parameters.V4)[0];root=measure['root']
         definition=dict(format='variable-definition',version=3,parameter_catalog='financial-parameters/3',
             temporal_policy=d.TEMPORAL_POLICY,expression=dict(op='ref',**root),
             output=dict(unit=measure['unit'],display=measure['display']))
@@ -98,28 +94,26 @@ class AuthoringTests(unittest.TestCase):
         with self.assertRaises(d.FormulaError):self.store.save(changed['variable_id'],changed['version'],'Lost',language.definition(dict(op='unknown')))
         self.assertEqual(self.store.get(changed['variable_id']),changed)
     def test_validation_does_not_create_library(self):
-        result=a.validate(dict(definition=language.definition(language.constant('1e100')),name='Local'),self.store)
+        result=a.validate(dict(formula=dict(text='1e100'),name='Local'),self.store)
         self.assertFalse(self.store.path.exists());self.assertEqual(result['output']['unit'],'scalar')
         self.assertEqual(result['authored'][0]['definition']['expression']['value'],'1e100')
-    def test_validation_retains_ordered_units_and_time_diagnostics(self):
-        value=language.definition(dict(op='add',left=language.constant('1','USD'),right=language.constant('1')))
-        with self.assertRaises(d.FormulaError) as failure:a.validate(dict(definition=value),self.store)
-        self.assertEqual(failure.exception.code,'UNIT_MISMATCH')
-        self.assertTrue(failure.exception.path.endswith('/expression'))
+    def test_validation_reports_definition_errors_without_a_position(self):
+        with self.assertRaises(formula_text.TextError) as failure:a.validate(dict(formula=dict(text='1 USD + 1')),self.store)
+        self.assertEqual(failure.exception.errors,[dict(code='UNIT_MISMATCH',message=str(failure.exception),suggestions=[])])
     def test_prepare_and_edit_detached_program_without_library_access(self):
-        validated=a.validate(dict(definition=language.definition(language.constant('1e100')),name='Original'),self.store)
+        validated=a.validate(dict(formula=dict(text='1e100'),name='Original'),self.store)
         source=dict(kind='formula',**validated['root']);intent=strategy.intent(source)
         prepared=a.prepare(dict(intent=intent,market='us',detached=[validated['capture']]),self.store)['strategy']
-        editable=d.authored_bundle(library.VariableCapture(d.canonical(prepared['variables'])).program)
-        edited=deepcopy(editable['definitions'][0]['definition']);edited['expression']=dict(op='neg',arg=edited['expression'])
-        validated2=a.validate(dict(definition=edited,detached=[prepared['variables']],name='Edited'),self.store)
+        base=dict(root=validated['root'],capture=prepared['variables'])
+        validated2=a.validate(dict(formula=dict(text='-(1e100)'),base=base,name='Edited'),self.store)
         fresh=a.prepare(dict(intent=strategy.intent(dict(kind='formula',**validated2['root'])),market='us',detached=[validated2['capture']]),self.store)
         self.assertNotEqual(fresh['strategy']['variables']['program']['bundle_revision'],prepared['variables']['program']['bundle_revision'])
         self.assertFalse(self.store.path.exists())
     def test_missing_archived_dependency_save_fails_and_keeps_detached_content(self):
         dep=language.entry(identity='local:dependency');root=language.entry(language.definition(language.reference(dep)),'local:root')
         captured=library.capture_submitted([language.root(root)],submitted=[dep,root]).to_dict();before=deepcopy(captured)
-        result=a.validate(dict(definition=root['definition'],variable_id=root['variable_id'],detached=[captured]),self.store)
+        base=dict(root=language.root(root),capture=captured)
+        result=a.validate(dict(formula=dict(text=a.detached(base)['text'],display='number'),variable_id=root['variable_id'],base=base),self.store)
         with self.assertRaises(d.FormulaError) as failure:self.store.create('Root',root['definition'])
         self.assertEqual(failure.exception.code,'MISSING_REFERENCE');self.assertEqual(captured,before)
         self.assertEqual(result['root'],language.root(root));self.assertEqual(self.store.list(),[])
@@ -177,13 +171,9 @@ class AuthoringTests(unittest.TestCase):
         self.assertEqual(opened['text'],'debt/EV * Gross profit / positive(Revenue)')
         catalog=a.catalog();self.assertIn('P/E',[item['text'] for item in catalog['vocabulary']])
         self.assertIn('average(',[item['text'] for item in catalog['functions']])
-        with self.assertRaises(ValueError):a.validate(dict(formula=dict(text='Revenue'),definition=language.definition()),self.store)
-    def test_legacy_catalog_retains_four_parameters_and_stored_builtin_adapters(self):
-        catalog=a.catalog();self.assertEqual(len(catalog['parameters']),4)
-        self.assertTrue(any(item['id']=='filter:profit_margin' for item in catalog['builtins']))
     def test_selected_dependencies_dont_accumulate_unrelated_editor_revisions(self):
-        old=a.validate(dict(definition=language.definition(language.constant('1'))),self.store)
-        new=a.validate(dict(definition=language.definition(language.constant('2')),detached=[old['capture']]),self.store)
+        old=a.validate(dict(formula=dict(text='1')),self.store)
+        new=a.validate(dict(formula=dict(text='2'),base=dict(root=old['root'],capture=old['capture'])),self.store)
         self.assertEqual(len(new['capture']['program']['bundle']['definitions']),1)
 
     def test_transport_numeric_spelling_restores_to_strict_content_without_lookup(self):
@@ -217,7 +207,8 @@ class AuthoringTests(unittest.TestCase):
         with patch.object(library.Store,'_transaction',side_effect=AssertionError('No archive lookup')):
             opened=a.detached(dict(root=exact,capture=capture.to_dict()))
             definition=next(item['definition'] for item in opened['authored'] if item['variable_id']==exact['variable_id'])
-            edited=a.validate(dict(variable_id=exact['variable_id'],definition=definition,detached=[opened['capture']]),self.store)
+            edited=a.validate(dict(variable_id=exact['variable_id'],formula=dict(text=opened['text'],display=definition['output']['display']),
+                                   base=dict(root=exact,capture=opened['capture'])),self.store)
         self.assertEqual(opened['name'],'Submitted root');self.assertEqual(edited['root'],exact)
         self.assertEqual(len(opened['authored']),2)
         dependency=next(item for item in opened['authored'] if item['variable_id']==dep['variable_id'])

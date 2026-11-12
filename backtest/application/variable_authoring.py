@@ -7,28 +7,13 @@ resources.
 from copy import deepcopy
 
 from backtest.runtime import backtest_control
-from backtest.variables import columns, definitions, library, parameters, measures
+from backtest.variables import definitions, library, parameters, measures
 from backtest.application import formula_text, strategy_requests, vocabulary
 
 
 def catalog():
-    """Editor descriptors from the language, parameter and measure owners."""
-    available = {item['id']: item for item in columns.catalog()}
-    admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
-    terms = []
-    for descriptor in measures.catalog(parameters.V4):
-        bundle = measures.bundle([descriptor['id']], parameters.V4)
-        labels = []
-        for entry in bundle['definitions']:
-            found = measures.exact(entry['variable_id'], entry['revision'])
-            labels.append(dict(variable_id=entry['variable_id'], revision=entry['revision'], name=found['name']))
-        terms.append(dict(descriptor, submitted=bundle['definitions'], labels=labels))
-    return dict(parameters=admitted, builtins=strategy_requests.builtin_catalog(),
-                expanded_parameters=parameters.catalog(parameters.V4), version2_parameters=parameters.catalog(parameters.V2),
-                version3_parameters=parameters.catalog(parameters.V3), measures=terms, units=parameters.units(parameters.V4),
-                operations=sorted(definitions.OPERATIONS),
-                namespaces=[parameters.V1,parameters.V2,parameters.V3,parameters.V4],
-                current_parameter_catalog=parameters.V4, current_temporal_policy=definitions.MARKET_TEMPORAL_POLICY,
+    """Editor descriptors: input names, function words, displays and built-in steps."""
+    return dict(builtins=strategy_requests.builtin_catalog(),
                 displays={unit:details['displays'] for unit,details in parameters.units(parameters.V4).items()},
                 strategy_bytes=strategy_requests.STRATEGY_BYTES,
                 request_bytes=strategy_requests.REQUEST_BYTES,
@@ -85,9 +70,8 @@ def _capture(roots, store, entries, labels, checkpoint):
 
 
 def validate(request, store, *, checkpoint=backtest_control.checkpoint):
-    """Check a typed formula or a raw editor definition and complete dependencies without saving.
+    """Check a typed formula {text, display} and complete its dependencies without saving.
 
-    The request has exactly one of formula {text, display} and definition.
     base {root, capture} is what opened the formula, as detached takes it.
     Text equal to detached(base)'s text, repeated spaces ignored, keeps base's
     definition and its references and applies only the display. Other text is
@@ -99,11 +83,7 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
     requirements. Captures include exact references. Missing storage is valid
     for a complete local draft.
     """
-    if type(request) is not dict or ('definition' in request) == ('formula' in request):
-        raise ValueError('Send a formula or a variable definition.')
-    if 'definition' in request:
-        return _checked(request, request['definition'], request.get('name'), store, checkpoint)
-    formula = request['formula']
+    formula = request.get('formula')
     if type(formula) is not dict or type(formula.get('text')) is not str:
         raise ValueError('A formula needs its text.')
     text = ' '.join(formula['text'].split())

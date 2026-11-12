@@ -124,9 +124,23 @@ mean applies to each year's margin. It is not average income over average revenu
 
 ## Formula language
 
-A saved definition is a restricted expression tree. The visual builder and the
-Advanced text editor produce the same tree. `backtest/variables/definitions.py`
-owns validation, normalization, identities and units.
+A saved definition is a restricted expression tree. The editor shows it as
+typed text; `backtest/application/formula_text.py` reads and prints that text,
+and only the tree is stored. `backtest/variables/definitions.py` owns
+validation, normalization, identities and units.
+
+| Typed | Meaning |
+|---|---|
+| `Total debt / Enterprise value` | Input and saved-variable names with `+ - * /` and parentheses |
+| `P/E * 2`, `debt/EV * 2` | A known name with `/` needs no brackets; `[name]` is optional |
+| `0.05`, `1e6 USD`, `2 USD per share`, `100 shares` | A number with an optional unit |
+| `Total debt / positive(Shareholders equity)` | Divide only by a value above zero |
+| `average(Revenue, 3 years)`, `min(…)`, `max(…)` | Statistic of 3 yearly values |
+| `growth(Revenue, 3 years)`, `cagr(…)` | Change across 3 years, from 4 yearly values |
+| `ago(Revenue, 12 months)`, `at(Revenue, 2024-12-31)` | Value 12 months earlier, or on one date |
+
+Names ignore case and repeated spaces. Unchanged text keeps the stored formula
+exactly; changed text is read in the current form.
 
 | Item | Contract |
 |---|---|
@@ -295,23 +309,20 @@ their formats; old explanation blocks open unchanged.
 
 ## Editor
 
-The shared workspace keeps the strategy form small. The picker has **Favourites**,
-**My variables** and **Built-ins**, with search and category labels.
-`backtest/application/variable_authoring.py` supplies the descriptors from the
-semantic owners. **＋ Create a new variable…** in a step's source list, or
-**Edit formula** on a step, opens a side panel on desktop and a
-full-screen editor on small screens. The user chooses a parameter, its time basis
-and statistic, adds terms, names the variable, then applies or saves.
+**＋ Create a new variable…** in a step's source list opens an empty window.
+**Edit formula** on a step opens that step's formula as text. Suggestions below
+the formula offer input names, My variables and function words for the partial
+name before the caret; Enter or Tab inserts one. **All inputs** lists the same
+names by category. The window has no built-ins. The step source list shows
+**Financial inputs**: names that no built-in step already reads.
 
-The formula shows as an editable equation with explicit grouping and stacked
-fractions. Select a term to insert a parameter or change its time and statistic
-settings. Operation buttons extend the selected term. Undo and Redo restore
-equation edits. Only the selected term has settings below the equation.
-**Advanced JSON** edits the same expression tree. The check shows a
-plain-language explanation, the unit and required data. Editing, validation,
-Save and Apply start no backtest. Apply goes through `StrategyDraft`, with its held
-queue-edit protection. Source insertion changes only the selected term. It keeps
-the Apply destination. A rejected Apply shows an error and keeps the editor open.
+The server checks the text 400 ms after typing stops. The line under the formula
+shows the result unit and **Show as**, or the problem with suggested fixes that
+replace only the bad part. A picture shows how the formula was read. An empty
+name becomes the formula text. **Use** changes only the strategy draft, through
+`StrategyDraft`, and starts no backtest. **Save to My variables** keeps a
+revision; a saved variable also has **Save as new**, **Favourite** and
+**Delete**. **Close** discards unsaved edits.
 
 ## Out of scope
 

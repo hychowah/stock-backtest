@@ -94,11 +94,7 @@ class MarketRequests(unittest.TestCase):
         self.assertTrue(s.options_calculation_equal(options, dict(options, market='us')))
         self.assertFalse(s.options_calculation_equal(dict(options, market='hk'), dict(options, market='jp')))
 
-    def test_current_authoring_has_market_policy_and_retains_published_named_measures(self):
-        current = variable_authoring.catalog()
-        self.assertEqual((current['current_parameter_catalog'], current['current_temporal_policy']),
-                         (parameters.V4, d.MARKET_TEMPORAL_POLICY))
-        self.assertEqual(current['version3_parameters'], parameters.catalog(parameters.V3))
+    def test_published_named_measures_keep_their_revisions_beside_market_forms(self):
         old = measures.catalog()
         new = measures.catalog(parameters.V4)
         self.assertEqual([item['id'] for item in old], [item['id'] for item in new])
