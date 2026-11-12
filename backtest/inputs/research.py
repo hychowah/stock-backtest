@@ -7,6 +7,9 @@ Compatible preparation reconciles changed typed rows in one transaction.
 Cold, schema and fact-code builds use a temporary file and atomic replacement.
 Either path preserves the previous committed data on failure. Both fold the
 derived valuation sums last, in the same transaction (facts.store_valuations).
+A cold build of many companies builds contiguous symbol ranges in worker
+processes, each in its own temporary file, and copies their per-company rows
+and sums into that transaction: the database equals the one-process build.
 
 The metadata table is the one research record: the schema version, the
 accepted raw-file signature (inputs) with each price file's stamps (prices),
@@ -19,14 +22,18 @@ Both identities are content digests, so a rewrite with equal bytes keeps them.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from contextlib import closing
 import hashlib
 from datetime import date
 import json
+import multiprocessing
 import os
 import stat
 from pathlib import Path
 import sqlite3
+import sys
+from threading import Event, Thread
 import time
 
 from backtest.financial import rules
@@ -47,6 +54,11 @@ SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
 '''
+# A cold build of at least MIN_PARALLEL_COMPANIES uses up to WORKERS processes.
+# SQLite attaches at most 10 files: the build file and one file for each range.
+WORKERS = 8
+MIN_PARALLEL_COMPANIES = 2000
+_stopped = Event()
 
 
 def _metadata_entries(directory, pattern):
@@ -227,6 +239,12 @@ def _readable(resolution, name):
     return resolution
 
 
+def _remove_range_files(temporary):
+    """Remove the files and journals of range workers, also those an ended process left."""
+    for file in temporary.parent.iterdir():
+        if file.name.startswith(temporary.name+'.'):file.unlink()
+
+
 def _saved_metadata(path):
     if not path.exists():return {}
     # A writable read lets SQLite recover an interrupted in-place transaction.
@@ -235,15 +253,77 @@ def _saved_metadata(path):
         except ValueError:return {}
 
 
+def _ranges(symbols, sources, count):
+    """Split sorted symbols into at most count contiguous ranges of about equal saved price bytes."""
+    def size(symbol):
+        native=market.native_path(RAW,symbol)
+        return 1+sources.get(market.cache_path_for(symbol).name,[0])[0]+(native.stat().st_size if native.exists() else 0)
+    sizes=[size(symbol) for symbol in symbols]
+    total=sum(sizes);ranges=[[] for _ in range(count)];before=0
+    for symbol,weight in zip(symbols,sizes):
+        ranges[before*count//total].append(symbol);before+=weight
+    return [part for part in ranges if part]
+
+
+def _start_worker(stop):
+    """Start one range worker: it prints nothing, and it stops when the parent sets stop."""
+    sys.stdout=open(os.devnull,'w')
+    parent=multiprocessing.parent_process()
+    def watch():
+        while not stop.wait(1):
+            # A killed parent stops no worker, and an idle pool process does not end
+            # on its own. End now; the next build removes this range's files.
+            if not parent.is_alive():os._exit(0)
+        _stopped.set()
+    Thread(target=watch,daemon=True).start()
+
+
+def _build_range(path, symbols):
+    """In a worker: build one symbol range into its own file and return its spiked series."""
+    with backtest_control.cancel_when(_stopped.is_set):
+        return _build(Path(path),False,lambda **kw:None,1,frozenset(symbols))
+
+
+def _build_ranges(temporary, ranges, progress, total):
+    """Build each symbol range in its own process and file; return the spiked series in range order.
+
+    The parent owns the cache for the workers. A Stop or a failure stops each
+    worker at its next checkpoint; this returns after every worker has ended.
+    """
+    context=multiprocessing.get_context('spawn');stop=context.Event()
+    pool=ProcessPoolExecutor(len(ranges),mp_context=context,initializer=_start_worker,initargs=(stop,))
+    try:
+        futures={pool.submit(_build_range,f'{temporary}.{number}',symbols):symbols for number,symbols in enumerate(ranges)}
+        pending=set(futures);completed=0
+        while pending:
+            backtest_control.checkpoint()
+            done,pending=wait(pending,timeout=.2,return_when=FIRST_COMPLETED)
+            for future in done:
+                future.result();completed+=len(futures[future])
+                progress(kind='research',completed=completed,total=total+1)
+                print(f'Prepared {completed}/{total} companies',flush=True)
+        return [symbol for future in futures for symbol in future.result()]
+    finally:
+        stop.set();pool.shutdown(cancel_futures=True)
+
+
 @cache_access.exclusive
 @diagnostics.operation('prepare.research')
-def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
-    """Reconcile saved facts atomically; force also checks unchanged inputs."""
+def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None, workers=None):
+    """Reconcile saved facts atomically; force also checks unchanged inputs.
+
+    workers is the process count of a cold build; None uses WORKERS (at most
+    one for each CPU thread) from MIN_PARALLEL_COMPANIES companies, else one.
+    """
     if (RAW/'metrics.jsonl').exists():cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
+    _build(Path(path),force,progress,workers)
+
+
+def _build(path, force, progress, workers, only=None):
+    """The build of prepare. A range worker builds only the companies in only; the spiked series return to its parent."""
     started=time.perf_counter()
     progress(kind='research',completed=0,total=None)
     diagnostics.note(force=force)
-    path=Path(path)
     prior=_saved_metadata(path)
     # Preparation is a data action: its readers inspect raw inputs afresh.
     forget_signature()
@@ -269,13 +349,13 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             foreign_digests[market_id]=hashlib.sha256(saved).hexdigest()
             # A list saved before an admission change can hold rows the market no longer admits.
             foreign_universes[market_id]={row['symbol']:{**row,'market':market_id} for row in json.loads(saved)
-                if market.common_stock(row['symbol'],row.get('name'),market=market_id)}
+                if market.common_stock(row['symbol'],row.get('name'),market=market_id) and (only is None or row['symbol'] in only)}
     content=(RAW/'universe.json').read_bytes() if (RAW/'universe.json').exists() else b'[]'
     # The facts' content identity: the code and the bytes of every saved file read.
     raw=dict(universe=hashlib.sha256(content).hexdigest(),
              metrics=hashlib.sha256((RAW/'metrics.jsonl').read_bytes() if (RAW/'metrics.jsonl').exists() else b'').hexdigest())
     raw['foreign_universes']=foreign_digests
-    universe={r['symbol']:r for r in json.loads(content)}
+    universe={r['symbol']:r for r in json.loads(content) if only is None or r['symbol'] in only}
     us_universe=universe.copy()
     for group in foreign_universes.values():universe.update(group)
     records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
@@ -289,6 +369,7 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
     temporary.unlink(missing_ok=True)
+    _remove_range_files(temporary)
     db=sqlite3.connect(':memory:',uri=True)
     db.row_factory=sqlite3.Row
     try:
@@ -361,7 +442,25 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
                       for market_id,group in foreign_universes.items() for symbol,company in sorted(group.items())]
         annual_endpoints=[endpoint for endpoint,fields in financial_inputs.ENDPOINTS.items()
                           if fields or financial_inputs.observation_fields().get(endpoint)]
-        for number,(symbol,market_id,currency) in enumerate(companies,1):
+        if workers is None:workers=(os.cpu_count() or 1) if len(companies)>=MIN_PARALLEL_COMPANIES else 1
+        ranges=_ranges(sorted({symbol for symbol,_,_ in companies}),sources,min(workers,WORKERS)) if cold and workers>1 else []
+        if ranges:
+            # The range files give the rows and sums that the two per-company loops write below.
+            spiked=_build_ranges(temporary,ranges,progress,len(companies))
+            diagnostics.lap('ranges')
+            merged=dict(prices={},annual={})
+            for number in range(len(ranges)):
+                backtest_control.checkpoint()
+                db.execute(f'ATTACH DATABASE ? AS part{number}',(Path(f'{temporary}.{number}').resolve().as_uri()+'?mode=ro',))
+                for table in ('stock_days','stock_native','annual_facts','annual_metadata','valuation_sums'):
+                    db.execute(f'INSERT INTO research.{table} SELECT * FROM part{number}.{table}')
+                # This build has read the shared files, the sources of the empty symbol, itself.
+                db.execute(f"INSERT INTO research.fact_sources SELECT * FROM part{number}.fact_sources WHERE symbol!=''")
+                noted=json.loads(db.execute(f"SELECT value FROM part{number}.metadata WHERE key='changes'").fetchone()[0])
+                for kind in merged:merged[kind].update(noted[kind])
+            # The serial loop notes companies in its own order.
+            for kind,days in merged.items():changes[kind]={symbol:days[symbol] for symbol,_,_ in companies if symbol in days}
+        for number,(symbol,market_id,currency) in enumerate([] if ranges else companies,1):
             backtest_control.checkpoint()
             context_changed=old_markets.get(symbol)!=new_markets[symbol]
             changed,content=source_bytes(RAW/'px'/market.cache_path_for(symbol).name,symbol,facts.STOCK,decode=context_changed)
@@ -432,7 +531,7 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             last=db.execute('SELECT MAX(day) FROM local_sessions WHERE market=?',(market_id,)).fetchone()[0]
             if last is not None:latest_dates[market_id]=last
         diagnostics.lap('dated_facts')
-        facts.store_valuations(db,None if cold else changes,backtest_control.checkpoint)
+        if not ranges:facts.store_valuations(db,None if cold else changes,backtest_control.checkpoint)
         diagnostics.lap('valuations')
         # fact_sources holds the digest of every price, annual, SPY and Treasury file read.
         digest=hashlib.sha256()
@@ -461,9 +560,13 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             db.close()
         if cold:temporary.unlink(missing_ok=True)
         raise
+    finally:
+        # The connection that attached the range files is closed.
+        _remove_range_files(temporary)
     diagnostics.note(outcome='prepared',database_bytes=path.stat().st_size)
     progress(kind='research',completed=company_count+1,total=company_count+1)
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
+    return spiked
 
 
 def main():

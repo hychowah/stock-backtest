@@ -51,7 +51,9 @@ python3 scripts/research.py prepare
 
 Compatible preparation reconciles changed typed rows in `data/research.sqlite`
 in one transaction. Unchanged bulk sources skip decoding. Cold, schema or
-fact-code builds use a temporary database and atomic replacement. A failure
+fact-code builds use a temporary database and atomic replacement. A cold build
+of 2,000 or more companies uses up to eight worker processes, one symbol range
+each, and gives the same database as a one-process build. A failure
 keeps the previous committed data. A current database is kept: when the saved
 inputs and calculation code have not
 changed, preparation only checks source metadata. Queries skip the full
