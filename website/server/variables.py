@@ -1,6 +1,6 @@
 """Bounded same-origin variable authoring; no financial or library SQL access."""
 import json
-from backtest.application import variable_authoring, strategy_requests
+from backtest.application import formula_text, variable_authoring, strategy_requests
 from backtest.variables import library
 from backtest.runtime import diagnostics
 
@@ -19,7 +19,7 @@ def dispatch(handler):
     parts=path.removeprefix('/api/variables').strip('/').split('/') if path!='/api/variables' else []
     try:
         if handler.command=='GET':
-            if not parts:value=dict(entries=store.list())
+            if not parts:value=dict(entries=variable_authoring.entries(store))
             elif parts==['catalog']:value=variable_authoring.catalog()
             else:raise ValueError('Use an exact authored read to open a variable.')
         elif handler.command=='POST':
@@ -47,6 +47,7 @@ def dispatch(handler):
     except library.Conflict as error:handler.reply(409,dict(error=str(error)))
     except library.Missing as error:handler.reply(404,dict(error=str(error)))
     except (library.Unavailable,library.InvalidStore) as error:handler.reply(503,dict(error=str(error)))
+    except formula_text.TextError as error:handler.reply(400,dict(error=str(error),errors=error.errors))
     except (ValueError,TypeError,KeyError,UnicodeError) as error:
         safe=str(error) if not isinstance(error,KeyError) else 'Variable request fields are incomplete.'
         handler.reply(400,dict(error=safe,**(strategy_requests.failure_details(error) or {})))

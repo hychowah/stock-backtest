@@ -54,6 +54,17 @@ class AuthoringHttpTests(ExistingHttp):
         with patch.object(self.calc,'preview',side_effect=AssertionError('Validation must not calculate')):
             status,value=self.post('/validate',dict(definition=language.definition(),name='Unsaved'))
         self.assertEqual(status,200,value);self.assertFalse(store.path.exists());self.assertFalse(self.manager.runs)
+    def test_typed_formula_validates_or_returns_positioned_and_plain_errors(self):
+        status,value=self.post('/validate',dict(formula=dict(text='Total debt / positive(Total assets)',display='multiple'),name=''))
+        self.assertEqual(status,200,value);self.assertEqual(value['name'],'Total debt / positive(Total assets)')
+        self.assertEqual(value['output']['display'],'multiple');self.assertTrue(value['picture']['positive'])
+        status,error=self.post('/validate',dict(formula=dict(text='Revnue / 2')))
+        self.assertEqual(status,400);self.assertEqual(error['error'],error['errors'][0]['message'])
+        self.assertEqual({key:error['errors'][0][key] for key in ('start','end','code','suggestions')},
+                         dict(start=0,end=6,code='UNKNOWN_NAME',suggestions=[dict(text='Revenue',label='Revenue')]))
+        status,error=self.post('/validate',dict(formula=dict(text='Revenue + 1')))
+        self.assertEqual(status,400);self.assertEqual(error['errors'],[dict(code='UNIT_MISMATCH',message=error['error'],suggestions=[])])
+        self.assertFalse(self.server.variable_store.path.exists());self.assertFalse(self.manager.runs)
     def test_create_atomic_edit_favourite_and_delete_with_exact_authored_reads(self):
         definition=language.definition(language.constant('1e100'))
         status,entry=self.post('',dict(name='Exact value',definition=definition));self.assertEqual(status,200,entry)

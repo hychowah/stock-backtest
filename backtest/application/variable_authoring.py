@@ -8,7 +8,7 @@ from copy import deepcopy
 
 from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library, parameters, measures
-from backtest.application import strategy_requests
+from backtest.application import formula_text, strategy_requests, vocabulary
 
 
 def catalog():
@@ -31,7 +31,14 @@ def catalog():
                 current_parameter_catalog=parameters.V4, current_temporal_policy=definitions.MARKET_TEMPORAL_POLICY,
                 displays={unit:details['displays'] for unit,details in parameters.units(parameters.V4).items()},
                 preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,
-                request_bytes=strategy_requests.REQUEST_BYTES)
+                request_bytes=strategy_requests.REQUEST_BYTES,
+                vocabulary=[dict(item, text=formula_text.spelling(item['name'])) for item in vocabulary.entries()],
+                functions=[dict(item) for item in formula_text.FUNCTIONS])
+
+
+def entries(store):
+    """Active library entries, each with the typed spelling of its name."""
+    return [dict(item, text=formula_text.spelling(item['name'])) for item in store.list()]
 
 
 def _variable(value):
@@ -78,20 +85,74 @@ def _capture(roots, store, entries, labels, checkpoint):
 
 
 def validate(request, store, *, checkpoint=backtest_control.checkpoint):
-    """Validate a raw editor definition and complete dependencies without saving.
+    """Check a typed formula or a raw editor definition and complete dependencies without saving.
 
-    The definition owner supplies the revision, units and requirements. Captures
-    include exact references. Missing storage is valid for a complete local draft.
+    The request has exactly one of formula {text, display} and definition.
+    Text equal to to_text(base), repeated spaces ignored, keeps base's
+    expression, version, catalog and policy and applies only the display;
+    other text is read in the current form. labels, submitted or detached
+    content name base's references. The display stays when it suits the
+    inferred unit, else the unit's default applies; an empty name becomes the
+    text. Formula errors raise formula_text.TextError; errors from the
+    definition owner carry no position. The definition owner supplies the
+    revision, units and requirements. Captures include exact references.
+    Missing storage is valid for a complete local draft.
     """
-    if type(request) is not dict or 'definition' not in request:
-        raise ValueError('A variable definition is required.')
-    definition = request['definition']
+    if type(request) is not dict or ('definition' in request) == ('formula' in request):
+        raise ValueError('Send a formula or a variable definition.')
+    if 'definition' in request:
+        return _checked(request, request['definition'], request.get('name'), store, checkpoint)
+    formula = request['formula']
+    if type(formula) is not dict or type(formula.get('text')) is not str:
+        raise ValueError('A formula needs its text.')
+    text = ' '.join(formula['text'].split())
+    name = request.get('name').strip() if type(request.get('name')) is str else ''
+    name = name or text[:120].strip()
+    try:
+        base = request.get('base')
+        if base is not None:
+            _, labels = _content(request, definitions.references(base))
+            if text == ' '.join(formula_text.to_text(base, labels).split()):
+                unit = base['output']['unit']
+                definition = dict(base, output=dict(unit=unit, display=_display(formula.get('display'), unit)))
+                checked = _checked(request, definition, name, store, checkpoint)
+                return dict(checked, picture=formula_text.from_text(text, vocabulary.entries(), labels)[1], name=name)
+        expression, picture = formula_text.from_text(text, vocabulary.entries(), store.list())
+        definition = dict(format='variable-definition', version=3, parameter_catalog=parameters.V4,
+                          temporal_policy=definitions.MARKET_TEMPORAL_POLICY, expression=expression)
+        # The output is provisional: the definition owner checks the tree here,
+        # before the referenced units are known.
+        references = definitions.references(dict(definition, output=dict(unit='scalar', display='number')))
+        keys = [item['variable_id'].split(':', 1)[1] for item in references if item['variable_id'].startswith('measure:')]
+        if keys:
+            bundled = measures.bundle(keys, parameters.V4)['definitions']
+            named = [dict(variable_id=item['variable_id'], revision=item['revision'],
+                          name=measures.exact(item['variable_id'], item['revision'])['name']) for item in bundled]
+            request = dict(request, submitted=list(request.get('submitted', [])) + bundled,
+                           labels=list(request.get('labels', [])) + named)
+        units = {}
+        if references:
+            closure, names = _content(request, references)
+            program = _capture(references, store, closure, names, checkpoint).to_dict()['program']
+            units = {(item['variable_id'], item['revision']): item['unit'] for item in program['definitions']}
+        unit = definitions.output_unit(definition, units)
+        definition['output'] = dict(unit=unit, display=_display(formula.get('display'), unit))
+        return dict(_checked(request, definition, name, store, checkpoint), picture=picture, name=name)
+    except definitions.FormulaError as error:
+        raise formula_text.TextError([dict(code=error.code, message=str(error), suggestions=[])]) from None
+
+
+def _display(display, unit):
+    return display if display in parameters.units(parameters.V4)[unit]['displays'] else vocabulary.DISPLAYS[unit]
+
+
+def _checked(request, definition, name, store, checkpoint):
     root = dict(variable_id=request.get('variable_id','local:editor'), revision=definitions.revision(definition))
     entries, labels = _content(request, [root] + definitions.references(definition))
     entries = [item for item in entries if (item['variable_id'],item['revision']) != (root['variable_id'],root['revision'])]
     entries.append(dict(root, definition=definition))
     labels = [item for item in labels if (item['variable_id'],item['revision']) != (root['variable_id'],root['revision'])]
-    labels.append(dict(root, name=request.get('name') or root['variable_id']))
+    labels.append(dict(root, name=name or root['variable_id']))
     captured = _capture([root],store,entries,labels,checkpoint)
     checked = captured.to_dict()['program']
     output = next(item for item in checked['definitions'] if (item['variable_id'],item['revision']) == (root['variable_id'],root['revision']))
@@ -109,7 +170,10 @@ def detached(request):
     selected = authored['roots'][0]
     label = next(item for item in checked['presentation']
                  if (item['variable_id'],item['revision']) == (selected['variable_id'],selected['revision']))
-    return dict(selected=selected,name=label['name'],authored=authored['definitions'],capture=checked)
+    definition = next(item['definition'] for item in authored['definitions']
+                      if (item['variable_id'],item['revision']) == (selected['variable_id'],selected['revision']))
+    return dict(selected=selected,name=label['name'],authored=authored['definitions'],capture=checked,
+                text=formula_text.to_text(definition, checked['presentation']))
 
 
 def prepare(request, store, *, checkpoint=backtest_control.checkpoint):

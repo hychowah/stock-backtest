@@ -56,6 +56,8 @@ own the feature.
   the Original schedule seam. `backtest/scalar_result_evidence.py` encodes
   scalar evidence. `variable_coverage.py` reduces recorded-scope coverage.
   `variable_authoring.py` serves authoring without financial work.
+- `backtest/application/formula_text.py`: typed formula text over the stored tree.
+- `backtest/application/vocabulary.py`: one plain name per formula input.
 - `website/server/variables.py` adapts the HTTP routes. `website/browser/range.js`
   (`StrategyDraft`) owns the draft and the step chain. `filter-picker.js` searches
   and chooses step sources. `variable-workspace.js` is the shared editor.

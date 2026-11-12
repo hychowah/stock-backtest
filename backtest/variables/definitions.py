@@ -290,6 +290,35 @@ def revision(definition):
     return _hash(canonical(normalized))
 
 
+# Unit rules, shared by _compile and output_unit so they exist once.
+def _leaf_dimensions(node, parameter, catalog, units):
+    if node['op'] == 'constant':
+        return dict(units[node['unit']]['dimensions'])
+    # Growth is a fraction over count-1 annual intervals, regardless of the
+    # underlying annual parameter's dimension or catalog version.
+    unit = ('scalar' if node['op'] == 'annual' and node['stat'] in ('growth', 'cagr')
+            else catalog[parameter]['unit'])
+    return dict(units[unit]['dimensions'])
+
+
+def _combined_dimensions(op, left, right, path):
+    if op in ('add', 'sub'):
+        if left != right:
+            _fail('UNIT_MISMATCH', path, 'Addition and subtraction require identical dimensions.')
+        return dict(left)
+    dimensions = dict(left)
+    for unit, power in right.items():
+        dimensions[unit] = dimensions.get(unit, 0) + power * (1 if op == 'mul' else -1)
+    return {key: value for key, value in dimensions.items() if value}
+
+
+def _unit_of(dimensions, units, path):
+    unit = next((name for name, value in units.items() if value['dimensions'] == dimensions), None)
+    if unit is None:
+        _fail('UNSUPPORTED_OUTPUT_UNIT', path, 'Formula output has unsupported dimensions.')
+    return unit
+
+
 def _compile(bundle, limits, normalized=False):
     _shape(bundle, ('format', 'version', 'definitions', 'roots'), '')
     if bundle['format'] != 'variable-bundle' or type(bundle['version']) is not int or bundle['version'] != VERSION:
@@ -413,14 +442,9 @@ def _compile(bundle, limits, normalized=False):
             return inferred[identity]
         item = node_by_id[identity]
         op, depth = item['op'], 1
-        if op in ('parameter', 'annual'):
-            # Growth is a fraction over count-1 annual intervals, regardless of
-            # the underlying annual parameter's dimension or catalog version.
-            unit = ('scalar' if op == 'annual' and item['stat'] in ('growth', 'cagr')
-                    else catalogs[item['definition']][item['parameter']]['unit'])
-            dimensions = dict(unit_vocabularies[item['definition']][unit]['dimensions'])
-        elif op == 'constant':
-            dimensions = dict(unit_vocabularies[item['definition']][item['unit']]['dimensions'])
+        if op in ('parameter', 'annual', 'constant'):
+            dimensions = _leaf_dimensions(item, item.get('parameter'), catalogs[item['definition']],
+                                          unit_vocabularies[item['definition']])
         elif op in ('neg', 'at', 'lookback', 'ref'):
             target = item['target'] if op == 'ref' else item['arg']
             dimensions = dict(infer(target))
@@ -428,15 +452,7 @@ def _compile(bundle, limits, normalized=False):
         else:
             left, right = infer(item['left']), infer(item['right'])
             depth += max(expanded_depths[item['left']], expanded_depths[item['right']])
-            if op in ('add', 'sub'):
-                if left != right:
-                    _fail('UNIT_MISMATCH', submitted_path(item), 'Addition and subtraction require identical dimensions.')
-                dimensions = dict(left)
-            else:
-                dimensions = dict(left)
-                for unit, power in right.items():
-                    dimensions[unit] = dimensions.get(unit, 0) + power * (1 if op == 'mul' else -1)
-                dimensions = {key: value for key, value in dimensions.items() if value}
+            dimensions = _combined_dimensions(op, left, right, submitted_path(item))
         if depth > limits['depth']:
             _fail('DEFINITION_LIMIT', submitted_path(item), 'Resolved expression depth exceeds its bound.')
         item['dimensions'] = dimensions
@@ -445,11 +461,8 @@ def _compile(bundle, limits, normalized=False):
     resolved = []
     for index, entry in enumerate(entries):
         root = definition_roots[index]
-        dimensions = infer(root)
-        unit = next((name for name, value in unit_vocabularies[index].items()
-                     if value['dimensions'] == dimensions), None)
-        if unit is None:
-            _fail('UNSUPPORTED_OUTPUT_UNIT', '/definitions/' + str(source_indexes[index]) + '/definition/output', 'Formula output has unsupported dimensions.')
+        unit = _unit_of(infer(root), unit_vocabularies[index],
+                        '/definitions/' + str(source_indexes[index]) + '/definition/output')
         if unit != entry['definition']['output']['unit']:
             _fail('UNIT_MISMATCH', '/definitions/' + str(source_indexes[index]) + '/definition/output/unit', 'Declared output differs from the inferred unit.')
         resolved.append(dict(variable_id=entry['variable_id'], revision=entry['revision'],
@@ -658,6 +671,27 @@ def references(definition):
     """Return exact authored dependency identities using the language parser."""
     _, refs, _ = _normal_definition(definition, _limits(None), '')
     return [dict(variable_id=identity[0], revision=identity[1]) for identity, _ in refs]
+
+
+def output_unit(definition, reference_units):
+    """Unit an expression produces; ignores the declared output; references are trusted.
+
+    definition needs only parameter_catalog and expression. reference_units
+    maps each referenced (variable_id, revision) to its checked unit.
+    """
+    catalog = {item['id']: item for item in parameters.catalog(definition['parameter_catalog'])}
+    units = parameters.units(definition['parameter_catalog'])
+    def infer(node, path):
+        op = node['op']
+        if op in ('parameter', 'annual', 'constant'):
+            return _leaf_dimensions(node, node.get('id', node.get('parameter')), catalog, units)
+        if op == 'ref':
+            return dict(units[reference_units[node['variable_id'], node['revision']]]['dimensions'])
+        if op in ('neg', 'at', 'lookback'):
+            return infer(node['arg'], path + '/arg')
+        return _combined_dimensions(op, infer(node['left'], path + '/left'),
+                                    infer(node['right'], path + '/right'), path)
+    return _unit_of(infer(definition['expression'], '/expression'), units, '/output')
 
 
 def upgrade(entries):
