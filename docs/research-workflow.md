@@ -4,7 +4,7 @@ Normal research should query the prepared databases instead of reparsing daily J
 
 ## Market data and calculations
 
-The source supports one market per run: US, Hong Kong (Main Board and GEM) or Japan (Tokyo). New website strategies use the broad cached-price pool. The legacy US pool remains for recorded work and the reference check. Missing market data requires an explicit data-panel action or the existing authorized scheduled update.
+The source supports one market per run: US, Hong Kong (Main Board and GEM) or Japan (Tokyo). Hong Kong leaves out 4xxx codes. The provider lists bonds and dormant Hong Kong lines of US companies there; those lines have months-old prices and the companies' worldwide share counts. Preparation also applies this rule to a saved stock list. New website strategies use the broad cached-price pool. The legacy US pool remains for recorded work and the reference check. Missing market data requires an explicit data-panel action or the existing authorized scheduled update.
 
 US raw paths stay unchanged. Foreign inventories and local-index calendars live at `raw/markets/<market>/universe.json` and `calendar.json`. Shared suffixed symbols keep annual endpoint files in `raw/financial-inputs/` and adjusted prices in `raw/px/`. Native unadjusted closes live in `raw/px-full/`; direct USD FX pairs live in `raw/fx/USD<currency>.json`. All use the current bounded transport, parent-owned publication and content-bound receipts. Foreign reports do not append to US `metrics.jsonl`. Every returned annual row and field stays in its endpoint asset.
 

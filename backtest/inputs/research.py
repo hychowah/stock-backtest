@@ -267,7 +267,9 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
         if inventory.exists():
             saved=inventory.read_bytes()
             foreign_digests[market_id]=hashlib.sha256(saved).hexdigest()
-            foreign_universes[market_id]={row['symbol']:{**row,'market':market_id} for row in json.loads(saved)}
+            # A list saved before an admission change can hold rows the market no longer admits.
+            foreign_universes[market_id]={row['symbol']:{**row,'market':market_id} for row in json.loads(saved)
+                if market.common_stock(row['symbol'],row.get('name'),market=market_id)}
     content=(RAW/'universe.json').read_bytes() if (RAW/'universe.json').exists() else b'[]'
     # The facts' content identity: the code and the bytes of every saved file read.
     raw=dict(universe=hashlib.sha256(content).hexdigest(),

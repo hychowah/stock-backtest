@@ -36,7 +36,8 @@ def common_stock(symbol,name='',market='us',**metadata):
     if metadata.get('isEtf') or metadata.get('isFund'):return False
     if market=='us':return rules.common_stock(symbol,name)
     # HK's five-digit RMB counters duplicate an HKD share; funds/warrants are not common stocks.
-    pattern=r'[0-9]{4}\.HK' if market=='hk' else r'(?:[0-9]{4}|[0-9]{3}[A-Z])\.T'
+    # HK's 4xxx codes are bonds and US companies' dormant HK lines (stale prices, global share counts).
+    pattern=r'[0-35-9][0-9]{3}\.HK' if market=='hk' else r'(?:[0-9]{4}|[0-9]{3}[A-Z])\.T'
     return bool(re.fullmatch(pattern,symbol or '')) and not any(
         token in (' '+(name or '').upper()+' ') for token in (' ETF ',' FUND ',' ETN '))
 

@@ -223,10 +223,20 @@ class MarketInputsTests(unittest.TestCase):
             self.assertEqual(sums(source,('0001.HK','1000.T','2000.T')),
                              {'0001.HK':['2015-07-01','2015-07-20','2015-08-04'],'1000.T':before['1000.T']})
 
+    def test_preparation_leaves_out_saved_rows_the_market_no_longer_admits(self):
+        with redirect_stdout(io.StringIO()),prepared_markets() as (db,raw,source,store):
+            inventory=market.universe_path(raw,'hk');rows=json.loads(inventory.read_text())
+            inventory.write_text(json.dumps(rows+[dict(rows[0],symbol='4338.HK',name='Microsoft Corporation',listed=False)]))
+            (raw/'px'/'4338.HK.json').write_bytes((raw/'px'/'0001.HK.json').read_bytes())
+            research.prepare(source)
+            with closing(sqlite3.connect(source)) as reader:
+                self.assertEqual(reader.execute("SELECT symbol FROM company_markets WHERE market='hk'").fetchall(),[('0001.HK',)])
+
     def test_market_paths_admission_and_calendar_month_lags(self):
         self.assertTrue(market.common_stock('0001.HK','Example',market='hk'))
         self.assertTrue(market.common_stock('8001.HK','Example',market='hk'))
         self.assertFalse(market.common_stock('80700.HK','Duplicate counter',market='hk'))
+        self.assertFalse(market.common_stock('4338.HK','Microsoft Corporation',market='hk'))
         self.assertTrue(market.common_stock('186A.T','Example',market='jp'))
         self.assertEqual(market.available(date(2024,10,31),'jp')[0],date(2025,1,31))
         self.assertEqual(market.available(date(2024,10,31),'hk')[0],date(2025,2,28))
