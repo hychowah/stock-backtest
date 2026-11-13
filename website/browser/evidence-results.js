@@ -45,7 +45,7 @@ const EvidenceResults=(()=>{
     const picks=row.scalar_evidence?.sleeves;
     if(strategy?.version===3&&Array.isArray(picks))return picks.map(pick=>{
       const start=strategy.sleeves.slice(0,pick.sleeve).reduce((sum,sleeve)=>sum+sleeve.steps.length,0);
-      return '<p>'+escape('Sleeve '+strategy.sleeves[pick.sleeve].name)+'</p>'+trail(row,strategy,strategy.sleeves[pick.sleeve].steps,pick.steps,start);
+      return '<p>'+escape(strategy.sleeves[pick.sleeve].name)+'</p>'+trail(row,strategy,strategy.sleeves[pick.sleeve].steps,pick.steps,start);
     }).join('');
     const outcomes=row.scalar_evidence?.steps;
     if(strategy?.version!==2||!Array.isArray(outcomes))return '<p class="hint">Step trail not recorded in this result.</p>';

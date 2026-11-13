@@ -396,7 +396,7 @@ const StrategyDraft=(()=>{
     return o;
   }
   const empty=step=>step.kind==='filter'&&String(typeof step.threshold==='string'?step.threshold:shown(step).value).trim()==='';
-  function requireValues(list=steps){if(list.some(empty))throw Error('Enter a value for each filter.');}
+  function requireValues(list=allSteps()){if(list.some(empty))throw Error('Enter a value for each filter.');}
   const placeholder=()=>{const {market,...draft}=JSON.parse(content());return {format:'strategy-draft',version:2,...draft};};
   const unchanged=()=>restored?.content===content();
   function selection(){
@@ -470,7 +470,7 @@ const StrategyDraft=(()=>{
   }
   // An unchanged chain capture is resubmitted as recorded. Saving an unchanged
   // held queue edit keeps its original selection in any format; every other
-  // submission captures a chain.
+  // submission captures the draft.
   async function prepareSubmission({held=false}={}){
     let settings=copy(currentSettings());
     if(held&&active&&unchanged()){const {strategy,...rest}=settings;return {...rest,...copy(restored.selection)};}
@@ -517,7 +517,7 @@ const StrategyDraft=(()=>{
     document.getElementById('sleeve-edit').hidden=sleeves.length<2;
     const name=document.getElementById('sleeve-name');name.value=sleeves[current].name;name.placeholder=defaultName(steps,current);
     document.getElementById('auto-run').disabled=!offline;
-    document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this chain. Select Screen latest to calculate.';
+    document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this strategy. Select Screen latest to calculate.';
     document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
     // Random-date and custom-interval inputs show only while their choice is on,
     // and the dates block only in backtest mode. A hidden input with a range is
@@ -624,7 +624,7 @@ const StrategyDraft=(()=>{
     active=session;touch();return session;
   }
   // A tab change makes a late choice for the other sleeve stale.
-  function select(index){current=index;steps=sleeves[index].steps;pendingStep=null;after(null);}
+  function select(index){current=index;steps=sleeves[index].steps;pendingStep=null;document.getElementById('strategy-steps').innerHTML='';after(null);}
   // A copy repeats the active sleeve's steps, without its typed name, and becomes the active sleeve.
   function copySleeve(){sleeves.push({name:'',steps:identify(copy(bare(steps)))});select(sleeves.length-1);}
   function removeSleeve(){sleeves.splice(current,1);detached=compactDetached(detached,allSteps());select(Math.min(current,sleeves.length-1));}
@@ -634,7 +634,7 @@ const StrategyDraft=(()=>{
     return {title:'Step '+(at+1)+' · '+(steps[at].kind==='rank'?'Rank':'Filter'),use:'Update step '+(at+1)};
   }
   return {restore,beginQueuedEdit,catalog,fields,read:()=>({revision,changed,detached:copy(detached)}),formula,describe,
-    patch,edit,commitRange,move,remove,select,copySleeve,removeSleeve,rename:name=>{sleeves[current].name=name;},reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,touch,render};
+    patch,edit,commitRange,move,remove,select,copySleeve,removeSleeve,rename:name=>{sleeves[current].name=name;},reset,view,flat,requireValues,complete:()=>!allSteps().some(empty),selection,prepareSubmission,touch,render};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 

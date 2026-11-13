@@ -78,7 +78,7 @@ const BacktestComparison=(()=>{
     });
     const pool=capture.universe&&entry('pool','Stock pool',capture.universe.pool,...setting('pool',capture.universe.pool));
     if(capture.version===2)return [pool,...steps(capture.steps,'step.','')];
-    if(capture.version===3)return [pool,...capture.sleeves.flatMap((sleeve,number)=>steps(sleeve.steps,'sleeve.'+number+'.step.','Sleeve '+sleeve.name+' · '))];
+    if(capture.version===3)return [pool,...capture.sleeves.flatMap((sleeve,number)=>steps(sleeve.steps,'sleeve.'+number+'.step.',sleeve.name+' · '))];
     const s=capture.selection;
     return [entry('strategy','Captured ranking',s.ranking,plain(s.ranking.source),exact(s.ranking.source)),entry('direction','Ranking direction',s.ranking.direction),entry('rank_from','First rank',s.rank_from),entry('rank_to','Last rank',s.rank_to),entry('selection_order','Selection order',s.selection_order),entry('pool','Stock pool',capture.pool,...setting('pool',capture.pool)),...Object.entries(capture.bounds).map(([key,value])=>entry('bound.'+key,names[key]||key,value,...setting(key,value))),...s.conditions.map((item,index)=>entry('condition.'+index,'Variable condition '+(index+1),item,...condition(item)))];
   }

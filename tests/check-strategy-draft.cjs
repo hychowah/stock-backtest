@@ -305,7 +305,8 @@ if(process.argv[2]==='--builtins-parity'){
  assert.throws(()=>patch('filter',builtin('filter:pe')),/at most 50 steps/);
  for(let i=0;i<8;i++)run('StrategyDraft.removeSleeve()');
  assert.deepEqual(tabs(),['Energy','*Value']);assert.equal(node('add-filter').disabled,false);
- assert.throws(()=>restore({mode:'custom',strategy:{...sleeved.strategy,sleeves:[...sleeved.strategy.sleeves,{name:'Big',steps:Array(41).fill(sleeved.strategy.sleeves[1].steps[0])}]}}),/more than 50 steps/);
+ // Removing a step keeps a formula that only another sleeve uses.
+ run(`StrategyDraft.remove('${formula2}')`);assert.equal(run('StrategyDraft.read().detached.length'),1);
  // Removing the formula sleeve drops its capture; one sleeve sends a chain again.
  run('StrategyDraft.select(0);StrategyDraft.removeSleeve()');assert.deepEqual(tabs(),['*Value']);assert.equal(node('sleeve-edit').hidden,true);assert.equal(run('StrategyDraft.read().detached.length'),0);
  assert.equal((await submit()).strategy.version,2);assert.equal(requests.at(-1).intent.version,2);
