@@ -132,7 +132,8 @@ def saved_backtest_request(self,store):
             if not 0<length<=4096:raise ValueError('Expected a backtest name with 1–120 characters.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected a backtest name.')
-            self.reply(200,store.rename(identifier,request.get('name')))
+            if 'locked' in request:self.reply(200,store.lock(identifier,request['locked']))
+            else:self.reply(200,store.rename(identifier,request.get('name')))
         elif self.command=='POST' and collection:
             length=int(self.headers.get('Content-Length','0'))
             if length>saved_backtests.MAX_BYTES:

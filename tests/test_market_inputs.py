@@ -30,7 +30,7 @@ def prepared_markets():
         us=[dict(symbol='TEST',name='US Test',exchange='NYSE',listed=True)]
         save(raw/'universe.json',us)
         (raw/'metrics.jsonl').write_text(json.dumps(dict(symbol='TEST',rows=[dict(date='2014-12-31',marketCap=100e6,enterpriseValue=120e6,evToEBITDA=5,reportedCurrency='USD')]))+'\n')
-        save(raw/'px'/'TEST.json',dict(div=[dict(date=d,adjClose=20) for d in ('2014-12-31','2015-07-01','2015-07-30')]))
+        save(raw/'px'/'TEST.json',dict(div=[dict(date=d,adjClose=20,volume=100) for d in ('2014-12-31','2015-07-01','2015-07-30')]))
         save(raw/'spy-div.json',[dict(date=d,adjClose=v) for d,v in [('2015-06-30',100),('2015-07-01',105),('2015-07-17',110),('2015-07-20',110),('2015-07-29',120),('2015-07-30',125),('2015-07-31',130)]])
         save(raw/'treasury.json',[dict(date='2015-06-30',month3=2,year10=3)])
         groups={'jp':[('1000.T','JPY'),('2000.T','USD')],'hk':[('0001.HK','CNY')]}
@@ -40,7 +40,7 @@ def prepared_markets():
             save(market.calendar_path(raw,code),[dict(date=d,close=100) for d in ('2013-12-30','2014-12-30','2015-07-01','2015-07-20','2015-07-30','2015-08-03')])
             for symbol,currency in companies:
                 price=100 if code=='hk' else 1000
-                save(raw/'px'/market.cache_path_for(symbol).name,dict(div=[dict(date=d,adjClose=price) for d in ('2013-12-30','2014-12-30','2015-07-01','2015-07-20')]))
+                save(raw/'px'/market.cache_path_for(symbol).name,dict(div=[dict(date=d,adjClose=price,volume=1000) for d in ('2013-12-30','2014-12-30','2015-07-01','2015-07-20')]))
                 save(market.native_path(raw,symbol),[dict(date=d,close=price) for d in ('2013-12-30','2014-12-30')])
                 rows=[]
                 for year in (2013,2014):
@@ -50,7 +50,7 @@ def prepared_markets():
                 balance=[dict(date=r['date'],reportedCurrency=currency,totalDebt=20e6 if currency in ('USD','CNY') else 200e6,
                               cashAndCashEquivalents=10e6 if currency in ('USD','CNY') else 100e6,
                               totalStockholdersEquity=50e6,totalCurrentAssets=30e6,totalCurrentLiabilities=10e6) for r in rows]
-                cash=[dict(date=r['date'],reportedCurrency=currency,freeCashFlow=3e6,filingDate='2015-07-02' if r['date']=='2014-12-31' else '2014-04-01') for r in rows]
+                cash=[dict(date=r['date'],reportedCurrency=currency,freeCashFlow=3e6,commonDividendsPaid=-1e6,filingDate='2015-07-02' if r['date']=='2014-12-31' else '2014-04-01') for r in rows]
                 for endpoint,values in [('income-statement',rows),('balance-sheet-statement',balance),('cash-flow-statement',cash)]:
                     financial_inputs.publish(raw,symbol,endpoint,values,{},raw/'coverage.json')
         for currency,rates in [('JPY',[('2015-06-30',100),('2015-07-19',80),('2015-07-29',50),('2015-08-02',40)]),('HKD',[('2015-06-30',8),('2015-07-19',8),('2015-07-29',8)]),('CNY',[('2015-06-30',5),('2015-07-19',4),('2015-07-29',4)])]:
@@ -117,7 +117,7 @@ class MarketInputsTests(unittest.TestCase):
             metrics.write_text(''.join(json.dumps(row)+'\n' for row in records))
             # Annual values give TEST valuation sums, so its new price day below
             # continues from the sums stored before its cutoff.
-            financial_inputs.publish(raw,'TEST','income-statement',[dict(date='2014-12-31',reportedCurrency='USD',netIncome=1e6,revenue=10e6)],{},raw/'coverage.json')
+            financial_inputs.publish(raw,'TEST','income-statement',[dict(date='2014-12-31',reportedCurrency='USD',netIncome=1e6,revenue=10e6,weightedAverageShsOut=1e6)],{},raw/'coverage.json')
             research.prepare(source,force=True)
             self.assertEqual(sums(source,('TEST',)),{'TEST':['2015-07-01','2015-07-30']})
             cache_snapshot(store,source)
@@ -126,6 +126,8 @@ class MarketInputsTests(unittest.TestCase):
             for path in (raw/'px').glob('*.json'):
                 edit(path,lambda payload:payload['div'].append(dict(date='2015-08-04',adjClose=payload['div'][-1]['adjClose'])))
             edit(raw/'spy-div.json',lambda rows:rows.append(dict(date='2015-08-04',adjClose=140.)))
+            # A revised volume alone repairs the sheets from its day.
+            edit(raw/'px/TEST.json',lambda payload:payload['div'][2].update(volume=300))
             for code in ('hk','jp'):
                 edit(market.calendar_path(raw,code),lambda rows:rows.append(dict(date='2015-08-04',close=100.)))
             edit(universe,lambda rows:rows[0].update(listed=False,name='Renamed US Test',exchange='NASDAQ',sector='Technology'))
@@ -133,6 +135,7 @@ class MarketInputsTests(unittest.TestCase):
             with closing(sqlite3.connect(source)) as reader:
                 change=json.loads(reader.execute("SELECT value FROM metadata WHERE key='changes'").fetchone()[0])
                 self.assertEqual(change['base'],base)
+                self.assertEqual(change['prices'].pop('TEST'),'2015-07-30')
                 self.assertEqual(set(change['prices'].values()),{'2015-08-04'})
                 self.assertEqual(change['companies'],{})
             self.assertEqual(sums(source,('TEST',)),{'TEST':['2015-07-01','2015-07-30','2015-08-04']})
@@ -267,6 +270,10 @@ class MarketInputsTests(unittest.TestCase):
             self.assertEqual([history[y]['revenue'] for y in ('2013-12-31','2014-12-31')],[20e6,24e6])
             self.assertNotIn('freeCashFlow',history['2014-12-31'])
             self.assertEqual(hk.legacy_annual('0001.HK',date(2015,7,3))['2014-12-31']['freeCashFlow'],600000)
+            # Dividends convert like the other annual values, only once their report is known.
+            self.assertIsNone(hk.dividends('0001.HK','2014-12-31',day))
+            self.assertEqual(hk.dividends('0001.HK','2014-12-31',date(2015,7,3)),-200000)
+            self.assertEqual(hk.shares('0001.HK','2014-12-31',date(2015,7,3)),1e6)
             self.assertIsNone(jp.fx('EUR',day))
             self.assertEqual(jp.fx('JPY',day),(date(2015,6,30),.01))
             self.assertIsNone(jp.fx('JPY',date(2015,7,10)))
@@ -301,8 +308,9 @@ class MarketInputsTests(unittest.TestCase):
             jp=facts.BookFacts(db,'jp')
             with sqlite3.connect(source) as writer:
                 writer.execute('INSERT INTO stock_days VALUES(?,?,?,?,?,?)',
-                               ('1000.T','2015-07-19',777.,None,None,'MISSING_INPUT'))
+                               ('1000.T','2015-07-19',777.,None,5,None))
             self.assertEqual(jp.price('1000.T',date(2015,7,19),slack=7),None)
+            self.assertEqual(jp.volumes('1000.T',date(2015,7,14),date(2015,7,20)),[1000])
             self.assertEqual(jp.price('1000.T',date(2015,7,20)),(date(2015,7,20),1000))
             self.assertEqual(jp.usd_price('1000.T',date(2015,7,20)),(date(2015,7,20),12.5))
             self.assertEqual(facts.sessions(db,'jp')[-1],date(2015,8,3))

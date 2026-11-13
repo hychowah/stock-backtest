@@ -8,7 +8,10 @@
 .run-counts>span{white-space:nowrap}
 .backtest-queue>.toolbar>div:last-child{display:flex;flex-wrap:wrap;gap:8px}
 .run-group{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#57716b;margin:16px 0 4px}
-#saved-panel>.run-group{display:inline-block;margin:0 12px 4px 0}
+.saved-top>.run-group{display:inline-block;margin:0 12px 4px 0}
+/* The heading, the status line, the bar of the ticked tests and the column
+   headings of Saved backtests stay at the top of the window while its rows scroll. */
+.saved-top{position:sticky;top:0;z-index:3;margin-top:-14px;padding-top:14px;background:#fff;box-shadow:0 1px 0 #e2e7df}
 /* The market switch above both groups. */
 .run-markets{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
 .run-markets button{padding:0 10px;font-size:14px}
@@ -27,6 +30,7 @@ button.run-name:hover{text-decoration:underline}
 [data-state=running] .queue-state,[data-state=stopping] .queue-state{background:#20775e;border-color:#20775e;color:#fff}
 [data-state=held] .queue-state{background:#fff5de;border-color:#e3c98f;color:#78561b}
 [data-state=failed] .queue-state,[data-state=cancelled] .queue-state{background:#fbeceb;border-color:#e5b9b5;color:#8f2f28}
+[data-state=locked] .queue-state{background:#193e36;border-color:#193e36;color:#fff}
 .queue-progress{font-size:11px;line-height:1.35;overflow-wrap:anywhere}
 .queue-progress:empty,li>.run-cagr:empty{display:none}
 .run-type,.run-window,.run-time{white-space:nowrap}
@@ -37,7 +41,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .run-head{min-height:32px;border-top:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#6b7862}
 .run-head>span{display:none}
 .run-head:not(:has(button)){display:none}
-.run-head:has(~ol>.run-empty,~ul>.run-empty){display:none}
+.run-head:has(~ol>.run-empty),.saved-top:has(~ul>.run-empty)>.run-head{display:none}
 .run-head button{border:0;border-radius:4px;background:none;min-height:32px;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;text-align:left;color:#1d5a49;white-space:nowrap}
 .run-head button:hover{text-decoration:underline}
 .run-head>input{order:-1}
@@ -64,10 +68,10 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 .saved-id{font:11px ui-monospace,monospace;color:#617172;overflow-wrap:anywhere}
 .run-menu .headline{max-width:560px;margin:10px 0 6px;gap:12px 16px}
 .run-menu .headline dd{font-size:15px}
-/* The panel of the ticked saved backtests sits above their rows. */
-.saved-comparison{margin:4px 0 12px;padding:10px 14px;border:1px solid #d5dfcd;border-radius:8px;background:#f8faf5;font-size:13px}
+/* The bar of the ticked saved backtests, and their comparison above the rows. */
+.saved-comparison,.comparison-bar{margin:4px 0 12px;padding:10px 14px;border:1px solid #d5dfcd;border-radius:8px;background:#f8faf5;font-size:13px}
 .saved-comparison>p{margin:0}
-.comparison-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-height:32px;margin-bottom:4px;color:#192b31}
+.comparison-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-height:32px;margin:4px 0 8px;padding:6px 14px;color:#192b31}
 .comparison-bar>[role=status]{flex:1;font-size:12px;color:#617172}
 .comparison-bar>button{min-height:32px;padding:4px 12px}
 .comparison-notice{font-size:12px;line-height:1.5;color:#78561b}
@@ -99,7 +103,7 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
   #workspace-runs li>.run-cagr::before,#workspace-runs .run-head::before{content:none}
   #workspace-runs li>.run-cagr:empty{display:block}
   #workspace-runs .run-head>span{display:block}
-  #workspace-runs .run-head:has(~ol>.run-empty,~ul>.run-empty){display:none}
+  #workspace-runs .run-head:has(~ol>.run-empty),#workspace-runs .saved-top:has(~ul>.run-empty)>.run-head{display:none}
   #workspace-runs .run-menu{grid-column:1/-1}
   #workspace-runs .run-menu[open]{padding-left:28px}
 }

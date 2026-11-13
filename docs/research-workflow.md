@@ -319,8 +319,8 @@ The book store tracks this in `book_pools`. Normal daily connections do not scan
 raw prices. This affects derived data only; durable library and queue snapshots
 remain independent.
 
-Sheet repair. Research records each company's earliest changed price or report
-date, plus shared rate, FX and session changes. With matching book code and the
+Sheet repair. Research records each company's earliest changed price, volume
+or report date, plus shared rate, FX and session changes. With matching book code and the
 saved research base, preparation recalculates only affected company rows in
 historical cached sheets. US statement changes refresh all US candidate counts
 and ranks from statements alone. Affected legacy pools rebuild on demand.
@@ -597,9 +597,10 @@ same metric. Missing values fail only conditions that require those values.
 
 The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
 market cap, enterprise value, and trailing 1-year and 3-year returns. Additional
-financial filters include P/E, P/S, P/B, free cash flow amount/yield, price/FCF, net
-profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity.
-These use saved annual statement inputs. Choose **Manage backtest data →
+financial filters include P/E, P/S, P/B, free cash flow amount/yield, price/FCF,
+dividend yield, net profit margin, historical PEG, ROE, current ratio, interest
+coverage and debt/equity. These use saved annual statement inputs. The 1-week
+turnover rate also uses saved daily volumes. Choose **Manage backtest data →
 Update data** to get their inputs and prepare them automatically. Changing filters makes no
 provider requests. Missing inputs exclude only stocks filtered on those inputs.
 
@@ -620,6 +621,18 @@ rescaled market cap; a loss counts with its sign. The average multiple is
 (leap day clamps to 28 February), through the screening date. It needs a
 yield on or before the anniversary and a positive mean. A legacy-pool row uses
 the same history with its own current multiples.
+
+**Dividend yield** is the selected report's `commonDividendsPaid`, sign
+reversed because the provider reports a payment as negative, divided by
+screen-date market cap, in percent. No dividend gives 0; a missing value omits
+the field. A special dividend counts in its fiscal year. **Turnover rate —
+1-week average** is the mean saved session volume in the 7 calendar days that
+end on the screening date, divided by the selected report's annual
+weighted-average basic shares (`weightedAverageShsOut`), in percent. Days
+without a saved volume are left out; zero-volume days count. Foreign stocks
+use their local sessions. The provider restates both volumes and report shares
+to the latest split, so a split after a report was saved skews that company's
+turnover until its reports download again.
 
 Python screens and schedule APIs accept `filters`, for example:
 
@@ -1004,7 +1017,7 @@ admissible values agree. A conflicting, non-USD or invalid value gives no
 value and a reason. Prices are the dividend-adjusted closes (`div`); valuation
 and returns read the same series. `facts.BookFacts` is the facts port of books:
 reports by pool, cached companies (from `fact_sources`), listing (from
-`companies`), the valid adjusted closes, SPY sessions and yields.
+`companies`), the valid adjusted closes and volumes, SPY sessions and yields.
 
 - `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason)`:
   one row per company and saved price day.
@@ -1017,7 +1030,9 @@ reports by pool, cached companies (from `fact_sources`), listing (from
   (`financial_inputs.ENDPOINTS`, valid values only) from `annual_facts`, and
   `facts.ten_year` reads the valid 10-year values. `books.owner_values`, the
   owner values of a book row and of the dated owner policy, reads them through
-  these two functions.
+  these two functions, with the valuation sums (`facts.valuation`), the
+  selected report's dividends and shares (`facts.dividends`, `facts.shares`)
+  and the saved session volumes (`facts.volumes`).
 - `annual_facts(symbol, endpoint, fiscal, <field>, <field>_reason, ...)`: one row
   per company, statement endpoint and fiscal date, with one value and one
   reason column for each annual catalog field (parameter id without `annual.`).

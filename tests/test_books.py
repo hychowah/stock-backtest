@@ -216,7 +216,8 @@ class BookTests(unittest.TestCase):
 # Company V, 2008-2016: weekday prices of 8, 16 or 32 and reports of powers of
 # two, so every daily yield and running sum is exact. Annual reports on 30 June
 # (a weekend in 2012 and 2013); 2009, 2010 and 2013 are loss years, 2012 has no
-# equity and the 2015 report is below the legacy cap floor.
+# equity and the 2015 report is below the legacy cap floor. 2011 pays no
+# dividend and 2013 has none saved; some days have no saved volume or zero.
 FIRST, LAST = date(2008, 1, 1), date(2016, 10, 20)
 DAYS = [FIRST + timedelta(days=n) for n in range((LAST - FIRST).days + 1) if (FIRST + timedelta(days=n)).weekday() < 5]
 YEARS = range(2008, 2016)
@@ -237,21 +238,37 @@ def annual(year):
     return 2.**22 * INCOME[year], 2.**24 * (year - 2005), None if year == 2012 else 2.**25 * (year - 2006)
 
 
+def dividends(year):
+    """Common dividends paid of one fiscal year, signed as reported (None: not reported)."""
+    return None if year == 2013 else 0. if year == 2011 else -2.**20 * (year - 2006)
+
+
+def volume(day):
+    """Shares traded on one day (None: not saved)."""
+    n = day.toordinal()
+    return None if n % 11 == 0 else 0. if n % 13 == 0 else 2.**(20 + n % 5)
+
+
 def valuation_history(inputs):
     raw = research.RAW
     (raw / 'universe.json').write_text(json.dumps([dict(symbol='V', name='Valuation V', exchange='NYSE', sector='Energy', listed=True)]))
     for path in (raw / 'px').glob('*.json'):
         path.unlink()
-    (raw / 'px' / 'V.json').write_text(json.dumps(dict(div=[dict(date=str(day), adjClose=close(day)) for day in DAYS])))
+    (raw / 'px' / 'V.json').write_text(json.dumps(dict(div=[dict(
+        date=str(day), adjClose=close(day), **({} if volume(day) is None else dict(volume=volume(day)))) for day in DAYS])))
     (raw / 'metrics.jsonl').write_text(json.dumps(dict(symbol='V', rows=[dict(
         date=f'{year}-06-30', marketCap=report_cap(year), enterpriseValue=2.**28, evToEBITDA=8., reportedCurrency='USD')
         for year in YEARS])) + '\n')
     research.financial_inputs.publish(raw, 'V', 'income-statement', [dict(
-        date=f'{year}-06-30', reportedCurrency='USD', netIncome=annual(year)[0], revenue=annual(year)[1]) for year in YEARS],
+        date=f'{year}-06-30', reportedCurrency='USD', netIncome=annual(year)[0], revenue=annual(year)[1],
+        weightedAverageShsOut=2.**23 * (year - 2000)) for year in YEARS],
         {}, raw / 'coverage.json')
     research.financial_inputs.publish(raw, 'V', 'balance-sheet-statement', [dict(
         date=f'{year}-06-30', reportedCurrency='USD', totalStockholdersEquity=annual(year)[2]) for year in YEARS if year != 2012],
         {}, raw / 'coverage.json')
+    research.financial_inputs.publish(raw, 'V', 'cash-flow-statement', [dict(
+        date=f'{year}-06-30', reportedCurrency='USD', **({} if dividends(year) is None else dict(commonDividendsPaid=dividends(year))))
+        for year in YEARS], {}, raw / 'coverage.json')
     (raw / 'spy-div.json').write_text(json.dumps([dict(date=str(day), adjClose=100.) for day in DAYS]))
     (raw / 'treasury.json').write_text(json.dumps([dict(date=str(day), month3=2., year10=3.) for day in DAYS]))
     research.signature.return_value = dict(fixture='valuation-averages')
@@ -296,8 +313,18 @@ def expected(day, legacy=False):
     return result
 
 
+def market_values(day, legacy=False):
+    """Dividend yield and 1-week turnover rate of V at day, from the saved dividends, shares and volumes."""
+    year = selected(day, legacy)
+    cap = report_cap(year) * (close(day) / close(fiscal_close(year)))
+    result = {} if dividends(year) is None else dict(dividend_yield=-dividends(year) / cap * 100)
+    traded = [volume(when) for when in DAYS if day - timedelta(days=6) <= when <= day and volume(when) is not None]
+    result['turnover_1w'] = sum(traded) / len(traded) / (2.**23 * (year - 2000)) * 100
+    return result
+
+
 class ValuationTests(unittest.TestCase):
-    """The daily-average valuation multiples of a book row, through research preparation and books.book."""
+    """The valuation multiples, dividend yield and turnover of a book row, through research preparation and books.book."""
     @classmethod
     def setUpClass(cls):
         cls.inputs = PreparedInputs(configure=valuation_history)
@@ -336,6 +363,21 @@ class ValuationTests(unittest.TestCase):
             # The latest book that daily preparation stored has the same values.
             _, lanes = book_store.lanes(db, book_store.open_book(db), 'cached', fields=VALUATION_KEYS)
             self.assertEqual({key: values['V'] for key, values in lanes.items() if 'V' in values}, expected(LAST))
+
+    def test_dividend_yield_and_one_week_turnover_equal_the_saved_inputs(self):
+        keys = ('dividend_yield', 'turnover_1w')
+        with closing(daily.connect()) as db:
+            port = facts.BookFacts(db)
+            # No dividend (2011) and a zero volume; no saved dividend (2013) and a day without volume; a Monday.
+            for day, pool in ((date(2011, 10, 3), 'cached'), (date(2014, 1, 2), 'cached'),
+                              (date(2016, 2, 29), 'cached'), (date(2016, 2, 29), 'legacy')):
+                with self.subTest(day=day, pool=pool):
+                    found = {key: value for symbol, key, value in books.book(day, pool, port)['filters'] if key in keys}
+                    self.assertEqual(found, market_values(day, pool == 'legacy'))
+            self.assertEqual(market_values(date(2011, 10, 3))['dividend_yield'], 0)
+            self.assertNotIn('dividend_yield', market_values(date(2014, 1, 2)))
+            _, lanes = book_store.lanes(db, book_store.open_book(db), 'cached', fields=keys)
+            self.assertEqual({key: values['V'] for key, values in lanes.items()}, market_values(LAST))
 
     def test_the_relative_is_the_current_multiple_over_its_average(self):
         with closing(daily.connect()) as db:

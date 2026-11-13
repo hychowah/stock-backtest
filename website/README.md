@@ -232,6 +232,8 @@ See `../docs/research-workflow.md` for calculation and extension details.
 
 Built-in values also include **P/S** and the **P/E, P/S and P/B 3-year and 5-year averages**: 1 ÷ the mean daily yield (net income, revenue or equity ÷ market cap) over the trailing years. **P/E vs its 3-year average** and the other relatives divide the current multiple by its average: below 1 means cheaper than usual. A stock has no average when it has no daily yield on or before the start of the window, or when its mean yield is not positive.
 
+**Dividend yield** is the selected report's common dividends paid ÷ market cap. **Turnover rate — 1-week average** is the mean daily volume over the last 7 calendar days ÷ the selected report's weighted-average shares. Enter both in percent.
+
 ## Custom trade dates and frequency
 
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
@@ -379,7 +381,10 @@ original bytes when duplicate queue evidence is released.
 
 Tick saved backtests, then select **Compare** to compare them without opening a
 result or changing the form. The box in the heading ticks every row shown.
-**Delete ticked** deletes the ticked records after one confirmation. A panel
+**Lock ticked** locks the ticked records: a locked row says **Locked** and has
+no Delete until **Unlock ticked**. **Delete ticked** deletes the ticked records
+that are not locked after one confirmation. The heading, this bar and the
+column headings stay at the top of the window while the rows scroll. A panel
 above the Saved backtests rows shows one column for each ticked
 test, in list order: first the requested settings that differ, or **Same
 settings**, then the headline rows. A closed disclosure contains every setting

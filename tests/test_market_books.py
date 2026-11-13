@@ -89,7 +89,8 @@ class MarketBooksTests(unittest.TestCase):
         rows=[dict(fiscal=date(year,12,31),known=date(year+1,4,1),ebitda=1e6) for year in (2012,2013,2014)]
         port=SimpleNamespace(market='jp',reports=lambda context,*,symbol:({symbol:rows},{}),
                              legacy_annual=lambda symbol,context:{},usd_price=lambda *args:None,
-                             valuation=lambda symbol,day:(0.,0.,0.,0,0,0))
+                             valuation=lambda symbol,day:(0.,0.,0.,0,0,0),dividends=lambda symbol,fiscal,day:None,
+                             shares=lambda symbol,fiscal,day:None,volumes=lambda symbol,start,end:[])
         def pairs():
             return books.owner_values(symbol,'2014-12-31',day,10e6,12e6,1e6,port,None)[2]
         self.assertIn('ev_ebitda_3y',pairs())

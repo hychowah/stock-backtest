@@ -71,7 +71,9 @@ The website stores at most 100 complete records. Each record keeps the submitted
 settings, traded stocks, holding-period returns, result summaries and display
 labels. Opening a record reads its stored results without running a calculation.
 Changed data does not rewrite a saved record. Delete individual records in the
-website to free slots. Reaching the limit never removes an older record.
+website to free slots. Reaching the limit never removes an older record. A
+locked record cannot be deleted until it is unlocked; the lock is a separate
+table and does not change the record.
 
 `backtest/application/library.py` owns this database. SQLite transactions enforce the
 limit across server instances. Each complete snapshot is compressed inside its

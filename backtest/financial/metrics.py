@@ -4,7 +4,7 @@ Add a descriptor and its preparation calculator here. Selection and browser
 controls consume the catalog, rather than branching on metric identifiers.
 """
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 import statistics
 import math
 
@@ -90,6 +90,7 @@ FILTERS = {
     'fcf': dict(label='Free cash flow ($ million)', available=True),
     'fcf_yield': dict(label='Free cash flow yield (%)', available=True),
     'price_fcf': dict(label='Price / free cash flow (×)', available=True),
+    'dividend_yield': dict(label='Dividend yield (%)', available=True),
     'profit_margin': dict(label='Net profit margin (%)', available=True),
     'operating_yield_spread_3y': dict(label='Sales × 3-year avg operating margin / EV − US 10Y (pp)', available=True),
     'peg': dict(label='PEG — 3-year EPS growth (×)', available=True),
@@ -99,6 +100,7 @@ FILTERS = {
     'debt_equity': dict(label='Debt / equity (×)', available=True),
     'return_1y': dict(label='1-year trailing return (%)', available=True),
     'return_3y': dict(label='3-year trailing return (%)', available=True),
+    'turnover_1w': dict(label='Turnover rate — 1-week average (%)', available=True),
     'market_cap': dict(label='Market cap ($ million)', available=True),
     'enterprise_value': dict(label='Enterprise value ($ million)', available=True),
     'ev_ebitda': dict(label='EV / EBITDA (×)', available=True),
@@ -132,7 +134,7 @@ def anniversary(day, years):
     return day.replace(year=year,day=min(day.day,monthrange(year,day.month)[1]))
 
 
-def filter_values(observation, pairs, day, lookup, financials=None, treasury10=None, *, sums):
+def filter_values(observation, pairs, day, lookup, financials=None, treasury10=None, *, sums, dividends, shares, volumes):
     """Prepare threshold inputs at the screen date, never the future exit.
 
     Annual lookbacks use the same calendar day (anniversary).
@@ -145,10 +147,20 @@ def filter_values(observation, pairs, day, lookup, financials=None, treasury10=N
     multiple is 1 / the mean daily yield over the priced days in
     (anniversary, day]; it needs a sum on or before the anniversary and a
     positive mean. A relative is the current multiple / its average.
+    dividends is the selected report's common dividends paid, signed as
+    reported (a payment is negative), or None; the dividend yield is
+    -dividends / market cap. volumes(start, end) gives the saved session
+    volumes from start through end. The 1-week turnover rate is their mean over
+    the 7 calendar days ending on day / shares, the selected report's annual
+    weighted-average basic shares (None or not positive omits it).
     """
     values={k:observation[k]/1e6 for k in ('market_cap','enterprise_value')}
     values['ebitda_yield']=observation['ebitda_yield']*100
     values.update({k:pair[0] for k,pair in pairs.items() if k in FILTERS})
+    cap=observation['market_cap']
+    if dividends is not None:values['dividend_yield']=-dividends/cap*100
+    if shares is not None and shares>0 and (traded:=volumes(day-timedelta(days=6),day)):
+        values['turnover_1w']=sum(traded)/len(traded)/shares*100
     end=lookup(day,False,7)
     for years in (1,3):
         start=lookup(anniversary(day,years),False,7)

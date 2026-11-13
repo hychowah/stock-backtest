@@ -272,7 +272,10 @@ def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
     annual values and ten_year, the 10-year yield in percent on or before day
     (None omits its spread). book() and a formula context without a stored
     book (measure_observations.dated) call it; prices are read on or before day.
-    The valuation averages read the stored valuation sums (facts.valuation).
+    The valuation averages read the stored valuation sums (facts.valuation),
+    the dividend yield the selected report's dividends (facts.dividends) and
+    the 1-week turnover its shares (facts.shares) and the saved session
+    volumes (facts.volumes).
     """
     yield_value,multiple=ebitda_yield_and_multiple(ebitda,ev)
     observation=dict(fiscal=fiscal,market_cap=cap,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
@@ -284,7 +287,10 @@ def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
         return facts.price(symbol,when,forward,slack) if getattr(facts,'market','us')=='us' else facts.usd_price(symbol,when,forward,slack)
     annual=facts.legacy_annual(symbol) if getattr(facts,'market','us')=='us' else facts.legacy_annual(symbol,day)
     return yield_value,multiple,pairs,metrics.filter_values(observation,pairs,day,lookup,annual,ten_year,
-                                                            sums=lambda when:facts.valuation(symbol,when))
+                                                            sums=lambda when:facts.valuation(symbol,when),
+                                                            dividends=facts.dividends(symbol,fiscal,day),
+                                                            shares=facts.shares(symbol,fiscal,day),
+                                                            volumes=lambda start,end:facts.volumes(symbol,start,end))
 
 
 def valuation_yields(cap, values):

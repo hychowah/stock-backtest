@@ -464,7 +464,7 @@ def _build(path, force, progress, only=None):
                 stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint,currency=currency,content=content),'px/'+market.cache_path_for(symbol).name)
                 rows=facts.store_stock(db,symbol,stock)
                 for before,after in rows:
-                    if before is None or after is None or not facts.same_row(before[2:4],after[2:4]):note('prices',symbol,(after or before)[1])
+                    if before is None or after is None or not facts.same_row(before[2:6],after[2:6]):note('prices',symbol,(after or before)[1])
                 old=old_sources.get((symbol,facts.STOCK))
                 if (old is None or old[3]=='missing')!=(stock['source']['disposition']=='missing'):company_changed(symbol)
                 if market_id=='us' and any(states['adjClose']['reason']==facts.INCONSISTENT_SERIES for states in stock['dated'].values()):spiked.append(symbol)
