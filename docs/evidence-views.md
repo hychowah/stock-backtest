@@ -253,9 +253,8 @@ and `sleeves: [{name, steps}]`: two or more chains with the version-2 step rules
 The 50-step limit counts every sleeve. Formula roots, built-in descriptors and
 lanes `s<index>` count the steps across sleeves in order. Names are labels:
 calculation equality ignores them. One chain still captures version 2.
-`Executor.select` runs each sleeve over the same scope; stored lanes are read
-once and formula values are cached per row. `selection.union` joins the picks in
-sleeve order, then each sleeve's final order. A stock picked again keeps its first
+`Executor.select` runs each sleeve over the same scope. `selection.union` joins
+the picks in sleeve order, then each sleeve's final order. A stock picked again keeps its first
 place and is held once, at equal weight. Its `rank` is that place; its ranking
 value and unit come from its first picking sleeve. Each scope keeps one receipt
 and one selection record, whose `matches` and `unavailable_ranking` are lists per
