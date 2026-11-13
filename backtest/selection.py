@@ -182,11 +182,34 @@ def execute(candidates, chain, checkpoint=lambda: None, *, load=None, lazy_lanes
     return dict(selected=result, matches=len(result) if count_selected else matches)
 
 
+def union(results):
+    """Join execute() results in order; a row that is selected again keeps its first position.
+
+    Each joined item has the row's index, its rank (its position in the union),
+    the value of its first picking chain and its picks. A pick names its chain
+    (sleeve) and keeps that chain's rank, value and steps. matches lists each chain's count.
+    """
+    picks = {}
+    for number, result in enumerate(results):
+        for item in result['selected']:
+            picks.setdefault(item['index'], []).append(
+                dict({key: value for key, value in item.items() if key != 'index'}, sleeve=number))
+    return dict(selected=[dict(index=index, rank=rank, value=found[0]['value'], sleeves=found)
+                          for rank, (index, found) in enumerate(picks.items(), 1)],
+                matches=[result['matches'] for result in results])
+
+
 def rank_range(options):
-    """Read recorded final ranks without catalog lookup, preparation or recapture."""
+    """Read recorded final ranks without catalog lookup, preparation or recapture.
+
+    A sleeve strategy holds at most the sum of its sleeves' final Rank sizes.
+    """
     capture = options.get('strategy')
     if capture is None:
         rank = options
+    elif capture['version'] == 3:
+        ranks = [next(step for step in reversed(sleeve['steps']) if step['kind'] == 'rank') for sleeve in capture['sleeves']]
+        return 1, sum(rank['rank_to'] - rank['rank_from'] + 1 for rank in ranks)
     elif capture['version'] == 2:
         rank = next(step for step in reversed(capture['steps']) if step['kind'] == 'rank')
     else:

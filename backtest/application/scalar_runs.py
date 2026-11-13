@@ -124,7 +124,7 @@ def check_size(writer, executor, periods, days):
         nodes = executor.formulas.projection['nodes']
         members = sum(node.get('count', 1) for node in nodes if node['op'] in ('parameter', 'annual'))
         trace = 300 + 350 * len(nodes) + 600 * members
-    step_bytes = len(executor.capture['steps']) * 512 if executor.capture['version'] == 2 else 0
+    step_bytes = sum(map(len, strategy_requests.chains(executor.capture))) * 512
     estimate = periods * (8 * 1024 + ranks * (3200 + trace + step_bytes)) + days * 70
     if estimate > writer.max_bytes:
         raise definitions.FormulaError('WORK_LIMIT', '/execution',

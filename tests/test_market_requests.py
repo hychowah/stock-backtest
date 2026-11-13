@@ -141,6 +141,12 @@ class MarketRequests(unittest.TestCase):
                     self.assertEqual({item['variable_id']: item['name'] for item in captured['variables']['presentation']},
                                      {debt_ev['variable_id']: 'debt/EV', nested['variable_id']: 'Nested debt/EV',
                                       enterprise_value['variable_id']: 'Existing-policy enterprise value'})
+                    # Sleeves capture the same market-aware forms. A request is JSON: no step is shared.
+                    split = json.loads(json.dumps(dict(format='strategy-intent', version=3, universe=steps['universe'], sleeves=[
+                        dict(name='Nested', steps=[steps['steps'][0], steps['steps'][2]]), dict(name='EV', steps=steps['steps'][1:])])))
+                    sleeved = variable_authoring.prepare(dict(intent=split, market=market), store)['strategy']
+                    self.assertEqual([step['source'] for sleeve in sleeved['sleeves'] for step in sleeve['steps']],
+                                     [formula(forms[nested['variable_id']]), formula(upgraded), formula(enterprise_value), formula(upgraded)])
                     queued = queue.Store(Path(folder) / 'queue.sqlite').enqueue(request(dict(
                         start='2015-01-01', end='2015-12-31', months=3, market=market, strategy=captured)))
                     self.assertEqual(queued['options']['strategy'], captured)

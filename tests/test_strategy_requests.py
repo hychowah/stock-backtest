@@ -45,6 +45,12 @@ def pipeline(*steps, pool='cached'):
     return dict(format='strategy-intent', version=2, universe=dict(pool=pool), steps=list(steps))
 
 
+def sleeves(*chains, pool='cached'):
+    """A sleeve intent; each chain is a list of steps, named Sleeve 1, Sleeve 2 and so on."""
+    return dict(format='strategy-intent', version=3, universe=dict(pool=pool),
+                sleeves=[dict(name='Sleeve ' + str(number), steps=list(steps)) for number, steps in enumerate(chains, 1)])
+
+
 class StrategyTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -421,7 +427,7 @@ class StrategyTests(unittest.TestCase):
         for value in (None, {}, s.CapturedStrategy('bad'), s.CapturedStrategy('[]'),
                       s.CapturedStrategy(json.dumps(capture.to_dict()))):
             self.error('INVALID_STRATEGY', s.require_strategy, value)
-        self.error('UNKNOWN_VERSION', s.require_strategy, self.change(capture, lambda v: v.update(version=3)))
+        self.error('UNKNOWN_VERSION', s.require_strategy, self.change(capture, lambda v: v.update(version=4)))
         self.error('WORK_LIMIT', s.require_strategy, s.CapturedStrategy(' ' * (s.STRATEGY_BYTES + 1)))
         for change in (lambda v: v.update(version=True), lambda v: v.update(format='other')):
             bad = intent()
@@ -523,6 +529,35 @@ class StrategyTests(unittest.TestCase):
                    pipeline(rank_step(), dict(kind='filter', **condition(builtin('filter:fcf'), unit='percent'))))
         request['universe']['min_cap'] = 0
         self.error('INVALID_STRATEGY', s.capture_strategy, request)
+
+
+    def test_sleeves_number_roles_across_sleeves_count_all_steps_and_names_are_labels(self):
+        record, other = self.create(), self.create('0.5', 'Other')
+        filtered = dict(kind='filter', **condition(builtin('filter:profit_margin'), '8', op='ge'))
+        request = sleeves([rank_step(formula(record), 1, 4), filtered],
+                          [rank_step(builtin('filter:pe'), 1, 9), rank_step(formula(other), 1, 2), rank_step(formula(record), 1, 1)])
+        capture = s.capture_strategy(request, self.store)
+        value = capture.to_dict()
+        self.assertEqual([sleeve['name'] for sleeve in value['sleeves']], ['Sleeve 1', 'Sleeve 2'])
+        self.assertEqual(value['variables']['program']['bundle']['roots'], [root(record), root(other), root(record)])
+        self.assertEqual([item['id'] for item in value['builtins']], ['filter:profit_margin', 'filter:pe'])
+        self.assertEqual(value['sleeves'][0]['steps'][1]['storage_comparison_value'], 8.)
+        self.assertEqual(s.require_strategy(capture), value)
+        self.assertEqual(s.from_wire(value).to_json(), capture.to_json())
+        self.assertEqual(s.log_fields(dict(strategy=value)), dict(market='us', ranking_source_kind='formula', step_count=5))
+        renamed = self.change(capture, lambda v: v['sleeves'][1].update(name='Technology'))
+        self.assertTrue(s.calculation_equal(capture, renamed))
+        self.assertNotEqual(capture.to_json(), renamed.to_json())
+        request['sleeves'].reverse()
+        self.assertFalse(s.calculation_equal(capture, s.capture_strategy(request, self.store)))
+        # At least two sleeves; the 50-step cap counts every sleeve; errors name the sleeve step.
+        self.error('INVALID_STRATEGY', s.capture_strategy, sleeves([rank_step()]))
+        self.assertEqual(len(s.capture_strategy(sleeves([rank_step()] * 25, [rank_step()] * 25)).to_dict()['sleeves']), 2)
+        self.error('WORK_LIMIT', s.capture_strategy, sleeves([rank_step()] * 25, [rank_step()] * 26))
+        self.assertEqual(self.error('INVALID_STRATEGY', s.capture_strategy, sleeves([rank_step()], [filtered])).path,
+                         '/sleeves/1/steps')
+        unnamed = sleeves([rank_step()], [rank_step()]); unnamed['sleeves'][0]['name'] = ''
+        self.error('INVALID_STRATEGY', s.capture_strategy, unnamed)
 
 
 if __name__ == '__main__':

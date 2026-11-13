@@ -73,9 +73,11 @@ def _rows(reader,kind,trial,metric):
         keys=list(context)+['rank','symbol','name','exchange','sector','ranking_value','ranking_unit','ranking_display','ranking_direction','market_cap','enterprise_value','fiscal','scalar_evidence']
         if kind=='holdings':keys+=['period_start','period_end','entry','exit','return_value','weight','contribution_pp','status']
         # A chain adds each step's value and its rank or pass; older results have no step trail.
+        # A sleeve strategy adds one column: each picking sleeve and its final rank there.
         strategy=options.get('strategy',{})
         steps=strategy['steps'] if strategy.get('version')==2 else []
-        keys+=[f'step_{i}_{part}' for i in range(1,len(steps)+1) for part in ('value','outcome')]
+        sleeves=strategy.get('sleeves',[])
+        keys+=[f'step_{i}_{part}' for i in range(1,len(steps)+1) for part in ('value','outcome')]+(['sleeves'] if sleeves else [])
         yield keys
         source=reader.verified_records() if kind=='screen' else evidence_views.records(reader,trial)
         for record in source:
@@ -89,6 +91,9 @@ def _rows(reader,kind,trial,metric):
                     lane=evidence['lanes'].get('s'+str(i),{})
                     row[f'step_{i+1}_value']=row[step['source']['field']] if step['source']['kind']=='field' else lane.get('canonical',lane.get('value'))
                     row[f'step_{i+1}_outcome']='pass' if step['kind']=='filter' else evidence['steps'][i]
+                if sleeves:
+                    row['sleeves']='; '.join(sleeves[pick['sleeve']]['name']+' #'+str(next(rank for rank in reversed(pick['steps']) if rank is not None))
+                                             for pick in evidence['sleeves'])
                 row['scalar_evidence']=json.dumps(evidence,sort_keys=True,separators=(',',':'))
                 yield [row.get(k) for k in keys]
         return

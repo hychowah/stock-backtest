@@ -6,7 +6,7 @@ library. Built-ins describe stored scalar lanes, never invented formulas.
 require_strategy() restores original meaning without a current catalog/library.
 check_options() is the separate current-capability admission operation.
 
-The namespaced strategy-capture/1 and /2 formats allocate no application result version.
+The namespaced strategy-capture/1, /2 and /3 formats allocate no application result version.
 A capture is at most 192 KiB. check_request() counts settings and display metadata
 against the existing 256 KiB queue ceiling. Recorded plans have their separate
 staged-plan ceiling. Neither operation changes old requests.
@@ -237,14 +237,14 @@ def field_descriptor(field):
     return dict(unit='text' if text else 'USD', display='text' if text else 'usd', storage=dict(scale=0))
 
 
-def _step_sources(steps):
+def _step_sources(steps, prefix='/steps'):
     if type(steps) is not list or not steps:
-        _fail('INVALID_STRATEGY', '/steps', 'A chain needs at least one Rank.')
+        _fail('INVALID_STRATEGY', prefix, 'A chain needs at least one Rank.')
     if len(steps) > MAX_CONDITIONS:
-        _fail('WORK_LIMIT', '/steps', 'Choose at most 50 ordered steps, including a Rank.')
+        _fail('WORK_LIMIT', prefix, 'Choose at most 50 ordered steps, including a Rank.')
     sources = []
     for index, step in enumerate(steps):
-        path = '/steps/' + str(index)
+        path = prefix + '/' + str(index)
         if type(step) is not dict:
             _fail('INVALID_STRATEGY', path, 'A Rank or Filter step is required.')
         if step.get('kind') == 'rank':
@@ -262,14 +262,39 @@ def _step_sources(steps):
             _fail('INVALID_STRATEGY', path, 'Metadata fields require equality or inequality; numeric sources require numeric comparisons.')
         sources.append(source)
     if not any(step['kind'] == 'rank' for step in steps):
-        _fail('INVALID_STRATEGY', '/steps', 'A chain needs at least one Rank.')
+        _fail('INVALID_STRATEGY', prefix, 'A chain needs at least one Rank.')
     return sources
 
 
+def _sleeve_sources(sleeves):
+    """Each sleeve's step sources; the 50-step cap counts every sleeve."""
+    if type(sleeves) is not list or len(sleeves) < 2:
+        _fail('INVALID_STRATEGY', '/sleeves', 'A sleeve strategy needs at least two sleeves.')
+    roles = []
+    for index, sleeve in enumerate(sleeves):
+        path = '/sleeves/' + str(index)
+        _shape(sleeve, ('name', 'steps'), path=path)
+        if type(sleeve['name']) is not str or not 1 <= len(sleeve['name']) <= 256:
+            _fail('INVALID_STRATEGY', path + '/name', 'A sleeve needs a bounded name.')
+        roles.append(_step_sources(sleeve['steps'], path + '/steps'))
+    if sum(map(len, roles)) > MAX_CONDITIONS:
+        _fail('WORK_LIMIT', '/sleeves', 'Choose at most 50 ordered steps across all sleeves.')
+    return roles
+
+
+def chains(value):
+    """The captured step lists: one for /2, one per sleeve for /3, none for /1."""
+    return [] if value['version'] == 1 else [value['steps']] if value['version'] == 2 else [
+        sleeve['steps'] for sleeve in value['sleeves']]
+
+
 def sources(value):
-    """Source roles in captured order, including repeated exact formula revisions."""
-    if value['version'] == 2:
-        return [step['source'] for step in value['steps']]
+    """Source roles in captured order, including repeated exact formula revisions.
+
+    Sleeves number their roles across sleeves in order.
+    """
+    if value['version'] != 1:
+        return [step['source'] for steps in chains(value) for step in steps]
     return [value['selection']['ranking']['source']] + [item['source'] for item in value['selection'].get('conditions', [])]
 
 
@@ -277,10 +302,27 @@ def _compile_steps(steps, variables, builtins, universe, bound, checkpoint):
     _shape(universe, ('pool',), path='/universe')
     roles = _step_sources(steps)
     captured, outputs, descriptors = _captured_sources(roles, variables, builtins, universe['pool'], checkpoint)
+    return dict(format='strategy-capture', version=2, universe=dict(universe),
+                steps=_normalize_steps(steps, roles, outputs, descriptors, '/steps', checkpoint),
+                variables=captured, builtins=builtins, limits=dict(bytes=bound))
+
+
+def _compile_sleeves(sleeves, variables, builtins, universe, bound, checkpoint):
+    _shape(universe, ('pool',), path='/universe')
+    roles = _sleeve_sources(sleeves)
+    captured, outputs, descriptors = _captured_sources(sum(roles, []), variables, builtins, universe['pool'], checkpoint)
+    return dict(format='strategy-capture', version=3, universe=dict(universe),
+                sleeves=[dict(name=sleeve['name'], steps=_normalize_steps(sleeve['steps'], chain, outputs, descriptors,
+                                                                          '/sleeves/' + str(index) + '/steps', checkpoint))
+                         for index, (sleeve, chain) in enumerate(zip(sleeves, roles))],
+                variables=captured, builtins=builtins, limits=dict(bytes=bound))
+
+
+def _normalize_steps(steps, roles, outputs, descriptors, prefix, checkpoint):
     normalized = []
     for index, (step, source) in enumerate(zip(steps, roles)):
         checkpoint()
-        path = '/steps/' + str(index)
+        path = prefix + '/' + str(index)
         if step['kind'] == 'rank':
             try:
                 policy = selection.validate(dict(ranking=dict(lane='value', direction=step['direction']),
@@ -300,8 +342,7 @@ def _compile_steps(steps, variables, builtins, universe, bound, checkpoint):
                       field_descriptor(source['field']))
         checked = _quantity(step, descriptor, path)
         normalized.append(dict(kind='filter', source=source, op=step['op'], **checked))
-    return dict(format='strategy-capture', version=2, universe=dict(universe), steps=normalized,
-                variables=captured, builtins=builtins, limits=dict(bytes=bound))
+    return normalized
 
 
 def _quantity(item, descriptor, path):
@@ -370,7 +411,8 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
     """Capture editable intent before assigning a job/queue retry identity.
 
     Intent /1 has selection and optional pool/bounds. Intent /2 has Universe
-    and ordered Rank/Filter steps. Formula sources name exact revisions; built-ins name catalog IDs.
+    and ordered Rank/Filter steps. Intent /3 has Universe and two or more named
+    sleeves of such steps. Formula sources name exact revisions; built-ins name catalog IDs.
     A provided Store captures one snapshot. Without it, all authored dependencies
     must be submitted; no durable file is opened or initialized.
     """
@@ -378,13 +420,14 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
         _fail('INVALID_STRATEGY', '/limits', 'Only a lower strategy byte bound is accepted.')
     bound = _bound((limits or {}).get('bytes', STRATEGY_BYTES))
     _encode(intent, STRATEGY_BYTES, checkpoint)
-    if type(intent) is not dict or intent.get('format') != 'strategy-intent' or type(intent.get('version')) is not int or intent['version'] not in (1, 2):
+    if type(intent) is not dict or intent.get('format') != 'strategy-intent' or type(intent.get('version')) is not int or intent['version'] not in (1, 2, 3):
         _fail('UNKNOWN_VERSION', '', 'Unsupported strategy intent version.')
     if intent['version'] == 1:
         _shape(intent, ('format', 'version', 'selection'), ('pool', 'bounds'))
     else:
-        _shape(intent, ('format', 'version', 'universe', 'steps'))
-    roles = _step_sources(intent['steps']) if intent['version'] == 2 else _sources(intent['selection'])
+        _shape(intent, ('format', 'version', 'universe', 'steps' if intent['version'] == 2 else 'sleeves'))
+    roles = (_step_sources(intent['steps']) if intent['version'] == 2 else
+             sum(_sleeve_sources(intent['sleeves']), []) if intent['version'] == 3 else _sources(intent['selection']))
     roots = [_root(source) for source in roles if source['kind'] == 'formula']
     current = {item['id']: item for item in builtin_catalog()}
     builtins = []
@@ -404,6 +447,8 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
         variables = None
     value = (_compile_steps(intent['steps'], variables, builtins, intent['universe'], bound, checkpoint)
              if intent['version'] == 2 else
+             _compile_sleeves(intent['sleeves'], variables, builtins, intent['universe'], bound, checkpoint)
+             if intent['version'] == 3 else
              _compile(intent['selection'], variables, builtins, intent.get('pool', 'legacy'),
                       intent.get('bounds', {}), bound, checkpoint))
     capture = CapturedStrategy(_encode(value, bound, checkpoint))
@@ -413,16 +458,18 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
 
 def _restore(value, checkpoint):
     _shape(value, ('format', 'version', 'variables', 'builtins', 'limits'),
-           ('selection', 'pool', 'bounds', 'universe', 'steps'))
+           ('selection', 'pool', 'bounds', 'universe', 'steps', 'sleeves'))
     if (type(value) is not dict or value.get('format') != 'strategy-capture' or
-            type(value.get('version')) is not int or value['version'] not in (1, 2)):
+            type(value.get('version')) is not int or value['version'] not in (1, 2, 3)):
         _fail('UNKNOWN_VERSION', '', 'Unsupported strategy capture version.')
-    fields = ('universe', 'steps') if value['version'] == 2 else ('selection', 'pool', 'bounds')
+    fields = {1: ('selection', 'pool', 'bounds'), 2: ('universe', 'steps'), 3: ('universe', 'sleeves')}[value['version']]
     _shape(value, ('format', 'version', 'variables', 'builtins', 'limits', *fields))
     _shape(value['limits'], ('bytes',), path='/limits')
     bound = _bound(value['limits']['bytes'])
     rebuilt = (_compile_steps(value['steps'], value['variables'], value['builtins'], value['universe'], bound, checkpoint)
                if value['version'] == 2 else
+               _compile_sleeves(value['sleeves'], value['variables'], value['builtins'], value['universe'], bound, checkpoint)
+               if value['version'] == 3 else
                _compile(value['selection'], value['variables'], value['builtins'], value['pool'], value['bounds'], bound, checkpoint))
     return rebuilt, bound
 
@@ -534,19 +581,25 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
 
 
 def pool(capture):
-    return capture['universe']['pool'] if capture['version'] == 2 else capture['pool']
+    return capture['pool'] if capture['version'] == 1 else capture['universe']['pool']
 
 
-def execution_steps(capture):
-    """Transient lanes and ordered steps; never normalize accepted record bytes.
+def execution_chains(capture):
+    """Transient lanes and ordered steps of each chain; never normalize accepted record bytes.
 
-    A Universe field step reads the row's own field lane, as capture/1 bounds do.
+    Capture/1 and /2 are one chain; capture/3 has one chain per sleeve. Lane
+    numbers count the steps across sleeves in order. A Universe field step
+    reads the row's own field lane, as capture/1 bounds do.
     """
-    if capture['version'] == 2:
-        return [dict(step, lane=step['source']['field'] if step['source']['kind'] == 'field' else 's' + str(index),
-                     **({'value': step['threshold'] if step['op'] in ('eq', 'ne') else step['storage_comparison_value']}
-                        if step['kind'] == 'filter' else {}))
-                for index, step in enumerate(capture['steps'])]
+    if capture['version'] != 1:
+        result, start = [], 0
+        for steps in chains(capture):
+            result.append([dict(step, lane=step['source']['field'] if step['source']['kind'] == 'field' else 's' + str(start + index),
+                                **({'value': step['threshold'] if step['op'] in ('eq', 'ne') else step['storage_comparison_value']}
+                                   if step['kind'] == 'filter' else {}))
+                           for index, step in enumerate(steps)])
+            start += len(steps)
+        return result
     spec = capture['selection']
     rank = dict(kind='rank', lane='ranking', **spec['ranking'],
                 rank_from=spec['rank_from'], rank_to=spec['rank_to'])
@@ -559,13 +612,13 @@ def execution_steps(capture):
                            ('max_multiple', 'metric_multiple', 'le')]:
         if capture['bounds'].get(field) is not None:
             filters.append(dict(kind='filter', lane=lane, op=op, value=capture['bounds'][field]))
-    return filters + [rank] if spec['selection_order'] == 'filter_first' else [rank] + filters
+    return [filters + [rank] if spec['selection_order'] == 'filter_first' else [rank] + filters]
 
 
 def log_fields(options):
     """Controlled fields only, after request admission; exclude Universe from counts."""
     if 'strategy' in options:
-        chain = execution_steps(options['strategy'])
+        chain = sum(execution_chains(options['strategy']), [])
         kind = next(step['source']['kind'] for step in reversed(chain) if step['kind'] == 'rank')
         if kind == 'field':
             kind = 'builtin'
@@ -631,8 +684,8 @@ def check_request(request, *, checkpoint=backtest_control.checkpoint):
 def calculation_projection(capture):
     """Comparable selection meaning; not a submission receipt or a new hash.
 
-    Names, provenance, submitted threshold spelling and lowerable resource limits
-    do not alter selected values. Formula/display revisions and exact root order
+    Names, sleeve names, provenance, submitted threshold spelling and lowerable
+    resource limits do not alter selected values. Formula/display revisions and exact root order
     do. The caller compares other date/seed/engine options through their owners.
     """
     value = require_strategy(capture)
@@ -640,8 +693,10 @@ def calculation_projection(capture):
         value['variables'] = value['variables']['program']['bundle']
     for descriptor in value['builtins']:
         descriptor.pop('label')
-    for condition in (value['steps'] if value['version'] == 2 else value['selection']['conditions']):
+    for condition in (sum(chains(value), []) if value['version'] != 1 else value['selection']['conditions']):
         condition.pop('submitted_threshold', None)
+    for sleeve in value.get('sleeves', []):
+        sleeve.pop('name')
     value.pop('limits')
     return value
 

@@ -15,7 +15,7 @@ from backtest import result_evidence, scalar_result_evidence, portfolio_results
 from backtest.application import scalar_execution, scalar_runs, durable_evidence, evidence_views, result_curves, result_exports, result_exploration, library
 from backtest.application import strategy_requests as s
 from test_scalar_execution import Fixture
-from test_strategy_requests import pipeline, rank_step, builtin, condition
+from test_strategy_requests import pipeline, sleeves, rank_step, builtin, condition
 
 
 class EvidenceTests(unittest.TestCase):
@@ -242,6 +242,29 @@ class EvidenceTests(unittest.TestCase):
                 self.assertIn(row['step_2_outcome'], range(1, 6))
                 self.assertEqual((row['step_1_value'], row['step_2_value']), (row['market_cap'], .3))
                 self.assertEqual((row['step_3_value'], row['step_4_value']), (row['ranking_value'], row['ranking_value']))
+
+    def test_sleeve_trails_short_periods_and_csv_column(self):
+        sector = dict(kind='filter', source=dict(kind='field', field='sector'), op='eq', threshold='Technology')
+        self.capture = s.capture_strategy(sleeves([rank_step(last=2)], [rank_step(first=2, last=3), sector]))
+        stream, _ = self.produce()
+        reader = result_evidence.open_reader(stream, max_bytes=16*1024**2)
+        # Three names for the sleeves' four final ranks: a short period, not a refusal.
+        self.assertEqual(evidence_views.trial(reader, 1)['short'], 1)
+        self.assertEqual(result_exploration.evidence(reader, dict(trial=1, period_from=1, period_to=1, rank_from=1, rank_to=4))['short'], 1)
+        header, *rows = result_exports.rows(reader, 'holdings', 1)
+        self.assertEqual([(row[header.index('rank')], row[-1]) for row in rows],
+                         [(1, 'Sleeve 1 #1'), (2, 'Sleeve 1 #2; Sleeve 2 #2'), (3, 'Sleeve 2 #3')])
+        records = list(reader.verified_records())
+        for change in (lambda evidence: evidence.pop('sleeves'), lambda evidence: evidence['sleeves'].reverse(),
+                       lambda evidence: evidence['sleeves'][0].update(sleeve=2),
+                       lambda evidence: evidence['sleeves'][1]['steps'].pop(), lambda evidence: evidence['lanes'].pop('s1')):
+            malformed = deepcopy(records)
+            row = [record['value'] for record in malformed if record['type'] == 'holding'][1]
+            change(row['scalar_evidence'])
+            order = scalar_result_evidence.Order()
+            with self.assertRaises(ValueError):
+                for record in malformed:
+                    order.accept(record, record.get('sha256'))
 
 
 if __name__=='__main__':unittest.main()

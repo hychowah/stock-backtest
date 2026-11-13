@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from backtest import result_evidence, calendar_requests
-from backtest.application import original_calculations, jobs, queue, library as saved, strategy_requests as s, evidence_views
+from backtest.application import original_calculations, jobs, queue, library as saved, strategy_requests as s, evidence_views, result_exports
 from backtest.inputs import daily, facts, research
 from backtest.variables import definitions
 from backtest.runtime import backtest_control
@@ -385,6 +385,23 @@ class ExecutionTests(unittest.TestCase):
                 detached = result_evidence.open_reader(io.BytesIO(data), max_bytes=256*1024**2)
                 self.assertEqual(list(evidence_views.holdings(detached, 1, 1)), rows)
                 self.assertIn(b'scalar_evidence', b''.join(result_exports.prepare(opened.reader, 'holdings').chunks()))
+
+    def test_sleeves_queue_save_reopen_and_export(self):
+        sector = dict(kind='filter', source=dict(kind='field', field='sector'), op='eq', threshold='Technology')
+        self.capture = s.capture_strategy(requests.sleeves([requests.rank_step(last=3)], [requests.rank_step(first=2, last=4), sector]))
+        store = queue.Store(Path(self.folder.name) / 'sleeves-queue.sqlite')
+        library = saved.Store(Path(self.folder.name) / 'sleeves-saved.sqlite')
+        store.enqueue(dict(id='9'*32, name='Sleeves', mode='random', options=self.options(trials=2, seed=3),
+                           catalog=dict(metrics={}, filters={}), presentation={}))
+        consumer = queue.Queue(store, calculations=self.calc, library=library)
+        self.addCleanup(consumer.close)
+        consumer._run(store.claim());consumer.reconcile_completed()
+        record, = library.list()
+        with library.open_evidence(record['id']) as opened:
+            rows = list(evidence_views.holdings(opened.reader, 2, 1))
+            exported = b''.join(result_exports.prepare(opened.reader, 'holdings', 2).chunks()).decode()
+        self.assertEqual([(row['symbol'], row['rank']) for row in rows], [('A0000', 1), ('A0001', 2), ('A0002', 3), ('A0003', 4)])
+        self.assertIn('"Sleeve 1 #2; Sleeve 2 #2"', exported)
 
 
 if __name__=='__main__':unittest.main()

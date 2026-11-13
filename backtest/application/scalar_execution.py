@@ -102,16 +102,22 @@ class Executor:
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
     def select(self, db, book, entry, exit_day=None, *, latest=False):
-        """Select one complete prepared scope: the pool of the stored book named by its id (the open book when latest)."""
+        """Select one complete prepared scope: the pool of the stored book named by its id (the open book when latest).
+
+        A sleeve strategy runs each sleeve's chain over the same rows and holds
+        their union (selection.union), with one scope receipt and one selection record.
+        """
         self.checkpoint()
         rows, admission = _scope(db, self.capture, book, entry, exit_day, latest=latest, market=self.view.market)
         self.number += 1; identity = 'scope:' + str(self.number)
-        chain = strategy_requests.execution_steps(self.capture)
-        pipeline = self.capture['version'] == 2
-        specification = self.capture['steps'] if pipeline else self.capture['selection']
+        chains = strategy_requests.execution_chains(self.capture)
+        pipeline = self.capture['version'] != 1
+        sleeves = self.capture['version'] == 3
+        specification = self.capture['sleeves'] if sleeves else self.capture['steps'] if pipeline else self.capture['selection']
         role_sources = strategy_requests.sources(self.capture)
         lane_of = lambda role: 's' + str(role) if pipeline else 'ranking' if role == 0 else 'c' + str(role - 1)
         role_of = {lane_of(role): role for role in range(len(role_sources))}
+        chain_of = [number for number, chain in enumerate(chains) for _ in chain] if pipeline else [0] * len(role_sources)
         receipt = dict(policy=dict(executor=_LOADED, selection=selection.policy_fingerprint()), id=identity,
             population='complete-prepared-scope', mode='latest' if latest else 'historical', pool=self.pool, date=str(entry),
             exit=str(exit_day) if exit_day is not None else None, prepared_period=None if latest else book,
@@ -146,17 +152,21 @@ class Executor:
         formula_roles = [role for role, source in enumerate(role_sources) if source['kind'] == 'formula']
         computed = {}
         def load(lanes, indices):
-            # Populations only shrink. A source cached for the first surviving
-            # row is therefore cached for every row still alive.
+            # Each row evaluates only the sources it has not cached. In one chain
+            # all survivors share one set; a later sleeve can find some rows cached.
             roles = [role_of[lane] for lane in lanes]
             keys = list(dict.fromkeys((role_sources[role]['variable_id'], role_sources[role]['revision'])
                                       for role in roles))
-            missing = [key for key in keys if key not in computed.get(indices[0], {})]
-            if missing:
-                roots, decisions = zip(*map(admission, indices))
+            groups = {}
+            for index in indices:
+                missing = tuple(key for key in keys if key not in computed.get(index, {}))
+                if missing:
+                    groups.setdefault(missing, []).append(index)
+            for missing, group in groups.items():
+                roots, decisions = zip(*map(admission, group))
                 outputs = self.formulas.evaluate(list(roots), self.view, self.checkpoint,
-                                                  decisions=list(decisions), outputs=missing)
-                for index, output in zip(indices, outputs):
+                                                  decisions=list(decisions), outputs=list(missing))
+                for index, output in zip(group, outputs):
                     computed.setdefault(index, {}).update(output)
             for lane, role in zip(lanes, roles):
                 source = role_sources[role]
@@ -169,14 +179,21 @@ class Executor:
         needed = [i for i in range(len(rows)) if pipeline or role_sources[0]['kind'] != 'builtin'
                   or selection.finite(values[i].get('ranking')) is not None]
         candidates = [dict(symbol=rows[i][0], candidate_rank=rows[i][1], values=values[i]) for i in needed]
-        selected = selection.execute(candidates, chain, self.checkpoint,
-            load=lambda lanes, indices: load(lanes, [needed[i] for i in indices]),
-            lazy_lanes={lane_of(role) for role in formula_roles}, evidence=pipeline,
-            count_selected=not pipeline and specification['selection_order'] == 'rank_first')
-        # The recorded indexes address the scope's rows.
-        for item in selected['selected']:
-            item['index'] = needed[item['index']]
+        results = []
+        for chain in chains:
+            result = selection.execute(candidates, chain, self.checkpoint,
+                load=lambda lanes, indices: load(lanes, [needed[i] for i in indices]),
+                lazy_lanes={lane_of(role) for role in formula_roles}, evidence=pipeline,
+                count_selected=not pipeline and specification['selection_order'] == 'rank_first')
+            # The recorded indexes address the scope's rows.
+            for item in result['selected']:
+                item['index'] = needed[item['index']]
+            results.append(result)
+        selected = selection.union(results) if sleeves else results[0]
         chosen = [item['index'] for item in selected['selected']]
+        # A holding keeps the lanes of the chains that picked it.
+        picked = {item['index']: {pick['sleeve'] for pick in item['sleeves']} if sleeves else {0}
+                  for item in selected['selected']}
         references = {index: {} for index in chosen}
         records = []
         if formula_roles and chosen and not self.explain:
@@ -184,6 +201,8 @@ class Executor:
             outputs = {(item['variable_id'], item['revision']): item for item in self.formulas.projection['definitions']}
             for index in chosen:
                 for role in formula_roles:
+                    if chain_of[role] not in picked[index]:
+                        continue
                     source = role_sources[role]; key = (source['variable_id'], source['revision'])
                     value, valid, reason = computed[index][key]
                     references[index][lane_of(role)] = dict(scope=identity, variable_id=key[0], revision=key[1],
@@ -208,7 +227,8 @@ class Executor:
                     position = group[item['request']]
                     for role in formula_roles:
                         source = role_sources[role]
-                        if (source['variable_id'], source['revision']) != (item['variable_id'], item['revision']):
+                        if ((source['variable_id'], source['revision']) != (item['variable_id'], item['revision'])
+                                or chain_of[role] not in picked[position]):
                             continue
                         reference = references[position][lane_of(role)] = dict(scope=identity, chunk=chunk,
                             request=item['request'], variable_id=item['variable_id'], revision=item['revision'],
@@ -230,25 +250,32 @@ class Executor:
         # A Universe field step has no lane: its value is the holding's own field.
         for index in chosen:
             for role, source in enumerate(role_sources):
-                if source['kind'] == 'builtin':
+                if source['kind'] == 'builtin' and chain_of[role] in picked[index]:
                     references[index][lane_of(role)] = builtin(role, index)
         # Full rows (book_store.rows) for the selected rows only.
         full = {row['symbol']: row for row in book_store.rows(db, book, self.pool, [rows[index][0] for index in chosen])}
         output = []
-        final_rank = next(step for step in reversed(chain) if step['kind'] == 'rank')
-        ranking_source = final_rank['source']
-        if ranking_source['kind'] == 'builtin':
-            descriptor = self.descriptors[ranking_source['id']]
-        elif ranking_source['kind'] == 'field':
-            descriptor = strategy_requests.field_descriptor(ranking_source['field'])
-        else:
-            descriptor = next(item for item in self.capture['variables']['program']['definitions'] if item['variable_id']==ranking_source['variable_id'] and item['revision']==ranking_source['revision'])
+        final_ranks = [next(step for step in reversed(chain) if step['kind'] == 'rank') for chain in chains]
+        def describe(source):
+            if source['kind'] == 'builtin':
+                return self.descriptors[source['id']]
+            if source['kind'] == 'field':
+                return strategy_requests.field_descriptor(source['field'])
+            return next(item for item in self.capture['variables']['program']['definitions'] if item['variable_id']==source['variable_id'] and item['revision']==source['revision'])
+        described = [describe(rank['source']) for rank in final_ranks]
         for item in selected['selected']:
             index = item['index']; original = full[rows[index][0]]
+            # A sleeve holding takes its ranking value from its first picking sleeve.
+            first = item['sleeves'][0]['sleeve'] if sleeves else 0
+            final_rank, descriptor = final_ranks[first], described[first]
             value = item['value']
-            if ranking_source['kind']=='builtin':value=_canonical(value,descriptor['storage']['scale'])
+            if final_rank['source']['kind']=='builtin':value=_canonical(value,descriptor['storage']['scale'])
             evidence = dict(scope=identity, lanes=references[index])
-            if pipeline:
+            if sleeves:
+                # Each picking sleeve's step trail; lanes number the steps across sleeves.
+                evidence['sleeves'] = [dict(sleeve=pick['sleeve'], steps=[outcome.get('rank') for outcome in pick.pop('steps')])
+                                       for pick in item['sleeves']]
+            elif pipeline:
                 # One entry per step: its rank for a Rank, None for a passed Filter.
                 # Values stay in the step's lane ('s' + position) or, for a
                 # Universe field, in the holding's field.
@@ -256,8 +283,9 @@ class Executor:
             output.append(dict(original, rank=item['rank'], ranking_value=value, ranking_unit=descriptor['unit'],
                 ranking_display=descriptor['display'], ranking_direction=final_rank['direction'],
                 scalar_evidence=evidence))
+        unavailable = [sum(item.get(rank['lane'], 0) is None for item in values) for rank in final_ranks]
         records.append(dict(type='selection',value=dict(scope=identity, selected=selected, requested=specification,
-            unavailable_ranking=sum(item.get(final_rank['lane'], 0) is None for item in values))))
+            unavailable_ranking=unavailable if sleeves else unavailable[0])))
         for record in records:
             self.checkpoint()
             self.sink(record)

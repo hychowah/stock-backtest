@@ -415,6 +415,40 @@ class ScalarTests(unittest.TestCase):
             stocks, _ = self.fixture.select(rejected)
         self.assertEqual(stocks, [])
 
+    def test_sleeves_evaluate_each_formula_once_per_row_and_hold_the_union(self):
+        old = self.fixture.capture().to_dict()
+        source = old['selection']['ranking']['source']
+        # Sleeve 2's survivors A0029–A0079 overlap rows that sleeve 1 already evaluated (A0000–A0049).
+        capture = s.capture_strategy(requests.sleeves(
+            [requests.rank_step(last=50), requests.rank_step(source, 1, 3)],
+            [requests.rank_step(first=30, last=80), dict(kind='filter', **requests.condition(source, '49.5', 'usd', 'lt')),
+             requests.rank_step(source, 1, 3)]), submitted=old['variables']['program']['bundle']['definitions'])
+        evaluate = x.columns.Formulas.evaluate
+        calls = []
+        def counted(formulas, roots, view, checkpoint, **kwargs):
+            calls.append([root['symbol'] for root in roots])
+            return evaluate(formulas, roots, view, checkpoint, **kwargs)
+        for explain in (True, False):
+            calls.clear(); records = []
+            with patch.object(x.columns.Formulas, 'evaluate', counted), self.fixture.view() as view:
+                stocks = x.Executor(capture, view, records.append, explain=explain).select(
+                    self.fixture.db, self.fixture.dated, date(2015, 1, 2), date(2015, 1, 5))
+            self.assertEqual(calls, [[f'A{i:04d}' for i in range(50)], [f'A{i:04d}' for i in range(50, 80)]])
+            # Sleeve order, then each sleeve's final order; a stock picked twice keeps its first place.
+            self.assertEqual([(row['symbol'], row['rank'], row['ranking_value']) for row in stocks],
+                             [('A0049', 1, 50.), ('A0048', 2, 49.), ('A0047', 3, 48.), ('A0046', 4, 47.)])
+            self.assertEqual([row['scalar_evidence']['sleeves'] for row in stocks[1:]],
+                             [[dict(sleeve=0, steps=[49, 2]), dict(sleeve=1, steps=[49, None, 1])],
+                              [dict(sleeve=0, steps=[48, 3]), dict(sleeve=1, steps=[48, None, 2])],
+                              [dict(sleeve=1, steps=[47, None, 3])]])
+            # Lanes number the steps across sleeves; a holding keeps only its picking sleeves' lanes.
+            self.assertEqual([sorted(row['scalar_evidence']['lanes']) for row in (stocks[0], stocks[1], stocks[3])],
+                             [['s0', 's1'], ['s0', 's1', 's2', 's3', 's4'], ['s2', 's3', 's4']])
+            self.assertEqual(stocks[3]['scalar_evidence']['lanes']['s3']['value'], 47.)
+            receipt = [record['value'] for record in records if record['type'] == 'selection']
+            self.assertEqual(len(receipt), 1)
+            self.assertEqual((receipt[0]['selected']['matches'], receipt[0]['unavailable_ranking']), ([50, 20], [0, 0]))
+
     def test_rank_first_receipt_counts_selected_with_no_filters(self):
         for order, expected in [('filter_first', 300), ('rank_first', 5)]:
             value = requests.intent(requests.builtin(), rank_to=5, selection_order=order)

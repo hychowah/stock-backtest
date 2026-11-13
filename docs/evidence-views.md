@@ -248,6 +248,23 @@ Both `backtest.run` paths log controlled `market`, last-Rank
 `ranking_source_kind` (`builtin` or `formula`) and `step_count`, excluding Universe.
 Legacy requests log their translated counts.
 
+**Sleeves.** `strategy-intent/3` and `strategy-capture/3` hold `universe: {pool}`
+and `sleeves: [{name, steps}]`: two or more chains with the version-2 step rules.
+The 50-step limit counts every sleeve. Formula roots, built-in descriptors and
+lanes `s<index>` count the steps across sleeves in order. Names are labels:
+calculation equality ignores them. One chain still captures version 2.
+`Executor.select` runs each sleeve over the same scope; stored lanes are read
+once and formula values are cached per row. `selection.union` joins the picks in
+sleeve order, then each sleeve's final order. A stock picked again keeps its first
+place and is held once, at equal weight. Its `rank` is that place; its ranking
+value and unit come from its first picking sleeve. Each scope keeps one receipt
+and one selection record, whose `matches` and `unavailable_ranking` are lists per
+sleeve. A holding records `scalar_evidence.sleeves`: `{sleeve, steps}` for each
+picking sleeve, with lane references for those sleeves' steps only.
+`selection.rank_range` gives ranks 1 to the sum of the sleeves' last Rank sizes,
+so a period with fewer names counts as short; no minimum is enforced. The
+holdings CSV adds one `sleeves` column, such as `Financials #2; Technology #1`.
+
 The holding Details panel and the latest screen's Details show the step trail:
 for each step, its source label, recorded value and unit, then its rank and kept
 range for a Rank or "passed" for a Filter. `EvidenceResults` reads it from the
@@ -311,7 +328,8 @@ without the queue or the saved library:
    `variable_id`, such as `local:margin`: Hong Kong and Japan captures keep one
    name per ID.
 2. `POST /api/variables/capture` with `{intent, market, detached: [capture, ...]}`
-   returns `{strategy}`. `intent` is a [`strategy-intent/2`](#ordered-strategy-requests);
+   returns `{strategy}`. `intent` is a [`strategy-intent/2`](#ordered-strategy-requests),
+   or `/3` for [sleeves](#ordered-strategy-requests);
    a formula step's source is `{kind: "formula", ...root}`.
 3. `POST /api/backtest-runs/<run-id>` with `{mode: "random", options: {strategy,
    market, start, end, months, trials, seed}}` starts the run. The script makes

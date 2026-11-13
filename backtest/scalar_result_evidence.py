@@ -109,18 +109,36 @@ class Order(framing._Order):
                 raise ValueError('Scalar evaluation reference is unresolved.')
 
         if self.strategy['version'] == 2:
-            # One entry per captured step: the rank for a Rank, None for a Filter.
-            # A Universe field step has no lane; the holding carries its field.
-            steps = evidence.get('steps')
-            if type(steps) is not list or len(steps) != len(self.strategy['steps']):
-                raise ValueError('Selected holding has incomplete step evidence.')
-            for index, (step, rank) in enumerate(zip(self.strategy['steps'], steps)):
-                if step['source']['kind'] != 'field' and 's' + str(index) not in evidence['lanes']:
-                    raise ValueError('Selected step reference differs from the captured chain.')
-                if step['kind'] == 'filter':
-                    if rank is not None:raise ValueError('Selected step reference differs from the captured chain.')
-                elif type(rank) is not int or not step['rank_from'] <= rank <= step['rank_to']:
-                    raise ValueError('Selected step rank is outside its captured range.')
+            _trail(evidence.get('steps'), self.strategy['steps'], evidence['lanes'], 0)
+        elif self.strategy['version'] == 3:
+            # Each picking sleeve once, in sleeve order; lanes number the steps across sleeves.
+            picks, sleeves, previous = evidence.get('sleeves'), self.strategy['sleeves'], -1
+            if type(picks) is not list or not picks:
+                raise ValueError('Selected holding has incomplete sleeve evidence.')
+            for pick in picks:
+                if (type(pick) is not dict or set(pick) != {'sleeve','steps'} or type(pick['sleeve']) is not int
+                        or not previous < pick['sleeve'] < len(sleeves)):
+                    raise ValueError('Selected holding has incomplete sleeve evidence.')
+                previous = pick['sleeve']
+                _trail(pick['steps'], sleeves[previous]['steps'], evidence['lanes'],
+                       sum(len(sleeve['steps']) for sleeve in sleeves[:previous]))
+
+
+def _trail(outcomes, steps, lanes, start):
+    """One entry per captured step: the rank for a Rank, None for a Filter.
+
+    A Universe field step has no lane; the holding carries its field. Other
+    steps have lane 's' + (start + position).
+    """
+    if type(outcomes) is not list or len(outcomes) != len(steps):
+        raise ValueError('Selected holding has incomplete step evidence.')
+    for index, (step, rank) in enumerate(zip(steps, outcomes)):
+        if step['source']['kind'] != 'field' and 's' + str(start + index) not in lanes:
+            raise ValueError('Selected step reference differs from the captured chain.')
+        if step['kind'] == 'filter':
+            if rank is not None:raise ValueError('Selected step reference differs from the captured chain.')
+        elif type(rank) is not int or not step['rank_from'] <= rank <= step['rank_to']:
+            raise ValueError('Selected step rank is outside its captured range.')
 
 
 class Writer(framing.Writer):
