@@ -273,7 +273,8 @@ stored row and the captured strategy only. On-screen values are rounded; downloa
 the recorded precision. A row without step evidence, such as
 capture/1 and every older result, says the trail is not recorded. A sleeve
 holding shows one trail for each picking sleeve, and Explore offers period
-ranges only for a sleeve result.
+ranges only for a sleeve result. A formula explanation names a sleeve lane by
+its sleeve and its step number inside that sleeve.
 
 ## Dated submissions
 

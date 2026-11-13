@@ -21,4 +21,7 @@ context.row.scalar_evidence.lanes={ranking:{scope:'scope1',...exact,value:.25,va
 html=vm.runInContext('VariableEvidence.records(records,row,strategy)',context);assert(html.includes('25%'));assert(html.includes('ZERO_DENOMINATOR'));assert(html.includes('random-date results keep values, not step traces'));assert(html.includes('Filter 1 · '));
 context.row.scalar_evidence.lanes={s2:{source:{kind:'builtin',id:'filter:pe'},canonical:12,stored:12,unit:'scalar',valid:true}};
 html=vm.runInContext('VariableEvidence.records(records,row,strategy)',context);assert(html.includes('Step 3 · Submitted P/E'),'A chain lane names its step');
+// Sleeve lanes count steps across sleeves; the label names the sleeve and its own step.
+context.strategy.sleeves=[{name:'Energy',steps:[{},{}]},{name:'Value',steps:[{},{}]}];
+html=vm.runInContext('VariableEvidence.records(records,row,strategy)',context);assert(html.includes('Value · Step 1 · Submitted P/E'),'A sleeve lane names its sleeve');
 console.log('Passed: readable detached values/fiscal/known dates, recorded operations, exact scope/chunk/request trace selection, original built-in labels and optional complete JSON.');
