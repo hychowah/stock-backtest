@@ -39,11 +39,21 @@ const EvidenceResults=(()=>{
   function shownUnit(unit){return unit==='scalar'?'':unit;}
   // A chain's recorded step trail: each step's value and its rank or pass, read
   // from the stored row and its captured strategy only. Older results have none.
+  // A sleeve holding shows one trail for each sleeve that picked it; lanes
+  // number the steps across sleeves.
   function stepTrail(row,strategy){
+    const picks=row.scalar_evidence?.sleeves;
+    if(strategy?.version===3&&Array.isArray(picks))return picks.map(pick=>{
+      const start=strategy.sleeves.slice(0,pick.sleeve).reduce((sum,sleeve)=>sum+sleeve.steps.length,0);
+      return '<p>'+escape('Sleeve '+strategy.sleeves[pick.sleeve].name)+'</p>'+trail(row,strategy,strategy.sleeves[pick.sleeve].steps,pick.steps,start);
+    }).join('');
     const outcomes=row.scalar_evidence?.steps;
     if(strategy?.version!==2||!Array.isArray(outcomes))return '<p class="hint">Step trail not recorded in this result.</p>';
-    return '<ol class="step-trail" aria-label="Step trail">'+strategy.steps.map((step,i)=>{
-      const source=step.source,lane=row.scalar_evidence.lanes['s'+i]||{};
+    return trail(row,strategy,strategy.steps,outcomes,0);
+  }
+  function trail(row,strategy,steps,outcomes,start){
+    return '<ol class="step-trail" aria-label="Step trail">'+steps.map((step,i)=>{
+      const source=step.source,lane=row.scalar_evidence.lanes['s'+(start+i)]||{};
       const name=BacktestComparison.plainName(strategy,source);let value,unit='';
       // A field step's value is the holding's own field: dollars for a size, text for a listing.
       if(source.kind==='field')value=typeof row[source.field]==='number'?money(row[source.field]):row[source.field]||'Unknown';
@@ -72,7 +82,8 @@ const EvidenceResults=(()=>{
       const page=await (firstPage??(state.sector===undefined?state.reader.holdings(state.trial,period,cursor):state.reader.sectorHoldings(state.trial,period,state.sector,cursor)));
       if(!valid(state)||state.period!==period||state.holdingSequence!==sequence)return;
       state.holdingCursor=page.cursor;state.holdingNext=page.next;
-      const scalar=state.artifact.version===4;node('schedule-multiple-head').textContent=scalar?['Ranking value',shownUnit(page.rows[0]?.ranking_unit),page.rows[0]?.ranking_direction].filter(Boolean).join(' · '):metricLabel(state.info.summary.options.metric??'ev_ebitda',state.artifact)+' (×)';
+      // Sleeves can rank by different units and directions; each value shows its own display.
+      const scalar=state.artifact.version===4,sleeves=state.artifact.settings.strategy?.version===3;node('schedule-multiple-head').textContent=scalar?(sleeves?'Ranking value':['Ranking value',shownUnit(page.rows[0]?.ranking_unit),page.rows[0]?.ranking_direction].filter(Boolean).join(' · ')):metricLabel(state.info.summary.options.metric??'ev_ebitda',state.artifact)+' (×)';
       node('schedule-explanation-head').hidden=!scalar;
       const selected=state.page.rows.find(row=>row.number===period);
       node('schedule-stock-body').innerHTML=holdingRows(page.rows,state.artifact,selected.value.names);
@@ -197,7 +208,8 @@ const EvidenceResults=(()=>{
     if(artifact.version===4){
       node('scalar-evidence-heading').textContent=artifact.kind==='latest'?'Latest screen':artifact.kind==='january'?'January variable backtest':'Variable backtest';
       const strategy=artifact.settings.strategy,rank=BacktestComparison.finalRank(artifact.settings);
-      node('scalar-evidence-summary').textContent=(artifact.kind==='latest'?'Latest cached session '+artifact.result.asof+' · ':'')+BacktestComparison.plainName(strategy,rank.source)+' · '+rank.direction+' first · ranks '+rank.rank_from+'–'+rank.rank_to+' · '+(strategy.version===2?strategy.steps.length+' steps':strategy.selection.selection_order)+'. These values and downloads use original captured evidence.';
+      const chosen=strategy.version===3?'Sleeves '+strategy.sleeves.map(sleeve=>sleeve.name).join(' + ')+' · up to '+rank.rank_to+' stocks, each held once':BacktestComparison.plainName(strategy,rank.source)+' · '+rank.direction+' first · ranks '+rank.rank_from+'–'+rank.rank_to+' · '+(strategy.version===2?strategy.steps.length+' steps':strategy.selection.selection_order);
+      node('scalar-evidence-summary').textContent=(artifact.kind==='latest'?'Latest cached session '+artifact.result.asof+' · ':'')+chosen+'. These values and downloads use original captured evidence.';
     }
     node('scalar-screen-results').hidden=artifact.kind!=='latest';node('scalar-download-returns').hidden=artifact.kind==='latest';
     if(artifact.kind==='latest'){

@@ -82,6 +82,8 @@ const ResultExplorer=(()=>{
     node('to-label').textContent=trial==='all'?'Through exit block':'Through exit / mark';
     node('summary').hidden=trial==='all';node('trials').hidden=trial!=='all';
     for(const id of ['rank-from','rank-to']){node(id).min=String(state.firstRank);node(id).max=String(state.lastRank);}
+    // A sleeve result explores time windows only: its ranks are positions in the union of the sleeves.
+    for(const id of ['rank-from-field','rank-to-field'])node(id).hidden=artifact.settings?.strategy?.version===3;
     node('apply').disabled=true;node('reset').disabled=true;node('period-from').innerHTML='';node('period-to').innerHTML='';
     node('window').textContent='';node('coverage').textContent='';node('status').textContent='Choose a saved time window and stock ranks.';
     for(const id of ['strategy-return','spy-return','strategy-cagr','spy-cagr'])node(id).textContent='—';

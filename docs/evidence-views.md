@@ -264,13 +264,16 @@ picking sleeve, with lane references for those sleeves' steps only.
 `selection.rank_range` gives ranks 1 to the sum of the sleeves' last Rank sizes,
 so a period with fewer names counts as short; no minimum is enforced. The
 holdings CSV adds one `sleeves` column, such as `Financials #2; Technology #1`.
+The builder cannot open sleeves yet and refuses a copy.
 
 The holding Details panel and the latest screen's Details show the step trail:
 for each step, its source label, recorded value and unit, then its rank and kept
 range for a Rank or "passed" for a Filter. `EvidenceResults` reads it from the
 stored row and the captured strategy only. On-screen values are rounded; downloads and the calculation evidence keep
 the recorded precision. A row without step evidence, such as
-capture/1 and every older result, says the trail is not recorded.
+capture/1 and every older result, says the trail is not recorded. A sleeve
+holding shows one trail for each picking sleeve, and Explore offers period
+ranges only for a sleeve result.
 
 ## Dated submissions
 

@@ -260,6 +260,9 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   // The name adds the rebalance interval when it is not 12 months, and the market when it is not US.
   const oneRank={...copy(chain),steps:chain.steps.slice(2)};
   assert.equal((await queueDefault({mode:'random',trials:3,market:'hk',calendar:{version:1,start:'2015-01-02',end:'2015-01-05',interval:{unit:'week',count:2}},strategy:oneRank})).name,'Hong Kong · Ranks 20–40 · Chain P/E · highest first · every 2 weeks · Market cap ≥ $100M');
+  // Sleeves are named in place of the last Rank and the steps.
+  const sleeved={...copy(chain),version:3,steps:undefined,sleeves:[{name:'Energy',steps:chain.steps.slice(0,2)},{name:'P/E',steps:chain.steps.slice(2)}]};
+  assert.equal((await queueDefault({...dated,months:12,strategy:sleeved})).name,'Ranks 1–221 · Sleeves Energy + P/E');
   // The row line shows the name, state, test type and dates only. The row control lists every setting in
   // plain wording. The exact recorded text waits in one closed disclosure of that control.
   const listed=node('queue-list').innerHTML,rowStart=listed.indexOf('data-queue-id="'+chainRecord.id+'"'),chainRow=listed.slice(rowStart,listed.indexOf('</li>',rowStart));

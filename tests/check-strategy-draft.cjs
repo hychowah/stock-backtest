@@ -219,6 +219,8 @@ if(process.argv[2]==='--builtins-parity'){
  // More than 50 steps refuses the copy and keeps the draft.
  const kept=JSON.stringify(view());
  assert.throws(()=>restore({...flat,filters:Array.from({length:44},()=>({field:'pe',op:'gt',value:1}))}),/more than 50 steps/);
+ // The builder cannot open sleeves yet; the copy is refused and the draft kept.
+ assert.throws(()=>restore({mode:'custom',strategy:{format:'strategy-capture',version:3,sleeves:[]}}),/has sleeves/);
  assert.equal(JSON.stringify(view()),kept);
 
  // Held queue edits: an unchanged save keeps the original payload, even after

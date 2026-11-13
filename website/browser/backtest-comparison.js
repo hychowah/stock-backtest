@@ -32,9 +32,12 @@ const BacktestComparison=(()=>{
   }
   const symbols={lt:'<',gt:'>',le:'≤',ge:'≥',eq:'=',ne:'≠'};
   // Recorded final Rank: a chain's last Rank, else the capture/1 or flat range.
+  // Sleeves have ranks 1 to the sum of their last Ranks' sizes and no one source.
+  const lastRank=steps=>steps.findLast(step=>step.kind==='rank');
   function finalRank(options){
     const capture=options?.strategy;
-    if(capture?.version===2)return capture.steps.findLast(step=>step.kind==='rank');
+    if(capture?.version===3)return {rank_from:1,rank_to:capture.sleeves.reduce((sum,sleeve)=>{const rank=lastRank(sleeve.steps);return sum+rank.rank_to-rank.rank_from+1;},0)};
+    if(capture?.version===2)return lastRank(capture.steps);
     const rank=capture?{...capture.selection.ranking,rank_from:capture.selection.rank_from,rank_to:capture.selection.rank_to}:{rank_from:options?.rank_from,rank_to:options?.rank_to};
     return {...rank,rank_from:rank.rank_from??1,rank_to:rank.rank_to??50};
   }
@@ -69,10 +72,13 @@ const BacktestComparison=(()=>{
       return typeof item.threshold==='string'?[plain(item.source)+op+item.threshold,exact(item.source)+op+item.threshold]
         :[plain(item.source)+op+quantity(submitted),exact(item.source)+op+submitted.value+' '+submitted.unit+' (canonical '+item.threshold.value+' '+item.threshold.unit+')'];
     };
-    if(capture.version===2)return [entry('pool','Stock pool',capture.universe.pool,...setting('pool',capture.universe.pool)),...capture.steps.map((step,index)=>{
+    const steps=(list,key,label)=>list.map((step,index)=>{
       const range=step.direction+' first · ranks '+step.rank_from+'–'+step.rank_to;
-      return entry('step.'+index,'Step '+(index+1)+' · '+(step.kind==='rank'?'Rank':'Filter'),step,...(step.kind==='rank'?[plain(step.source)+' · '+range,exact(step.source)+' '+range]:condition(step)));
-    })];
+      return entry(key+index,label+'Step '+(index+1)+' · '+(step.kind==='rank'?'Rank':'Filter'),step,...(step.kind==='rank'?[plain(step.source)+' · '+range,exact(step.source)+' '+range]:condition(step)));
+    });
+    const pool=capture.universe&&entry('pool','Stock pool',capture.universe.pool,...setting('pool',capture.universe.pool));
+    if(capture.version===2)return [pool,...steps(capture.steps,'step.','')];
+    if(capture.version===3)return [pool,...capture.sleeves.flatMap((sleeve,number)=>steps(sleeve.steps,'sleeve.'+number+'.step.','Sleeve '+sleeve.name+' · '))];
     const s=capture.selection;
     return [entry('strategy','Captured ranking',s.ranking,plain(s.ranking.source),exact(s.ranking.source)),entry('direction','Ranking direction',s.ranking.direction),entry('rank_from','First rank',s.rank_from),entry('rank_to','Last rank',s.rank_to),entry('selection_order','Selection order',s.selection_order),entry('pool','Stock pool',capture.pool,...setting('pool',capture.pool)),...Object.entries(capture.bounds).map(([key,value])=>entry('bound.'+key,names[key]||key,value,...setting(key,value))),...s.conditions.map((item,index)=>entry('condition.'+index,'Variable condition '+(index+1),item,...condition(item)))];
   }

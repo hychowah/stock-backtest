@@ -24,8 +24,8 @@ input{font:inherit;padding:9px;border:1px solid #ccd5d0;border-radius:5px;width:
 <div class="filter-grid">
 <label><span id="explore-from-label">From entry</span><select id="explore-period-from" aria-label="Exploration start"></select></label>
 <label><span id="explore-to-label">Through exit / mark</span><select id="explore-period-to" aria-label="Exploration end"></select></label>
-<label>From rank<input id="explore-rank-from" type="number" min="1" step="1"></label>
-<label>Through rank<input id="explore-rank-to" type="number" min="1" step="1"></label>
+<label id="explore-rank-from-field">From rank<input id="explore-rank-from" type="number" min="1" step="1"></label>
+<label id="explore-rank-to-field">Through rank<input id="explore-rank-to" type="number" min="1" step="1"></label>
 </div><div class="run-controls"><button id="explore-apply" type="button" class="primary" disabled>Apply</button><button id="explore-reset" type="button" disabled>Reset to original</button></div>
 <p id="explore-status" role="status" aria-live="polite"></p><p id="explore-window"></p>
 <table id="explore-summary" aria-label="Selected window returns"><thead><tr><th>Portfolio</th><th>Total return</th><th>CAGR</th></tr></thead><tbody>

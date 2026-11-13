@@ -129,6 +129,17 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  await show(latestChain);
  assert(node('scalar-evidence-summary').textContent.startsWith('Latest cached session 2015-01-05 · '));
  assert(node('scalar-screen-rows').innerHTML.includes('<li>Step 2 · Filter · Sector · Energy · passed</li>'));assert(node('scalar-screen-rows').innerHTML.includes('data-scalar-explain="0"'));
+ // A sleeve holding shows one trail for each sleeve that picked it; lanes number the steps across sleeves.
+ const sleeved=artifact('custom',4,'5'.repeat(32)),steps=chain.settings.strategy.steps;
+ sleeved.settings={mode:'custom',strategy:{...chain.settings.strategy,version:3,steps:undefined,sleeves:[{name:'Margin',steps:steps.slice(0,2)},{name:'Yield',steps:steps.slice(2)}]}};
+ sleeved.result.options={strategy:sleeved.settings.strategy};
+ recorded={sector:'Energy',scalar_evidence:{scope:'s0',sleeves:[{sleeve:0,steps:[7,null]},{sleeve:1,steps:[null,25]}],lanes:recorded.scalar_evidence.lanes}};
+ await show(sleeved);
+ assert.equal(node('scalar-evidence-summary').textContent,'Sleeves Margin + Yield · up to 221 stocks, each held once. These values and downloads use original captured evidence.');
+ assert.equal(node('schedule-multiple-head').textContent,'Ranking value');
+ assert(node('schedule-stock-body').innerHTML.includes('<p>Sleeve Margin</p><ol class="step-trail" aria-label="Step trail"><li>Step 1 · Rank · Submitted original · 5.00% · rank 7 (kept 1–200)</li><li>Step 2 · Filter · Sector · Energy · passed</li></ol><p>Sleeve Yield</p>'));
+ assert(node('schedule-stock-body').innerHTML.includes('<li>Step 2 · Rank · Recorded EV/EBITDA yield · 30.00% · rank 25 (kept 20–40)</li>'));
+ assert.equal(node('explore-rank-from-field').hidden,true,'A sleeve result explores time windows only');
  recorded={};
  // A saved version-1 January result opens in the same dated view, from its
  // stored rows, without any request.

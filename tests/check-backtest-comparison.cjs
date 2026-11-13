@@ -64,6 +64,12 @@ assert.equal(dollarStep('-2.5','usd').display,'Market cap ≥ -$2.5');assert.equ
 assert.deepEqual({...Comparison.finalRank({strategy:chain})},chain.steps[3]);
 assert.deepEqual({...Comparison.finalRank({strategy:captured})},{source:captured.selection.ranking.source,direction:'highest',rank_from:1,rank_to:50});
 assert.deepEqual({...Comparison.finalRank({rank_to:7})},{rank_from:1,rank_to:7});
+// Sleeves: rows name their sleeve; ranks run from 1 to the sum of the sleeves' last Rank sizes.
+const sleeved={...chain,version:3,sleeves:[{name:'Energy',steps:chain.steps.slice(1)},{name:'Margin',steps:chain.steps.slice(0,1)}]};delete sleeved.steps;
+assert.deepEqual(Comparison.scalarRows(sleeved).slice(3).map(row=>row.key+' '+row.label+': '+row.display),
+ ['sleeve.0.step.2 Sleeve Energy · Step 3 · Rank: Recorded EBITDA yield · highest first · ranks 20–40','sleeve.1.step.0 Sleeve Margin · Step 1 · Rank: Recorded margin · lowest first · ranks 1–200']);
+assert.deepEqual({...Comparison.finalRank({strategy:sleeved})},{rank_from:1,rank_to:221});
+assert.deepEqual(compare(artifact({strategy:sleeved}),artifact({strategy:{...sleeved,sleeves:[sleeved.sleeves[0],{name:'Margin',steps:[{...chain.steps[0],rank_to:100}]}]}})).parameters.filter(row=>row.different).map(row=>row.key),['sleeve.1.step.0']);
 const left=artifact({strategy:chain}),right=artifact({strategy:{...structuredClone(chain),steps:chain.steps.map((step,i)=>i===3?{...step,rank_to:30}:step)}});
 const differences=compare(left,right).parameters.filter(row=>row.different).map(row=>row.key);
 assert.deepEqual(differences,['step.3']);

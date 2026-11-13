@@ -76,7 +76,9 @@ Open **Explore this result** in **Result review**. Choose **From entry**,
 For example, a saved 1997–2025 top-30 test can show the periods from 2008 to
 2016 and ranks 20–30. Each date comes from an original holding-period boundary.
 The panel shows strategy and paired SPY total return and CAGR. It uses saved
-returns and runs no new backtest.
+returns and runs no new backtest. A sleeve result (several Rank/Filter chains
+submitted through the API) has no rank inputs here, and each stock's
+**Details** shows a step trail for every sleeve that picked it.
 
 Ranks retain their meaning at each rebalance. A smaller range gives equal
 weight to the holdings that remain. Missing ranks receive no replacements.

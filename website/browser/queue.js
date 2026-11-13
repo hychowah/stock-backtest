@@ -60,9 +60,10 @@ const BacktestQueue=(()=>{
   // The default name says what the row columns do not, in plain wording: the final
   // Rank, the rebalance interval when it is not 12 months, then every other step in
   // step order. A market other than US goes first. A name has 120 characters at most.
+  // Sleeves name their sleeves in place of the Rank and the steps.
   function title(settings){
     const capture=settings.strategy,rank=BacktestComparison.finalRank(settings),{unit,count}=CalendarSettings.decode(settings).interval;
-    const source=capture?BacktestComparison.plainName(capture,rank.source)+' · '+rank.direction+' first':callbacks.metricLabel(settings.metric??'ev_ebitda');
+    const source=capture?.version===3?'Sleeves '+capture.sleeves.map(sleeve=>sleeve.name).join(' + '):capture?BacktestComparison.plainName(capture,rank.source)+' · '+rank.direction+' first':callbacks.metricLabel(settings.metric??'ev_ebitda');
     const interval=unit==='month'&&count===12?[]:[{month:{1:'monthly',3:'quarterly',6:'half-yearly',24:'every 2 years'},week:{1:'weekly'}}[unit][count]||'every '+count+' '+unit+'s'];
     const steps=capture?BacktestComparison.scalarRows(capture).filter(row=>row.key.startsWith('step.')&&row.value!==rank||row.key.startsWith('condition.')).map(row=>row.display):[];
     const market=(settings.market??'us')==='us'?[]:[markets[settings.market]||settings.market];

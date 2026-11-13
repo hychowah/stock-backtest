@@ -423,6 +423,7 @@ const StrategyDraft=(()=>{
   // the Rank; rank_first means the Rank, then filters.
   function fromSettings(settings){
     const capture=settings.strategy;
+    if(capture?.version===3)throw Error('This strategy has sleeves. The builder cannot open sleeves yet. Its record was kept.');
     if(capture?.version===2)return {pool:capture.universe.pool,steps:copy(capture.steps)};
     const order=(selectionOrder,filters,rank)=>selectionOrder==='rank_first'?[rank,...filters]:[...filters,rank];
     if(capture){
