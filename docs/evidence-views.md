@@ -264,7 +264,8 @@ picking sleeve, with lane references for those sleeves' steps only.
 `selection.rank_range` gives ranks 1 to the sum of the sleeves' last Rank sizes,
 so a period with fewer names counts as short; no minimum is enforced. The
 holdings CSV adds one `sleeves` column, such as `Financials #2; Technology #1`.
-The builder cannot open sleeves yet and refuses a copy.
+The builder cannot open sleeves yet: it refuses a copy, and a waiting sleeve
+test offers no Edit settings.
 
 The holding Details panel and the latest screen's Details show the step trail:
 for each step, its source label, recorded value and unit, then its rank and kept

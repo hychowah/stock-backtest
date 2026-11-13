@@ -262,7 +262,9 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   assert.equal((await queueDefault({mode:'random',trials:3,market:'hk',calendar:{version:1,start:'2015-01-02',end:'2015-01-05',interval:{unit:'week',count:2}},strategy:oneRank})).name,'Hong Kong · Ranks 20–40 · Chain P/E · highest first · every 2 weeks · Market cap ≥ $100M');
   // Sleeves are named in place of the last Rank and the steps.
   const sleeved={...copy(chain),version:3,steps:undefined,sleeves:[{name:'Energy',steps:chain.steps.slice(0,2)},{name:'P/E',steps:chain.steps.slice(2)}]};
-  assert.equal((await queueDefault({...dated,months:12,strategy:sleeved})).name,'Ranks 1–221 · Sleeves Energy + P/E');
+  const sleevedRecord=await queueDefault({...dated,months:12,strategy:sleeved});assert.equal(sleevedRecord.name,'Ranks 1–221 · Sleeves Energy + P/E');
+  // A waiting sleeve test can move but offers no Edit settings, which would replace it with the builder's chain.
+  assert(!node('queue-list').innerHTML.includes('data-action="edit" data-id="'+sleevedRecord.id+'"'));assert(node('queue-list').innerHTML.includes('data-action="edit" data-id="'+chainRecord.id+'"'));
   // The row line shows the name, state, test type and dates only. The row control lists every setting in
   // plain wording. The exact recorded text waits in one closed disclosure of that control.
   const listed=node('queue-list').innerHTML,rowStart=listed.indexOf('data-queue-id="'+chainRecord.id+'"'),chainRow=listed.slice(rowStart,listed.indexOf('</li>',rowStart));
