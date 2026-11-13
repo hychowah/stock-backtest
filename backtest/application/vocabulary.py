@@ -110,7 +110,9 @@ _ROWS = (
         ('filter:ps_vs_avg_3y', 'P/S vs 3-year average'),
         ('filter:ps_vs_avg_5y', 'P/S vs 5-year average'),
         ('filter:pb_vs_avg_3y', 'P/B vs 3-year average'),
-        ('filter:pb_vs_avg_5y', 'P/B vs 5-year average'))),
+        ('filter:pb_vs_avg_5y', 'P/B vs 5-year average'),
+        ('filter:dividend_yield', 'Dividend yield'),
+        ('filter:turnover_1w', 'Turnover rate 1-week average'))),
     ('Margins and returns', (
         ('annual.operating_margin', 'Operating margin'),
         ('measure:gross_margin', 'Gross margin'),
