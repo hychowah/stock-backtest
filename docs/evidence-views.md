@@ -300,6 +300,36 @@ existing 16 MiB plan allowance. It does not consume the settings allowance.
 The run endpoint retains its 16 MiB whole-body transport limit. Queue submission
 retains its 256 KiB whole-body limit. No content is truncated.
 
+## Scripted runs
+
+A script can run and read a random-date chain through the page's local routes,
+without the queue or the saved library:
+
+1. `POST /api/variables/validate` with `{formula: {text, display}, name,
+   variable_id}` checks one formula. The reply's `root` names its exact revision
+   and `capture` holds its dependencies. Give each formula its own
+   `variable_id`, such as `local:margin`: Hong Kong and Japan captures keep one
+   name per ID.
+2. `POST /api/variables/capture` with `{intent, market, detached: [capture, ...]}`
+   returns `{strategy}`. `intent` is a [`strategy-intent/2`](#ordered-strategy-requests);
+   a formula step's source is `{kind: "formula", ...root}`.
+3. `POST /api/backtest-runs/<run-id>` with `{mode: "random", options: {strategy,
+   market, start, end, months, trials, seed}}` starts the run. The script makes
+   the 32-character lowercase hexadecimal ID; the same ID and body return the
+   same run. Poll `GET /api/backtest-runs/<run-id>/status` until `state` is
+   `complete`, `failed` (see `error`) or `cancelled`.
+4. `POST /api/backtest-runs/<reader-id>/reader` with `{source: {kind: "run", id:
+   <run-id>}, display: {captured_at}}` returns the artifact; its `result` is the
+   all-trial summary. Read on with the [reader routes](#http-operations), such as
+   `export/holdings/<trial>`, then `DELETE` the reader.
+5. To keep the result, `POST /api/backtests` with `{name, reader: <reader-id>}`
+   before that `DELETE`.
+
+The server accepts one direct run at a time and refuses another with 409. A run
+waits at most 30 seconds for a queued test or data update, then fails. The
+server keeps at most four runs, for 24 hours
+([direct runs](research-workflow.md#running-and-interrupted-backtests)).
+
 ## Browser composition and exports
 
 `backtest/application/result_access.py` owns acquisition for run, saved and

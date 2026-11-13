@@ -371,7 +371,8 @@ browser sends an unguessable run ID with the submission and follows
 `/api/backtest-runs/<id>/status` with short polling requests. Repeated
 submissions with that ID reuse the same run, so a lost connection retries
 without starting a new calculation. The page keeps no record of a screen: after
-a reload, select **Screen latest** again.
+a reload, select **Screen latest** again. A script can also use the route for a
+dated test ([scripted runs](evidence-views.md#scripted-runs)).
 
 `backtest/application/jobs.py` accepts one active run per server. It uses the
 existing engine cancellation checks and the calculation owner's financial cache
