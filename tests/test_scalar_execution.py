@@ -382,6 +382,14 @@ class ScalarTests(unittest.TestCase):
                                          [(row['symbol'], row['rank'], row['metric_yield'], row['price']) for row in old])
 
 
+    def test_chained_not_equal_filters_exclude_each_named_sector(self):
+        self.fixture.db.research.executemany('UPDATE companies SET sector=? WHERE symbol=?',
+            [('Real Estate', 'A0001'), ('Real Estate', 'A0003'), ('Utilities', 'A0002')])
+        exclude = lambda sector: dict(kind='filter', source=dict(kind='field', field='sector'), op='ne', threshold=sector)
+        capture = s.capture_strategy(requests.pipeline(exclude('Real Estate'), exclude('Utilities'), requests.rank_step(last=3)))
+        stocks, _ = self.fixture.select(capture)
+        self.assertEqual([(row['symbol'], row['rank']) for row in stocks], [('A0000', 1), ('A0004', 2), ('A0005', 3)])
+
     def test_filter_group_batches_shared_formulas_after_all_stored_checks(self):
         shared = language.entry(language.definition(dict(op='parameter', id='annual.revenue'), 'USD', 'usd'), 'draft:shared')
         left = language.entry(language.definition(language.reference(shared), 'USD', 'usd'), 'draft:left')

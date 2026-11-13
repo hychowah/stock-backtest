@@ -67,6 +67,10 @@ class ScalarTests(unittest.TestCase):
             self.assertEqual(s.passes(values,[dict(lane='x',op=op,value=8.)]),expected)
         self.assertTrue(s.passes(values,[dict(lane='sector',op='eq',value='Energy')]))
         self.assertFalse(s.passes(values,[dict(lane='exchange',op='eq',value='NYSE')]))
+        self.assertFalse(s.passes(values,[dict(lane='sector',op='ne',value='Energy')]))
+        self.assertTrue(s.passes(values,[dict(lane='sector',op='ne',value='Real Estate')]))
+        # A missing metadata lane fails inequality, as it fails equality.
+        self.assertFalse(s.passes(values,[dict(lane='exchange',op='ne',value='NYSE')]))
         high=math.nextafter(1.,math.inf)
         self.assertTrue(s.passes(dict(x=high),[dict(lane='x',op='gt',value=1.)]))
 

@@ -595,8 +595,11 @@ queue and saved-artifact tests, then browser/SQL parity and control checks.
 On the website, each condition is a Filter step: one source, comparison and
 value. Flat requests and capture/1 conditions are strict: `lt` means less than;
 `gt` means more than. Chain Filters also accept inclusive `le` and `ge`, and
-equality for sector and exchange. Two conditions can bound the
+**Is** or **Is not** for sector and exchange. Add one **Is not** Filter for each
+sector to exclude. Two conditions can bound the
 same metric. Missing values fail only conditions that require those values.
+A company without a provider sector or exchange is saved as `Unavailable`, so
+**Is not** keeps it unless another Filter excludes `Unavailable`.
 
 The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
 market cap, enterprise value, and trailing 1-year and 3-year returns. Additional

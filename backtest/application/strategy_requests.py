@@ -252,14 +252,14 @@ def _step_sources(steps):
         elif step.get('kind') == 'filter':
             _shape(step, ('kind', 'source', 'op', 'threshold'),
                    ('submitted_threshold', 'comparison_value', 'storage_comparison_value'), path)
-            if step['op'] not in ('lt', 'gt', 'le', 'ge', 'eq'):
+            if step['op'] not in ('lt', 'gt', 'le', 'ge', 'eq', 'ne'):
                 _fail('INVALID_STRATEGY', path + '/op', 'Unknown Filter comparison.')
         else:
             _fail('INVALID_STRATEGY', path, 'A Rank or Filter step is required.')
         source = _source(step['source'], path + '/source', fields=True)
         metadata = source['kind'] == 'field' and field_descriptor(source['field'])['unit'] == 'text'
-        if metadata != (step.get('op') == 'eq'):
-            _fail('INVALID_STRATEGY', path, 'Metadata fields require equality; numeric sources require numeric comparisons.')
+        if metadata != (step.get('op') in ('eq', 'ne')):
+            _fail('INVALID_STRATEGY', path, 'Metadata fields require equality or inequality; numeric sources require numeric comparisons.')
         sources.append(source)
     if not any(step['kind'] == 'rank' for step in steps):
         _fail('INVALID_STRATEGY', '/steps', 'A chain needs at least one Rank.')
@@ -289,9 +289,9 @@ def _compile_steps(steps, variables, builtins, universe, bound, checkpoint):
                 _fail(error.code, path + error.path, str(error))
             normalized.append(dict(step, rank_from=policy['rank_from'], rank_to=policy['rank_to']))
             continue
-        if step['op'] == 'eq':
+        if step['op'] in ('eq', 'ne'):
             if type(step['threshold']) is not str or len(step['threshold']) > 256:
-                _fail('INVALID_STRATEGY', path, 'Metadata equality needs a bounded string.')
+                _fail('INVALID_STRATEGY', path, 'A metadata comparison needs a bounded string.')
             _shape(step, ('kind', 'source', 'op', 'threshold'), path=path)
             normalized.append(dict(step))
             continue
@@ -544,7 +544,7 @@ def execution_steps(capture):
     """
     if capture['version'] == 2:
         return [dict(step, lane=step['source']['field'] if step['source']['kind'] == 'field' else 's' + str(index),
-                     **({'value': step['threshold'] if step['op'] == 'eq' else step['storage_comparison_value']}
+                     **({'value': step['threshold'] if step['op'] in ('eq', 'ne') else step['storage_comparison_value']}
                         if step['kind'] == 'filter' else {}))
                 for index, step in enumerate(capture['steps'])]
     spec = capture['selection']

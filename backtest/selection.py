@@ -2,8 +2,9 @@
 
 A specification names a ranking lane, explicit direction, inclusive rank range
 and conditions. Numeric conditions use their supplied comparison scale. Source
-adapters own unit conversion and admission. Metadata equality is separate from
-numeric comparison. Missing lanes fail only active conditions that need them.
+adapters own unit conversion and admission. Metadata equality and inequality
+are separate from numeric comparison. Missing lanes fail only active conditions
+that need them, including inequality.
 
 execute() returns input indexes and original ranks, never modified input rows.
 Null candidate ranks sort first. Equal binary64 values, including signed zero,
@@ -101,8 +102,8 @@ def passes(values, conditions):
     """Test active conditions; an unavailable required lane always fails."""
     for item in conditions:
         value = values.get(item['lane'])
-        if item['op'] == 'eq':
-            if type(value) is not str or value != item['value']:
+        if item['op'] in ('eq', 'ne'):
+            if type(value) is not str or (value == item['value']) != (item['op'] == 'eq'):
                 return False
             continue
         value = finite(value)

@@ -111,8 +111,10 @@ const ids=()=>rows().map(row=>row.id);
  add('filter');fire('focusin',search('new'));type('new','sector');press('new','Enter');
  const sector=ids()[4];assert.equal(rows()[4].text,true);assert(list.innerHTML.includes('<option value="Finance" >Finance</option>'));assert.equal(document.activeElement.id,'step-value-'+sector);
  edit(sector,'value','Finance');assert.equal(rows()[4].value,'Finance');
+ edit(sector,'op','ne');assert.equal(rows()[4].op,'ne');
  // Move buttons keep focus on the moved step; Remove clears the message.
  select('step-up-'+sector);assert.equal(ids()[3],sector);assert.equal(document.activeElement.id,'step-up-'+sector);
+ assert(list.innerHTML.includes('<option value="ne" selected>Is not</option>'),'A redraw keeps Is not');
  select('step-down-'+sector);assert.equal(ids()[4],sector);assert.equal(document.activeElement.id,'step-down-'+sector);
  node('filter-message').textContent='old';select('step-remove-'+sector);assert(!ids().includes(sector));assert.equal(node('filter-message').textContent,'');assert.equal(document.activeElement.id,'step-remove-'+rank);
  // A Rank uses the same list without size and listing fields, and keeps its own order and range.

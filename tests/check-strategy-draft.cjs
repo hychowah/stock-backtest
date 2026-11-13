@@ -153,10 +153,13 @@ if(process.argv[2]==='--builtins-parity'){
  assert.deepEqual(view().find(item=>item.id===cap).units,['usd_million','usd']);
  await assert.rejects(submit(),/Enter a value for each filter/);
  edit(sector,'value','Energy');assert.equal(run('StrategyDraft.flat()').sector,'Energy');
+ // Is not runs on the service: flat options cannot express it.
+ edit(sector,'op','ne');assert.equal(run('StrategyDraft.flat()'),null);assert.equal((await submit()).strategy.steps[2].op,'ne');edit(sector,'op','eq');
  edit(cap,'unit','usd');edit(cap,'value','250000000');assert.equal(run('StrategyDraft.flat()').min_cap,250e6);
  patch(cap,field('enterprise_value'));assert.deepEqual(shape()[0],['filter','Enterprise value','ge','250000000','usd'],'A fitting unit and the typed value stay');
  patch(cap,builtin('filter:pe'));assert.deepEqual(shape()[0],['filter','P/E','ge','250000000','multiple'],'A built-in unit is fixed; the comparison stays');
  patch(sector,builtin('metric:ev_ebitda:yield'));assert.deepEqual(shape()[2],['filter','EV/EBITDA yield','gt','','percent'],'Equality becomes a numeric comparison');
+ patch(sector,field('exchange'));edit(sector,'op','ne');patch(sector,builtin('filter:pe'));assert.equal(shape()[2][2],'gt','Is not becomes a numeric comparison');
  // A variable keeps a chosen unit only when it fits its output.
  patch(cap,exact,formulaExtra);assert.equal(shape()[0][4],'multiple');edit(cap,'unit','number');patch(cap,exact,formulaExtra);assert.equal(shape()[0][4],'number');
  patch(cap,field('market_cap'));assert.equal(shape()[0][4],'usd_million');patch(cap,exact,formulaExtra);assert.deepEqual(shape()[0].slice(3),['250000000','percent']);

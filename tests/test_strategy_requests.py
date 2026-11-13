@@ -516,6 +516,7 @@ class StrategyTests(unittest.TestCase):
         for step in (rank_step(first=0), rank_step(direction='unknown'),
                      rank_step(dict(kind='field', field='sector')),
                      dict(kind='filter', **condition(builtin(), op='eq')),
+                     dict(kind='filter', **condition(builtin(), op='ne')),
                      dict(kind='filter', source=dict(kind='field', field='exchange'), op='ge', threshold='NYSE')):
             self.error('INVALID_STRATEGY', s.capture_strategy, pipeline(rank_step(), step))
         self.error('UNIT_MISMATCH', s.capture_strategy,

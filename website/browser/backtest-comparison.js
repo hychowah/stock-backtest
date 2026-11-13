@@ -30,7 +30,7 @@ const BacktestComparison=(()=>{
     // change meaning. Keep strict operators and exact recorded numeric values.
     return [...new Map((value||[]).map(condition=>[stable(condition),condition])).entries()].sort(([a],[b])=>a.localeCompare(b)).map(([,condition])=>condition);
   }
-  const symbols={lt:'<',gt:'>',le:'≤',ge:'≥',eq:'='};
+  const symbols={lt:'<',gt:'>',le:'≤',ge:'≥',eq:'=',ne:'≠'};
   // Recorded final Rank: a chain's last Rank, else the capture/1 or flat range.
   function finalRank(options){
     const capture=options?.strategy;

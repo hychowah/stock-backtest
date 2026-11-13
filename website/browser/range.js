@@ -107,7 +107,7 @@ function stepRow(row){
     middle=`<select ${field('direction',`aria-label="${name} order"`)}>${[['highest','Highest first'],['lowest','Lowest first']].map(([v,l])=>`<option value="${v}" ${row.direction===v?'selected':''}>${l}</option>`).join('')}</select>`;
     value=`<span class="condition-value"><span class="condition-unit">Ranks</span><input ${field('rank_from',`aria-label="${name} first rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_from)}"`)}><span class="condition-unit">to</span><input ${field('rank_to',`aria-label="${name} last rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_to)}"`)}></span>`;
   }else if(row.text){
-    middle='<span class="condition-unit">Equals</span>';
+    middle=`<select ${field('op',`aria-label="${name} comparison"`)}>${[['eq','Is'],['ne','Is not']].map(([v,l])=>`<option value="${v}" ${row.op===v?'selected':''}>${l}</option>`).join('')}</select>`;
     value=`<select ${field('value',`aria-label="${name} value"`)}><option value="">Choose…</option>${[...new Set([...row.choices,...(row.value?[row.value]:[])])].map(v=>`<option value="${safe(v)}" ${v===row.value?'selected':''}>${safe(v)}</option>`).join('')}</select>`;
   }else{
     middle=`<select ${field('op',`aria-label="${name} comparison"`)}>${comparisons.map(([v,l])=>`<option value="${v}" ${row.op===v?'selected':''}>${safe(l)}</option>`).join('')}</select>`;
@@ -345,7 +345,7 @@ const StrategyDraft=(()=>{
   function retarget(step){
     if(textField(step.source)){step.op='eq';setThreshold(step,'');return;}
     const previous=typeof step.threshold==='string'||!step.threshold?{value:''}:shown(step),source=step.source;
-    if(!step.op||step.op==='eq')step.op='gt';
+    if(!step.op||step.op==='eq'||step.op==='ne')step.op='gt';
     const output=sourceOutput(source),unit=source.kind==='field'?(['usd','usd_million'].includes(previous.unit)?previous.unit:'usd_million')
       :source.kind==='formula'?(VariableWorkspace.displays(output?.unit).includes(previous.unit)?previous.unit:output?.display||'number')
       :source.id.startsWith('metric:')?(source.id.endsWith(':yield')?'percent':'multiple'):output?.display;

@@ -204,7 +204,8 @@ formula captures. Stored Universe fields use
 `{kind: "field", field: "market_cap"}` or `enterprise_value`, `sector`, `exchange`.
 Numeric Filters permit `lt`, `gt`, `le` and `ge`. They keep submitted units,
 canonical thresholds and exact stored comparison scales. Sector and exchange
-use `eq` and a string threshold. Built-in source descriptors and complete formula
+use `eq` (is) or `ne` (is not) and a string threshold; each `ne` step excludes
+one value. Built-in source descriptors and complete formula
 closures stay detached. Formula roots keep step order, including repeated roles.
 
 `selection.execute` owns the ordered loop. `scalar_execution.Executor` loads
