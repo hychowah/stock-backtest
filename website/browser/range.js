@@ -143,7 +143,6 @@ function renderSteps(){
   const before=new Map([...list.querySelectorAll('[data-row]')].map(row=>[row.dataset.row,row.getBoundingClientRect().top]));
   list.innerHTML=rows.map(stepRow).join('')+(pendingStep?`<li class="condition-row condition-pending" data-row="new"><span class="step-name">New ${pendingStep}</span>${sourceField('new',{kind:pendingStep,label:''},'New '+pendingStep)}<div class="condition-actions"><button type="button" data-action="cancel">Cancel</button></div></li>`:'');
   slideSteps(list,before);
-  for(const id of ['add-filter','add-rank'])document.getElementById(id).disabled=rows.length>=50;
   FilterPicker.refresh();
   // Variable rows list their units from the catalog; a restored strategy loads it once.
   if(rows.some(row=>row.formula)&&stepSourcesState==='idle')loadStepSources();
@@ -286,7 +285,8 @@ function copySavedBacktestSettings(snapshot){
 // sources cannot replace a queued edit; only its session may load settings
 // until a confirmed save/cancel ends it.
 const StrategyDraft=(()=>{
-  let active=null,revision=0,steps=[],detached=[],projections={},recorded=[],restoredCatalog=null,restored=null,captured=null,nextId=0,changed=null;
+  // steps is the active sleeve's list, so the step editors work on that sleeve.
+  let active=null,revision=0,sleeves=[],current=0,steps=[],detached=[],projections={},recorded=[],restoredCatalog=null,restored=null,captured=null,nextId=0,changed=null;
   const copy=value=>JSON.parse(JSON.stringify(value));
   const fields={market_cap:'Market cap',enterprise_value:'Enterprise value',sector:'Sector',exchange:'Exchange'};
   const textField=source=>source.kind==='field'&&(source.field==='sector'||source.field==='exchange');
@@ -299,9 +299,14 @@ const StrategyDraft=(()=>{
   }
   const exactKey=value=>JSON.stringify([value.variable_id,value.revision]);
   const bare=list=>list.map(({id,...step})=>step);
+  // Whole-draft rules (captures, the step limit, submission) read every sleeve.
+  const allSteps=()=>sleeves.flatMap(sleeve=>sleeve.steps);
+  // A sleeve takes the value of its sector Is filter as its name until a name is typed.
+  const defaultName=(list,index)=>list.find(step=>step.source.kind==='field'&&step.source.field==='sector'&&step.op==='eq'&&step.threshold)?.threshold||'Sleeve '+(index+1);
+  const nameOf=(sleeve,index)=>sleeve.name||defaultName(sleeve.steps,index);
   // The market keys the capture cache and the unchanged restore: a Hong Kong or
   // Japan capture holds the market-aware form of each formula.
-  const content=()=>JSON.stringify({market:selectedMarket(),universe:{pool:document.getElementById('stock-pool').value},steps:bare(steps)});
+  const content=()=>JSON.stringify({market:selectedMarket(),universe:{pool:document.getElementById('stock-pool').value},sleeves:sleeves.map((sleeve,index)=>({name:nameOf(sleeve,index),steps:bare(sleeve.steps)}))});
   function compactDetached(captures,chain){
     const needed=new Set(chain.map(step=>step.source).filter(source=>source.kind==='formula').map(exactKey)),kept=[];
     // Every capture already contains its complete dependency closure. Choose
@@ -366,8 +371,9 @@ const StrategyDraft=(()=>{
   const exponents={usd:0,USD:0,usd_million:6,percent:-2,number:0,multiple:0,scalar:0};
   // The offline latest screen runs exactly this shape: one highest EBITDA/EV
   // yield Rank, first or last, and filters the flat options already express.
-  // Missing minimums become 0, which every prepared row passes.
+  // Missing minimums become 0, which every prepared row passes. Sleeves run on the service.
   function flat(){
+    if(sleeves.length>1)return null;
     const ranks=steps.filter(step=>step.kind==='rank'),rank=ranks[0],[kind,metric,component]=rank?.source.id?.split(':')||[];
     if(ranks.length!==1||rank.source.kind!=='builtin'||kind!=='metric'||component!=='yield'||rank.direction!=='highest')return null;
     const at=steps.indexOf(rank);if(at!==0&&at!==steps.length-1)return null;
@@ -420,40 +426,47 @@ const StrategyDraft=(()=>{
     });
   }
   // One boundary for every recorded format. filter_first means filters, then
-  // the Rank; rank_first means the Rank, then filters.
+  // the Rank; rank_first means the Rank, then filters. Formats before sleeves
+  // are one sleeve. A recorded name equal to its default keeps following the sector filter.
   function fromSettings(settings){
-    const capture=settings.strategy;
-    if(capture?.version===3)throw Error('This strategy has sleeves. The builder cannot open sleeves yet. Its record was kept.');
-    if(capture?.version===2)return {pool:capture.universe.pool,steps:copy(capture.steps)};
+    const capture=settings.strategy,one=(pool,list)=>({pool,sleeves:[{name:'',steps:list}]});
+    if(capture?.version===3)return {pool:capture.universe.pool,sleeves:capture.sleeves.map((sleeve,index)=>({name:sleeve.name===defaultName(sleeve.steps,index)?'':sleeve.name,steps:copy(sleeve.steps)}))};
+    if(capture?.version===2)return one(capture.universe.pool,copy(capture.steps));
     const order=(selectionOrder,filters,rank)=>selectionOrder==='rank_first'?[rank,...filters]:[...filters,rank];
     if(capture){
       const s=capture.selection,metric=s.ranking.source.id?.split(':')[1];
-      return {pool:capture.pool,steps:order(s.selection_order,[...boundSteps(capture.bounds,metric,false),...s.conditions.map(item=>({kind:'filter',...copy(item)}))],
-        {kind:'rank',...copy(s.ranking),rank_from:s.rank_from,rank_to:s.rank_to})};
+      return one(capture.pool,order(s.selection_order,[...boundSteps(capture.bounds,metric,false),...s.conditions.map(item=>({kind:'filter',...copy(item)}))],
+        {kind:'rank',...copy(s.ranking),rank_from:s.rank_from,rank_to:s.rank_to}));
     }
     const o={...StockScreener.defaults,...settings};
-    return {pool:o.pool,steps:order(o.selection_order,[...boundSteps(o,o.metric,true),...(o.filters||[]).map(item=>({kind:'filter',source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value)}}))],
-      {kind:'rank',source:{kind:'builtin',id:'metric:'+o.metric+':yield'},direction:'highest',rank_from:o.rank_from,rank_to:o.rank_to})};
+    return one(o.pool,order(o.selection_order,[...boundSteps(o,o.metric,true),...(o.filters||[]).map(item=>({kind:'filter',source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value)}}))],
+      {kind:'rank',source:{kind:'builtin',id:'metric:'+o.metric+':yield'},direction:'highest',rank_from:o.rank_from,rank_to:o.rank_to}));
   }
   // Built-in lanes chosen before the catalog loaded take its display unit here.
+  // One sleeve sends a chain (version 2); two or more send sleeves (version 3).
   async function intentFor(draft){
-    if(draft.steps.length>50)throw Error('A strategy has at most 50 steps.');
-    if(!draft.steps.some(step=>step.kind==='rank'))throw Error('Add a Rank step.');
-    requireValues(draft.steps);
+    const all=draft.sleeves.flatMap(sleeve=>sleeve.steps),unranked=draft.sleeves.find(sleeve=>!sleeve.steps.some(step=>step.kind==='rank'));
+    if(all.length>50)throw Error('A strategy has at most 50 steps.');
+    if(unranked)throw Error(draft.sleeves.length>1?'Add a Rank step to '+unranked.name+'.':'Add a Rank step.');
+    requireValues(all);
     let builtins=null;
-    const chain=[];
-    for(const step of draft.steps){
-      if(step.kind==='rank'){chain.push({...step,rank_from:+step.rank_from,rank_to:+step.rank_to});continue;}
-      if(typeof step.threshold==='string'||step.submitted_threshold){chain.push(step);continue;}
-      let unit=step.threshold.unit;
-      if(!unit){
-        builtins??=(await VariableWorkspace.request('/catalog')).builtins;
-        unit=builtins.find(item=>item.id===step.source.id)?.display;
-        if(!unit)throw Error('The selected built-in filter is unavailable. Your settings were kept.');
+    const chains=[];
+    for(const sleeve of draft.sleeves){
+      const chain=[];
+      for(const step of sleeve.steps){
+        if(step.kind==='rank'){chain.push({...step,rank_from:+step.rank_from,rank_to:+step.rank_to});continue;}
+        if(typeof step.threshold==='string'||step.submitted_threshold){chain.push(step);continue;}
+        let unit=step.threshold.unit;
+        if(!unit){
+          builtins??=(await VariableWorkspace.request('/catalog')).builtins;
+          unit=builtins.find(item=>item.id===step.source.id)?.display;
+          if(!unit)throw Error('The selected built-in filter is unavailable. Your settings were kept.');
+        }
+        chain.push({...step,threshold:{value:String(step.threshold.value).trim(),unit}});
       }
-      chain.push({...step,threshold:{value:String(step.threshold.value).trim(),unit}});
+      chains.push({name:sleeve.name,steps:chain});
     }
-    return {format:'strategy-intent',version:2,universe:draft.universe,steps:chain};
+    return chains.length===1?{format:'strategy-intent',version:2,universe:draft.universe,steps:chains[0].steps}:{format:'strategy-intent',version:3,universe:draft.universe,sleeves:chains};
   }
   // An unchanged chain capture is resubmitted as recorded. Saving an unchanged
   // held queue edit keeps its original selection in any format; every other
@@ -462,11 +475,11 @@ const StrategyDraft=(()=>{
     let settings=copy(currentSettings());
     if(held&&active&&unchanged()){const {strategy,...rest}=settings;return {...rest,...copy(restored.selection)};}
     // A copied flat or capture/1 selection runs as a newly captured chain.
-    if(settings.strategy?.version!==2)settings={...Object.fromEntries(Object.entries(settings).filter(([key])=>!flatKeys.has(key))),strategy:placeholder()};
+    if(!(settings.strategy?.version>=2))settings={...Object.fromEntries(Object.entries(settings).filter(([key])=>!flatKeys.has(key))),strategy:placeholder()};
     if(settings.strategy?.format!=='strategy-draft')return settings;
     // Snapshot before the first await; later edits never change this submission.
-    const key=content(),available=copy(compactDetached(detached,settings.strategy.steps)),known=copy(projections);
-    const sources=settings.strategy.steps.map(step=>step.source).filter(source=>source.kind==='formula');
+    const key=content(),chosen=settings.strategy.sleeves.flatMap(sleeve=>sleeve.steps),available=copy(compactDetached(detached,chosen)),known=copy(projections);
+    const sources=chosen.map(step=>step.source).filter(source=>source.kind==='formula');
     const intent=await intentFor(settings.strategy);
     for(const source of sources){
       const exact=exactKey(source);if(known[exact])continue;
@@ -477,7 +490,7 @@ const StrategyDraft=(()=>{
     }
     const prepared=await VariableWorkspace.request('/capture',{intent,market:settings.market,...(sources.length?VariableWorkspace.content(...sources.map(source=>known[exactKey(source)]),{labels:available.flatMap(capture=>capture.presentation)}):{})});
     captured={content:key,strategy:copy(prepared.strategy)};
-    for(const source of sources)if(steps.some(step=>step.source.kind==='formula'&&exactKey(step.source)===exactKey(source)))projections[exactKey(source)]??=known[exactKey(source)];
+    for(const source of sources)if(allSteps().some(step=>step.source.kind==='formula'&&exactKey(step.source)===exactKey(source)))projections[exactKey(source)]??=known[exactKey(source)];
     return {...settings,strategy:prepared.strategy};
   }
   const defaultSteps=()=>[{kind:'filter',source:{kind:'field',field:'market_cap'},op:'ge',threshold:{value:'100',unit:'usd_million'}},
@@ -485,18 +498,24 @@ const StrategyDraft=(()=>{
     {kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:1,rank_to:50}];
   const identify=list=>list.map(step=>({id:'s'+(++nextId),...step}));
   function load(next,catalogValue,builtins,variables){
-    steps=identify(next);restoredCatalog=catalogValue&&copy(catalogValue);recorded=copy(builtins||[]);
+    sleeves=next.map(sleeve=>({name:sleeve.name,steps:identify(sleeve.steps)}));current=0;steps=sleeves[0].steps;restoredCatalog=catalogValue&&copy(catalogValue);recorded=copy(builtins||[]);
     detached=variables?[copy(variables)]:[];projections={};captured=null;restored=null;pendingStep=null;
   }
   function reset(){
-    touch();load(defaultSteps());
+    touch();load([{name:'',steps:defaultSteps()}]);
     document.getElementById('stock-pool').innerHTML='<option value="cached">All stocks with cached prices</option>';document.getElementById('stock-pool').value='cached';
     renderSteps();render();
   }
   function render(){
     EngineControls.sync();
-    const last=steps.findLast(step=>step.kind==='rank'),offline=flat();
-    document.getElementById('strategy-heading').textContent=last?(last.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(last.source):'Add a Rank step';
+    const last=steps.findLast(step=>step.kind==='rank'),offline=flat(),names=sleeves.map(nameOf),total=allSteps().length;
+    document.getElementById('strategy-heading').textContent=sleeves.length>1?'Sleeves '+names.join(' + '):last?(last.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(last.source):'Add a Rank step';
+    // One tab per sleeve. A name field and Remove show when there are two or more sleeves.
+    document.getElementById('sleeve-tabs').innerHTML=names.map((name,index)=>`<button type="button" data-sleeve="${index}" aria-pressed="${index===current}">${safe(name)}</button>`).join('');
+    for(const id of ['add-filter','add-rank'])document.getElementById(id).disabled=total>=50;
+    document.getElementById('sleeve-copy').disabled=total+steps.length>50;
+    document.getElementById('sleeve-edit').hidden=sleeves.length<2;
+    const name=document.getElementById('sleeve-name');name.value=sleeves[current].name;name.placeholder=defaultName(steps,current);
     document.getElementById('auto-run').disabled=!offline;
     document.getElementById('auto-run-note').textContent=offline?'':'Auto-run is paused for this chain. Select Screen latest to calculate.';
     document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
@@ -515,7 +534,7 @@ const StrategyDraft=(()=>{
     let step=steps.find(item=>item.id===role);
     if(!step){
       if(role!=='filter'&&role!=='rank')throw Object.assign(Error('The strategy draft changed. Choose the source again.'),{code:'STALE_DRAFT'});
-      if(steps.length>=50)throw Error('A strategy has at most 50 steps.');
+      if(allSteps().length>=50)throw Error('A strategy has at most 50 steps.');
       // A new filter goes before the last Rank, so it applies before final ranking.
       [step]=identify([role==='rank'?{kind:'rank',direction:'highest',rank_from:1,rank_to:50}:{kind:'filter'}]);
       const last=steps.findLastIndex(item=>item.kind==='rank');
@@ -525,8 +544,8 @@ const StrategyDraft=(()=>{
     step.source=copy(source);
     if(step.kind==='filter')retarget(step);
     if(change.authored)projections[exactKey(source)]={submitted:copy(change.authored),labels:copy(change.capture.presentation)};
-    detached=compactDetached(detached,steps);
-    const selected=new Set(steps.map(item=>item.source).filter(item=>item.kind==='formula').map(exactKey));
+    detached=compactDetached(detached,allSteps());
+    const selected=new Set(allSteps().map(item=>item.source).filter(item=>item.kind==='formula').map(exactKey));
     projections=Object.fromEntries(Object.entries(projections).filter(([key])=>selected.has(key)));
     return after(step.id);
   }
@@ -553,7 +572,7 @@ const StrategyDraft=(()=>{
   }
   function remove(id){
     const at=steps.findIndex(item=>item.id===id);if(at<0)return;
-    steps.splice(at,1);detached=compactDetached(detached,steps);
+    steps.splice(at,1);detached=compactDetached(detached,allSteps());
     after(null);
     const next=steps[Math.min(at,steps.length-1)];
     if(next)focusStep(next.id,'remove');else document.getElementById('add-filter').focus?.();
@@ -562,7 +581,7 @@ const StrategyDraft=(()=>{
   function apply(settings,catalogValue=sourceCatalog(),seed=settings.seed){
     const restoredSteps=fromSettings(settings);
     touch();
-    load(restoredSteps.steps,catalogValue,settings.strategy?.builtins,settings.strategy?.variables);
+    load(restoredSteps.sleeves,catalogValue,settings.strategy?.builtins,settings.strategy?.variables);
     selectMarket(settings.market||'us');
     // Every restored record is a dated test.
     screeningMode='backtest';
@@ -592,7 +611,7 @@ const StrategyDraft=(()=>{
   // settings must not name the next test. A held edit loads its own name.
   function restore(settings,...args){
     if(active)throw refusal();
-    if(fromSettings(settings).steps.length>50)throw Error('This strategy has more than 50 steps as a chain, so it cannot be copied into the builder. Its record was kept.');
+    if(fromSettings(settings).sleeves.flatMap(sleeve=>sleeve.steps).length>50)throw Error('This strategy has more than 50 steps as a chain, so it cannot be copied into the builder. Its record was kept.');
     apply(settings,...args);document.getElementById('queue-name').value='';
   }
   function beginQueuedEdit(id){
@@ -604,13 +623,18 @@ const StrategyDraft=(()=>{
     };
     active=session;touch();return session;
   }
+  // A tab change makes a late choice for the other sleeve stale.
+  function select(index){current=index;steps=sleeves[index].steps;pendingStep=null;after(null);}
+  // A copy repeats the active sleeve's steps, without its typed name, and becomes the active sleeve.
+  function copySleeve(){sleeves.push({name:'',steps:identify(copy(bare(steps)))});select(sleeves.length-1);}
+  function removeSleeve(){sleeves.splice(current,1);detached=compactDetached(detached,allSteps());select(Math.min(current,sleeves.length-1));}
   function describe(role){
     const at=steps.findIndex(item=>item.id===role);
     if(at<0)return {title:'New '+role,use:'Add as '+role};
     return {title:'Step '+(at+1)+' · '+(steps[at].kind==='rank'?'Rank':'Filter'),use:'Update step '+(at+1)};
   }
   return {restore,beginQueuedEdit,catalog,fields,read:()=>({revision,changed,detached:copy(detached)}),formula,describe,
-    patch,edit,commitRange,move,remove,reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,touch,render};
+    patch,edit,commitRange,move,remove,select,copySleeve,removeSleeve,rename:name=>{sleeves[current].name=name;},reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,touch,render};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 
@@ -651,6 +675,13 @@ stepList.addEventListener('click',event=>{
   if(action==='up'||action==='down'){movingStep=step;StrategyDraft.move(step,action==='up'?-1:1);settingsChanged();}
   if(action==='remove'){StrategyDraft.remove(step);settingsChanged();}
 });
+
+// Sleeve tabs. A redrawn tab row gives focus back to the active tab.
+const focusSleeve=()=>document.querySelector('#sleeve-tabs [aria-pressed="true"]').focus();
+document.getElementById('sleeve-tabs').addEventListener('click',event=>{const tab=event.target.closest('[data-sleeve]');if(tab){StrategyDraft.select(+tab.dataset.sleeve);focusSleeve();}});
+document.getElementById('sleeve-copy').addEventListener('click',()=>{StrategyDraft.copySleeve();settingsChanged();});
+document.getElementById('sleeve-remove').addEventListener('click',()=>{StrategyDraft.removeSleeve();settingsChanged();focusSleeve();});
+document.getElementById('sleeve-name').addEventListener('input',event=>StrategyDraft.rename(event.target.value));
 
 const autoRun=document.getElementById('auto-run');
 autoRun.checked=true;

@@ -28,6 +28,13 @@
 .condition-unit{white-space:nowrap;font-size:13px;color:#536762}
 .condition-actions{display:flex;gap:6px;justify-content:flex-end}
 .condition-actions button{min-width:40px;padding:0 10px}
+/* Sleeve tabs above the steps: the pressed tab is the sleeve whose steps show. */
+.sleeve-row,#sleeve-tabs,#sleeve-edit{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sleeve-row{margin-top:10px}
+.sleeve-row button,#sleeve-name{min-height:44px}
+#sleeve-edit{flex-wrap:nowrap;min-width:0}
+#sleeve-edit label{font-size:13px;color:#536762;white-space:nowrap}
+#sleeve-name{flex:0 1 200px;min-width:0}
 #filter-message{min-height:0;margin:4px 0 0;font-size:13px}
 #filter-message.error{color:#a93830}
 /* Narrower pages put the step name and its buttons on one line and the three fields on the next. */

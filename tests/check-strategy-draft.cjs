@@ -15,7 +15,8 @@ const builtins={pe:{display:'multiple'},operating_yield_spread_3y:{display:'perc
 const workspaceModule={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../website/browser/variable-workspace.js'),'utf8'),{module:workspaceModule});
 const catalogBuiltins=[{id:'metric:ev_ebitda:yield',label:'EV/EBITDA yield',unit:'scalar',display:'percent',storage:{kind:'metric',metric:'ev_ebitda',component:'yield',scale:0}},...Object.entries(builtins).map(([id,item])=>({id:'filter:'+id,label:id,...item}))];
 // A controlled capture: filters gain derived threshold evidence, as the server's do.
-const complete=input=>({format:'strategy-capture',version:2,universe:input.intent.universe,steps:input.intent.steps.map(step=>step.kind==='filter'&&typeof step.threshold!=='string'&&!step.submitted_threshold?{...step,submitted_threshold:step.threshold,threshold:{value:step.threshold.value,unit:'canonical'},comparison_value:Number(step.threshold.value),storage_comparison_value:Number(step.threshold.value)}:step),
+const derived=steps=>steps.map(step=>step.kind==='filter'&&typeof step.threshold!=='string'&&!step.submitted_threshold?{...step,submitted_threshold:step.threshold,threshold:{value:step.threshold.value,unit:'canonical'},comparison_value:Number(step.threshold.value),storage_comparison_value:Number(step.threshold.value)}:step);
+const complete=input=>({format:'strategy-capture',version:input.intent.version,universe:input.intent.universe,...(input.intent.sleeves?{sleeves:input.intent.sleeves.map(sleeve=>({name:sleeve.name,steps:derived(sleeve.steps)}))}:{steps:derived(input.intent.steps)}),
   variables:input.submitted?.length?{program:{bundle:{definitions:input.submitted},definitions:input.submitted.map(entry=>({...entry,...entry.definition.output}))},presentation:input.labels}:null,builtins:catalogBuiltins,limits:{bytes:196608}});
 const context=vm.createContext({console,document,StockScreener:require('../website/browser/screener.js'),FilterPicker:{refresh(){}},
  CalendarSettings:{read:()=>({start:'2015-01-02',end:'2015-01-05',months:12}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:node('backtest-engine').value||'original'}),sync(){}},
@@ -219,8 +220,6 @@ if(process.argv[2]==='--builtins-parity'){
  // More than 50 steps refuses the copy and keeps the draft.
  const kept=JSON.stringify(view());
  assert.throws(()=>restore({...flat,filters:Array.from({length:44},()=>({field:'pe',op:'gt',value:1}))}),/more than 50 steps/);
- // The builder cannot open sleeves yet; the copy is refused and the draft kept.
- assert.throws(()=>restore({mode:'custom',strategy:{format:'strategy-capture',version:3,sleeves:[]}}),/has sleeves/);
  assert.equal(JSON.stringify(view()),kept);
 
  // Held queue edits: an unchanged save keeps the original payload, even after
@@ -276,6 +275,52 @@ if(process.argv[2]==='--builtins-parity'){
  const january=await submit();assert.equal(january.mode,'custom');assert.equal(calendarRestores,0);assert(!('first' in january)&&!('last' in january));
  context.CalendarSettings.restore=restoreCalendar;
 
+ // Sleeves. One sleeve is the chain above with one tab, named "Sleeve 1" or after its sector Is filter.
+ const tabs=()=>[...node('sleeve-tabs').innerHTML.matchAll(/aria-pressed="(\w+)">([^<]*)</g)].map(([,pressed,name])=>(pressed==='true'?'*':'')+name);
+ run('StrategyDraft.reset()');assert.deepEqual(tabs(),['*Sleeve 1']);assert.equal(node('sleeve-edit').hidden,true);
+ const sector1=patch('filter',field('sector')),formula1=patch('filter',exact,formulaExtra);edit(formula1,'value','5');
+ edit(sector1,'value','Energy');run('StrategyDraft.render()');assert.deepEqual(tabs(),['*Energy']);
+ // Copy repeats the active sleeve's steps with new IDs; the copy is active and has a name field and Remove.
+ run('StrategyDraft.copySleeve()');
+ assert.deepEqual(tabs(),['Energy','*Energy']);assert.equal(node('sleeve-edit').hidden,false);assert.equal(node('sleeve-name').placeholder,'Energy');assert.equal(node('sleeve-name').value,'');
+ const [,,sector2,formula2]=view().map(row=>row.id);assert(!view().some(row=>[sector1,formula1].includes(row.id)));
+ // The default name follows the sector filter until a name is typed; an empty name is the default again.
+ edit(sector2,'value','Utilities');run('StrategyDraft.render()');assert.deepEqual(tabs(),['Energy','*Utilities']);
+ run("StrategyDraft.rename('Value')");edit(sector2,'value','Finance');run('StrategyDraft.render()');assert.deepEqual(tabs(),['Energy','*Value']);
+ assert.equal(node('strategy-heading').textContent,'Sleeves Energy + Value');assert.equal(run('StrategyDraft.flat()'),null,'Sleeves run on the service');
+ run("StrategyDraft.rename('')");run('StrategyDraft.render()');assert.deepEqual(tabs(),['Energy','*Finance']);run("StrategyDraft.rename('Value')");
+ // A tab change makes a late choice stale.
+ token=revision();run('StrategyDraft.select(0)');assert.throws(()=>run(`StrategyDraft.patch({role:'filter',source:{kind:'builtin',id:'filter:pe'}},${token})`),/draft changed/);run('StrategyDraft.select(1)');
+ // Replacing the copied formula in the active sleeve keeps the first sleeve's capture and projection:
+ // the submission sends version 3 with its exact content and needs no projection request.
+ patch(formula2,builtin('filter:pe'));assert.equal(run('StrategyDraft.read().detached.length'),1);
+ count=requests.length;const sleeved=await submit();assert.equal(requests.length,count+1);
+ const sleevedIntent=requests.at(-1).intent;
+ assert.deepEqual([sleevedIntent.version,...sleevedIntent.sleeves.map(sleeve=>sleeve.name)],[3,'Energy','Value']);
+ assert.deepEqual(sleevedIntent.sleeves.map(sleeve=>sleeve.steps[3].source),[exact,builtin('filter:pe')]);assert.deepEqual(sleevedIntent.sleeves[1].steps[2],{kind:'filter',source:field('sector'),op:'eq',threshold:'Finance'});
+ assert.equal(requests.at(-1).submitted.length,1);assert.equal(requests.at(-1).labels[0].name,'Original submitted label');assert.equal(sleeved.strategy.version,3);
+ // The 50-step limit counts every sleeve: Add and Copy stop at 50.
+ for(let i=0;i<8;i++){assert.equal(node('sleeve-copy').disabled,false);run('StrategyDraft.copySleeve()');}
+ assert.equal(tabs().length,10);assert.equal(node('add-filter').disabled,true);assert.equal(node('sleeve-copy').disabled,true);
+ assert.throws(()=>patch('filter',builtin('filter:pe')),/at most 50 steps/);
+ for(let i=0;i<8;i++)run('StrategyDraft.removeSleeve()');
+ assert.deepEqual(tabs(),['Energy','*Value']);assert.equal(node('add-filter').disabled,false);
+ assert.throws(()=>restore({mode:'custom',strategy:{...sleeved.strategy,sleeves:[...sleeved.strategy.sleeves,{name:'Big',steps:Array(41).fill(sleeved.strategy.sleeves[1].steps[0])}]}}),/more than 50 steps/);
+ // Removing the formula sleeve drops its capture; one sleeve sends a chain again.
+ run('StrategyDraft.select(0);StrategyDraft.removeSleeve()');assert.deepEqual(tabs(),['*Value']);assert.equal(node('sleeve-edit').hidden,true);assert.equal(run('StrategyDraft.read().detached.length'),0);
+ assert.equal((await submit()).strategy.version,2);assert.equal(requests.at(-1).intent.version,2);
+ // A copied sleeve result restores its sleeves. A recorded default name follows its sector filter again; a typed name stays.
+ restore({mode:'custom',strategy:sleeved.strategy});assert.deepEqual(tabs(),['*Energy','Value']);assert.equal(node('sleeve-name').value,'');
+ count=requests.length;assert.deepEqual(copy((await submit()).strategy),copy(sleeved.strategy),'An unchanged copy resubmits its record');assert.equal(requests.length,count);
+ edit(view()[2].id,'value','Materials');run('StrategyDraft.select(1)');assert.deepEqual(tabs(),['Materials','*Value']);
+ assert.deepEqual((await submit()).strategy.sleeves.map(sleeve=>sleeve.name),['Materials','Value']);
+ // A held queue edit of a sleeve test saves unchanged without a request, saves a change to another sleeve as version 3, and ends.
+ context.record={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,strategy:sleeved.strategy};run("var heldSleeves=StrategyDraft.beginQueuedEdit('sleeves');heldSleeves.restore(record)");
+ count=requests.length;assert.deepEqual(copy((await submit(true)).strategy),copy(sleeved.strategy));assert.equal(requests.length,count);
+ run('StrategyDraft.select(1)');edit(view().at(-1).id,'rank_to','7');run('StrategyDraft.select(0)');
+ const heldChange=(await submit(true)).strategy;assert.equal(heldChange.version,3);assert.equal(heldChange.sleeves[1].steps.at(-1).rank_to,7);assert.equal(heldChange.sleeves[0].steps.at(-1).rank_to,50);
+ run('heldSleeves.end()');assert.throws(()=>run('heldSleeves.restore(record)'),/no longer active/);
+
  if(wire){
   useWire=true;
   // Flat settings capture through the actual server as one chain.
@@ -292,6 +337,10 @@ if(process.argv[2]==='--builtins-parity'){
   const large=await submit();
   assert(!('detached' in requests.at(-1)));assert.equal(requests.at(-1).submitted.length,1);
   assert.equal(large.strategy.version,2);assert.deepEqual(large.strategy.steps.at(-1).source,wire.large.selection.ranking.source);assert.deepEqual(copy(large.strategy.variables.presentation),wire.large.variables.presentation);
+  // Two sleeves capture through the actual server as version 3; the other sleeve's formula keeps its content.
+  run('StrategyDraft.copySleeve()');patch(view().at(-1).id,builtin('metric:ev_ebitda:yield'));
+  const wiredSleeves=(await submit()).strategy;assert.deepEqual([wiredSleeves.version,...wiredSleeves.sleeves.map(sleeve=>sleeve.name)],[3,'Sleeve 1','Sleeve 2']);
+  assert.deepEqual(wiredSleeves.sleeves[0].steps.at(-1).source,wire.large.selection.ranking.source);assert.deepEqual(copy(wiredSleeves.variables.presentation),wire.large.variables.presentation);
   // The held original is kept unchanged without a request.
   run("var wired=StrategyDraft.beginQueuedEdit('wired')");context.record={mode:'custom',strategy:wire.large};run('wired.restore(record)');
   count=requests.length;assert.deepEqual(copy((await submit(true)).strategy),wire.large);assert.equal(requests.length,count);run('wired.end()');
@@ -329,5 +378,5 @@ if(process.argv[2]==='--builtins-parity'){
  context.ResultArtifacts.matches=()=>false;assert(resultsLine().startsWith('Settings changed — displayed results do not match the current settings.'));
  run("screeningMode='backtest';setModeVisibility()");assert.equal(node('results-state').hidden,true);
  Object.assign(context.ResultArtifacts,stubs);
- console.log('Passed: default chain and offline shape, both example chains, repeated Ranks, keyboard moves, stale replies, units and equality, flat/capture-1/capture-2 restore with ranks 20–40 and exact spellings, 50-step refusal, held save/cancel, snapshot-before-await, capture-before-ID and copy without calculation.');
+ console.log('Passed: default chain and offline shape, both example chains, repeated Ranks, keyboard moves, stale replies, units and equality, flat/capture-1/capture-2 restore with ranks 20–40 and exact spellings, 50-step refusal, held save/cancel, snapshot-before-await, capture-before-ID copy without calculation, and sleeves: tabs, copy, names, captures across sleeves, the shared 50-step limit, restore and held edits.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

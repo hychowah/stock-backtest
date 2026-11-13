@@ -123,8 +123,7 @@ const BacktestQueue=(()=>{
       const o=record.options,id=escape(record.id),name=escape(record.name),index=waitingIds.indexOf(record.id),dates=CalendarSettings.decode(o);
       const button=(action,label,disabled=false)=>`<button type="button" data-action="${action}" data-id="${id}" ${busy||disabled?'disabled':''}>${label}</button>`;
       let actions='';
-      // The builder cannot open sleeves yet, so a sleeve test offers no Edit settings.
-      if(waiting(record))actions+=(o.strategy?.version===3?'':button('edit','Edit settings'))+button('up','Move up',index===0)+button('down','Move down',index===waitingIds.length-1);
+      if(waiting(record))actions+=button('edit','Edit settings')+button('up','Move up',index===0)+button('down','Move down',index===waitingIds.length-1);
       if(record.state==='held')actions+=button('release','Release hold');
       if(['running','stopping'].includes(record.state))actions+=button('stop','Stop test',record.state==='stopping');
       if(record.state==='complete')actions+=button('open','Open result');
