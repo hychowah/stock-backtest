@@ -37,13 +37,18 @@ button.run-name:hover{text-decoration:underline}
 .run-cagr{color:#192b31}
 li>.run-cagr::before{content:'CAGR ';color:#536762}
 /* The column headings show in the wide layout. In the narrow layout the Saved backtests
-   headings stay as a line of sort buttons. */
-.run-head{min-height:32px;border-top:0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#6b7862}
+   headings stay as a line of sort buttons. The headings sit on a tinted band, like
+   the headings of a table. The negative margin keeps them in line with the row
+   values. The heading that sorts the rows is a dark chip with its direction; the
+   other sort headings show a faint ↕. */
+.run-head{min-height:36px;margin:0 -8px;padding:0 8px;border-top:0;border-radius:6px;background:#e9efe3;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#455a52}
 .run-head>span{display:none}
 .run-head:not(:has(button)){display:none}
 .run-head:has(~ol>.run-empty),.saved-top:has(~ul>.run-empty)>.run-head{display:none}
-.run-head button{border:0;border-radius:4px;background:none;min-height:32px;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;text-align:left;color:#1d5a49;white-space:nowrap}
-.run-head button:hover{text-decoration:underline}
+.run-head button{border:0;border-radius:4px;background:none;min-height:26px;padding:0 6px;font:inherit;letter-spacing:inherit;text-transform:inherit;text-align:left;color:inherit;white-space:nowrap}
+.run-head button:not([aria-current])::after{content:' ↕'/'';opacity:.45}
+.run-head button:hover{background:#d8e3cf}
+.run-head button[aria-current=true]{background:#193e36;color:#fff}
 .run-head>input{order:-1}
 .run-head>span.run-cagr{color:inherit}
 .run-head::before{content:'Sort'}
@@ -92,8 +97,10 @@ li>.run-cagr::before{content:'CAGR ';color:#536762}
 @media(min-width:1300px){
   /* The value columns are in ch, so a wider font cannot cut a date or a time. The
      heading row keeps the row font size on its box, so both resolve ch alike. */
-  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,3fr) minmax(0,1fr) 15ch 22ch 7ch 15ch 11ch;grid-template-rows:minmax(48px,auto);gap:0 8px;padding:0}
-  #workspace-runs .run-head{grid-template-rows:auto;font-size:13px}
+  #workspace-runs .run-row{display:grid;grid-template-columns:20px minmax(0,3fr) minmax(0,1fr) 15ch 22ch 7ch 15ch 11ch;grid-template-rows:minmax(48px,auto);gap:0 12px;padding:0}
+  #workspace-runs .run-head{grid-template-rows:auto;align-items:center;padding:0 8px;font-size:13px}
+  #workspace-runs .run-head button{justify-self:start;margin-left:-6px}
+  #workspace-runs .run-head button.run-cagr{justify-self:end;margin:0 -6px 0 0}
   #workspace-runs .run-head>*{font-size:11px}
   #workspace-runs li>.run-type,#workspace-runs li>.run-window,#workspace-runs li>.run-time{font-size:12px}
   #workspace-runs .run-row>.run-name,#workspace-runs .run-head>span:first-child{grid-column:2}

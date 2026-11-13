@@ -23,7 +23,10 @@ const SavedBacktests=(()=>{
   const when=value=>new Date(value).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   function update(){
     node('saved-count').textContent=records.length+' / '+limit;
-    for(const [key,label] of Object.entries(headings))node('saved-sort-'+key).textContent=label+(sorting.key!==key?'':sorting.direction>0?' ↑':' ↓');
+    for(const [key,label] of Object.entries(headings)){
+      const heading=node('saved-sort-'+key);
+      heading.textContent=label+(sorting.key!==key?'':sorting.direction>0?' ↑':' ↓');heading.ariaCurrent=sorting.key===key?'true':null;
+    }
   }
   // The rows of the market chosen in Runs. List order uses stored summary values
   // only. Names sort with their numbers in number order. A missing CAGR stays last

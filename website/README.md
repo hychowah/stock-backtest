@@ -364,7 +364,8 @@ closed **Exact recorded values** lists every recorded row with its exact text.
 Renaming changes no settings or stored results.
 
 Select the **Name**, **CAGR** or **Saved** heading to sort the saved backtests;
-select it again to reverse the order. Test types and date windows can differ.
+select it again to reverse the order. The heading in use shows dark, with an
+arrow for the direction. Test types and date windows can differ.
 A missing CAGR stays last.
 
 The server saves a complete independent result before it removes a completed

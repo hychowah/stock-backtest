@@ -113,6 +113,7 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  const sort=key=>{node('saved-head').handlers.click({target:{dataset:{sort:key}}});return order();};
  assert.equal(order(),'High Tie Missing Low','Newest saved first');assert.equal(node('saved-sort-saved').textContent,'Saved ↓');
  assert.equal(sort('cagr'),'High Tie Low Missing');assert.equal(node('saved-sort-cagr').textContent,'CAGR ↓');assert.equal(node('saved-sort-saved').textContent,'Saved');
+ assert.equal(node('saved-sort-cagr').ariaCurrent,'true');assert.equal(node('saved-sort-saved').ariaCurrent,null,'Only the sorting heading is marked');
  assert.equal(sort('cagr'),'Low High Tie Missing');assert.equal(node('saved-sort-cagr').textContent,'CAGR ↑');
  assert.equal(sort('name'),'High Low Missing Tie');assert.equal(sort('name'),'Tie Missing Low High');
  assert.equal(sort('saved'),'High Tie Missing Low');assert.equal(sort('saved'),'Low Missing Tie High');
