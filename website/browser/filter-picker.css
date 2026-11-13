@@ -2,7 +2,7 @@
    Rows share the list's columns so Rank and Filter rows line up. Each control
    has its own accessible name, so a row needs no visible field labels. */
 #strategy-steps{display:grid;grid-template-columns:auto minmax(0,2.4fr) minmax(0,1fr) minmax(0,1.4fr) auto;column-gap:10px;list-style:none;margin:6px 0 0;padding:0}
-.condition-row{display:grid;grid-column:1/-1;grid-template-columns:subgrid;align-items:center;padding:4px 0}
+.condition-row{position:relative;display:grid;grid-column:1/-1;grid-template-columns:subgrid;align-items:center;padding:4px 0;border-radius:6px}
 .condition-row select,.condition-row input,.condition-row button{min-height:44px}
 .condition-row>select{width:100%;min-width:0}
 .condition-pending .filter-source{grid-column:2/5}

@@ -116,11 +116,33 @@ function stepRow(row){
   }
   // A compact button keeps its full name as the accessible name and the tooltip.
   const button=(action,label,text=label,disabled=false)=>`<button type="button" id="step-${action}-${key}" data-action="${action}" data-step="${key}" aria-label="${label} ${name.toLowerCase()}" title="${label}"${disabled?' disabled':''}>${text}</button>`;
-  return `<li class="condition-row step-${row.kind}"><span class="step-name">${name}</span>${sourceField(key,row,name)}${middle}${value}<div class="condition-actions">${row.formula?button('edit','Edit formula'):''}${button('up','Move up','↑',row.number===1)}${button('down','Move down','↓',row.last)}${button('remove','Remove','✕')}</div></li>`;
+  return `<li class="condition-row step-${row.kind}" data-row="${key}"><span class="step-name">${name}</span>${sourceField(key,row,name)}${middle}${value}<div class="condition-actions">${row.formula?button('edit','Edit formula'):''}${button('up','Move up','↑',row.number===1)}${button('down','Move down','↓',row.last)}${button('remove','Remove','✕')}</div></li>`;
+}
+// When the steps change, each row slides from its old place to its new one. The
+// step that the user moved lifts, slides and settles with a short tint. A chosen
+// source slides from the New row to its step. A new row fades in. A system that
+// asks for reduced motion gets the plain redraw.
+let movingStep=null;
+function slideSteps(list,before){
+  const moved=movingStep;movingStep=null;
+  const rows=[...list.querySelectorAll('[data-row]')];
+  if(!before.size||!rows.length||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  for(const row of rows){
+    const id=row.dataset.row,start=before.get(id)??before.get('new');
+    if(start===undefined){row.animate([{opacity:0,transform:'translateY(-6px)'},{opacity:1,transform:'none'}],{duration:200,easing:'ease-out'});continue;}
+    const shift=start-row.getBoundingClientRect().top;
+    if(id===moved||!before.has(id))row.animate([
+      {transform:`translateY(${shift}px) scale(1.01)`,boxShadow:'0 0 0 6px #fff,0 14px 30px #102e252e',backgroundColor:'#fff',zIndex:1,easing:'cubic-bezier(.2,.8,.2,1)'},
+      {offset:.5,transform:'none',boxShadow:'0 0 0 6px #e3f0e7,0 2px 6px #102e2514',backgroundColor:'#e3f0e7',zIndex:1},
+      {transform:'none',boxShadow:'0 0 0 6px #e3f0e700,0 0 0 #102e2500',backgroundColor:'#e3f0e700',zIndex:1}],{duration:700});
+    else if(Math.abs(shift)>=1)row.animate([{transform:`translateY(${shift}px)`},{transform:'none'}],{duration:330,easing:'cubic-bezier(.2,.8,.2,1)'});
+  }
 }
 function renderSteps(){
-  const rows=StrategyDraft.view();
-  document.getElementById('strategy-steps').innerHTML=rows.map(stepRow).join('')+(pendingStep?`<li class="condition-row condition-pending"><span class="step-name">New ${pendingStep}</span>${sourceField('new',{kind:pendingStep,label:''},'New '+pendingStep)}<div class="condition-actions"><button type="button" data-action="cancel">Cancel</button></div></li>`:'');
+  const rows=StrategyDraft.view(),list=document.getElementById('strategy-steps');
+  const before=new Map([...list.querySelectorAll('[data-row]')].map(row=>[row.dataset.row,row.getBoundingClientRect().top]));
+  list.innerHTML=rows.map(stepRow).join('')+(pendingStep?`<li class="condition-row condition-pending" data-row="new"><span class="step-name">New ${pendingStep}</span>${sourceField('new',{kind:pendingStep,label:''},'New '+pendingStep)}<div class="condition-actions"><button type="button" data-action="cancel">Cancel</button></div></li>`:'');
+  slideSteps(list,before);
   for(const id of ['add-filter','add-rank'])document.getElementById(id).disabled=rows.length>=50;
   FilterPicker.refresh();
   // Variable rows list their units from the catalog; a restored strategy loads it once.
@@ -625,7 +647,7 @@ stepList.addEventListener('click',event=>{
   stepMessage('');
   if(action==='cancel'){pendingStep=null;renderSteps();document.getElementById('add-filter').focus?.();return;}
   if(action==='edit'){void VariableWorkspace.open(step,StrategyDraft.formula(step));return;}
-  if(action==='up'||action==='down'){StrategyDraft.move(step,action==='up'?-1:1);settingsChanged();}
+  if(action==='up'||action==='down'){movingStep=step;StrategyDraft.move(step,action==='up'?-1:1);settingsChanged();}
   if(action==='remove'){StrategyDraft.remove(step);settingsChanged();}
 });
 
