@@ -151,7 +151,7 @@ exit rules and its limits.
 | `backtest/` | Financial rules, data preparation, selection, the calculation engine and the queue and library |
 | `website/` | Browser interface, page builder and local HTTP server |
 | `scripts/` | Command-line preparation and the development check |
-| `crates/` | The Rust program that will replace the Python product |
+| `crates/` | The Rust program that will replace the Python product; [command-line guide](docs/command-line.md) |
 | `web/` | The TypeScript website that will replace the browser interface |
 | `fixtures/` | Number test vectors from the Python product and a fictional dataset with expected tables, for checking the Rust program; saved-test stores in the Python product's old formats, with their expected conversion |
 | `proof/` | Scripts that export the Python product's results for comparison with the Rust program; the converter of saved tests, the queue and the variable library into strategy files, and its proof against the original runs |
