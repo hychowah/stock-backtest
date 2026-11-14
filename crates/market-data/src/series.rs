@@ -225,7 +225,7 @@ impl<'a> Series<'a> {
     /// The SPY close a book on `day` uses, with its day: US: the close of
     /// `day` itself; foreign: the last close strictly before `day`, at most 7
     /// days earlier.
-    #[expect(dead_code, reason = "the valuation fold and the screen are its first callers")]
+    #[expect(dead_code, reason = "the screen is its first caller")]
     pub(crate) fn spy(&self, day: Day) -> Option<(Day, f64)> {
         let at = if self.market == Market::Us {
             self.spy_day.binary_search(&day).ok()?
@@ -247,7 +247,6 @@ impl<'a> Series<'a> {
     /// The USD value of one unit of `currency` on `day`, with the fixing's
     /// day: the last valid fixing strictly before `day`, at most 7 days old.
     /// USD is 1 on `day`; a currency without a file, or a gap, is `None`.
-    #[expect(dead_code, reason = "the foreign reports and the valuation fold are its first callers")]
     pub(crate) fn fx(&self, currency: &str, day: Day) -> Option<(Day, f64)> {
         if currency == "USD" {
             return Some((day, 1.0));

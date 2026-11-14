@@ -79,7 +79,6 @@ pub(crate) fn read(raw: &Raw, symbol: &str, currency: &str, sessions: Option<&[D
 
 impl PriceRows {
     /// The lookups over these rows.
-    #[expect(dead_code, reason = "the valuation fold is its first caller")]
     pub(crate) fn view(&self) -> Prices<'_> {
         Prices {
             day: &self.day,
@@ -164,12 +163,12 @@ impl<'a> PriceColumns<'a> {
 }
 
 /// Which way [`Prices::price`] looks from its day.
-#[expect(dead_code, reason = "the valuation fold and the screen are its first users")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Direction {
     /// The last close on or before the day.
     OnOrBefore,
     /// The first close on or after the day.
+    #[expect(dead_code, reason = "the screen is its first user")]
     OnOrAfter,
 }
 
@@ -183,7 +182,6 @@ pub(crate) struct Prices<'a> {
     volume_reason: &'a [u8],
 }
 
-#[expect(dead_code, reason = "the valuation fold and the screen are their first callers")]
 impl<'a> Prices<'a> {
     /// The valid close nearest to `day` in `direction` (`day` itself
     /// included), with its day; `None` when there is none, or when it lies
@@ -207,6 +205,7 @@ impl<'a> Prices<'a> {
     }
 
     /// The valid volumes from `start` through `end`, in day order.
+    #[expect(dead_code, reason = "the built-ins are its first caller")]
     pub(crate) fn volumes(&self, start: Day, end: Day) -> impl Iterator<Item = f64> + 'a {
         let Prices { day, volume, volume_reason, .. } = *self;
         let range = day.partition_point(|&d| d < start)..day.partition_point(|&d| d <= end);

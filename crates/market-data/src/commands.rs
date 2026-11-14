@@ -2,12 +2,14 @@
 //! arguments into a request, calls the handler and prints the reply as JSON.
 //! A handler checks its request once, at the start; an [`Error`] stops it.
 
+use crate::annual::{self, AnnualColumns, AnnualRows};
 use crate::companies::{self, Company, CompanyId};
 use crate::prices::{self, PriceColumns, PriceRows};
 use crate::raw::Raw;
-use crate::reports::{self, Reported};
+use crate::reports::{self, ReportColumns, ReportRows, Reported};
 use crate::series::{self, Series};
 use crate::store::{GenerationWriter, Lock};
+use crate::valuation::{self, SumRows, ValuationColumns};
 use crate::{Day, Error, Market, MarketData, PROGRAM};
 use chrono::{DateTime, FixedOffset};
 use rayon::prelude::*;
@@ -123,9 +125,9 @@ fn build(
     companies::write(out, &listed, &priced, &order)?;
     series.write(out)?;
     prices::write(out, &parts.iter().map(|p| p.prices.as_ref()).collect::<Vec<_>>())?;
-    if let Some(reported) = &reported {
-        reported.write(out)?;
-    }
+    reports::write(out, market, &parts.iter().map(|p| &p.reports).collect::<Vec<_>>())?;
+    annual::write(out, &parts.iter().map(|p| p.annual.as_ref()).collect::<Vec<_>>())?;
+    valuation::write(out, &parts.iter().map(|p| &p.sums).collect::<Vec<_>>())?;
     Ok((listed.len(), view.sessions().to_vec()))
 }
 
@@ -134,11 +136,18 @@ struct CompanyParts {
     /// `None` when the company has no saved price file, or lies outside the
     /// market's price scope (US: the reported set).
     prices: Option<PriceRows>,
+    reports: ReportRows,
+    /// `None` for an unreported US company: the US reads statements of the
+    /// reported set only.
+    annual: Option<AnnualRows>,
+    sums: SumRows,
 }
 
 /// The per-company build step: one company's parts from its own raw files,
-/// the market's series and, in the US, the reported set. Companies are built
-/// in parallel. An unreadable price file stops preparation.
+/// the market's series and, in the US, the reported set: prices, reports
+/// (foreign: the anchors from its statements), statements, then the
+/// valuation fold over them. Companies are built in parallel. An unreadable
+/// price file stops preparation.
 fn company(
     raw: &Raw,
     market: Market,
@@ -147,12 +156,26 @@ fn company(
     series: &Series<'_>,
     reported: Option<&Reported>,
 ) -> Result<CompanyParts, Error> {
-    let prices = match market {
-        Market::Us if !reported.is_some_and(|r| r.is_reported(c)) => None,
-        Market::Us => prices::read(raw, &listing.symbol, market.currency(), None)?,
-        _ => prices::read(raw, &listing.symbol, &listing.currency, Some(series.sessions()))?,
+    let symbol = &listing.symbol;
+    let (prices, annual, reports) = match reported {
+        Some(reported) if !reported.is_reported(c) => (None, None, ReportRows::us(&[])),
+        Some(reported) => {
+            let prices = prices::read(raw, symbol, market.currency(), None)?;
+            (prices, Some(annual::read(raw, market, symbol)?), ReportRows::us(reported.reports(c)))
+        }
+        None => {
+            let sessions = series.sessions();
+            let prices = prices::read(raw, symbol, &listing.currency, Some(sessions))?;
+            let annual = annual::read(raw, market, symbol)?;
+            let reports = ReportRows::foreign(raw, market, symbol, &listing.currency, &annual.view(), sessions)?;
+            (prices, Some(annual), reports)
+        }
     };
-    Ok(CompanyParts { prices })
+    let sums = match (&prices, &annual) {
+        (Some(prices), Some(annual)) => valuation::fold(&prices.view(), &reports.view(&listing.currency), &annual.view(), series),
+        _ => SumRows::default(),
+    };
+    Ok(CompanyParts { prices, reports, annual, sums })
 }
 
 /// Whether the market has raw data: its universe file exists. The US files
@@ -239,9 +262,9 @@ pub struct ExportReply {
 
 /// Writes the market's current generation as keyed tables (`tables` crate
 /// format) into `out`, with the oracle's table and field names: `companies`,
-/// `sessions`, `market_days`, `fx_days` (Hong Kong and Tokyo), `stock_days`
-/// and, for the US, `reports`. Fails when the market is not prepared or `out`
-/// exists and is not empty.
+/// `sessions`, `market_days`, `fx_days` (Hong Kong and Tokyo), `stock_days`,
+/// `reports`, `annual_facts`, `annual_metadata` and `valuation_sums`. Fails
+/// when the market is not prepared or `out` exists and is not empty.
 pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error> {
     let data = MarketData::open(home, request.market)?;
     let m = data.manifest();
@@ -260,9 +283,11 @@ pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error
         write("fx_days", series.export_fx_days(&mut writer))?;
     }
     write("stock_days", PriceColumns::open(generation).export(&companies, &mut writer))?;
-    if request.market == Market::Us {
-        write("reports", reports::export_us(generation, &companies, &mut writer))?;
-    }
+    write("reports", ReportColumns::open(generation).export(&mut writer))?;
+    let annual = AnnualColumns::open(generation);
+    write("annual_facts", annual.export_facts(&companies, &mut writer))?;
+    write("annual_metadata", annual.export_metadata(&companies, &mut writer))?;
+    write("valuation_sums", ValuationColumns::open(generation).export(&companies, &mut writer))?;
     writer.finish().map_err(fail)?;
     Ok(ExportReply { tables })
 }

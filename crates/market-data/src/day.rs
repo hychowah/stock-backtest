@@ -76,7 +76,8 @@ impl fmt::Display for Day {
     }
 }
 
-fn days_in_month(year: i32, month: u32) -> u32 {
+/// The number of days of a month.
+pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
     match month {
         2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
         2 => 28,

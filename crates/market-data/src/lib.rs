@@ -4,6 +4,7 @@
 //! Only this crate opens store files. The `data` commands live in
 //! [`commands`]; the store layout and its publish rules in [`store`].
 
+mod annual;
 pub mod commands;
 mod companies;
 mod day;
@@ -14,6 +15,7 @@ mod raw;
 mod reports;
 mod series;
 pub mod store;
+mod valuation;
 
 pub use companies::{Companies, CompanyId};
 pub use day::Day;

@@ -61,6 +61,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::marker::PhantomData;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 #[cfg(not(target_endian = "little"))]
@@ -68,7 +69,7 @@ compile_error!("the prepared store maps little-endian column files as native val
 
 /// The layout version this program writes and reads. Raise it whenever the
 /// meaning, type or name of any column changes.
-pub const FORMAT: u32 = 2;
+pub const FORMAT: u32 = 3;
 
 /// A type a column holds: plain values for which every bit pattern is valid.
 /// Implemented for `i32`, [`Day`], `f64`, `u8`, `u32` and `u64` only.
@@ -358,6 +359,34 @@ impl<'a> Text<'a> {
     pub fn get(&self, i: usize) -> &'a str {
         let range = self.offsets[i] as usize..self.offsets[i + 1] as usize;
         std::str::from_utf8(&self.bytes[range]).expect("text columns hold UTF-8")
+    }
+
+    /// Texts `range` of this column, numbered from 0: one company's part of
+    /// a per-company text column.
+    pub(crate) fn slice(&self, range: Range<usize>) -> Text<'a> {
+        Text { bytes: self.bytes, offsets: &self.offsets[range.start..range.end + 1] }
+    }
+}
+
+/// Texts collected in memory in the layout of a text column, so that data
+/// being prepared reads through the same [`Text`] as a mapped column.
+pub(crate) struct Texts {
+    bytes: Vec<u8>,
+    offsets: Vec<u64>,
+}
+
+impl Texts {
+    pub(crate) fn new() -> Texts {
+        Texts { bytes: Vec::new(), offsets: vec![0] }
+    }
+
+    pub(crate) fn push(&mut self, text: &str) {
+        self.bytes.extend_from_slice(text.as_bytes());
+        self.offsets.push(self.bytes.len() as u64);
+    }
+
+    pub(crate) fn view(&self) -> Text<'_> {
+        Text { bytes: &self.bytes, offsets: &self.offsets }
     }
 }
 

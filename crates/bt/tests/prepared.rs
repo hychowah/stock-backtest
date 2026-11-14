@@ -9,9 +9,9 @@ use std::process::Command;
 /// The tables `bt data export` writes, per market. A kind of data adds its
 /// tables here when it is built.
 const TABLES: [(&str, &[&str]); 3] = [
-    ("us", &["companies", "sessions", "market_days", "stock_days", "reports"]),
-    ("hk", &["companies", "sessions", "market_days", "fx_days", "stock_days"]),
-    ("jp", &["companies", "sessions", "market_days", "fx_days", "stock_days"]),
+    ("us", &["companies", "sessions", "market_days", "stock_days", "reports", "annual_facts", "annual_metadata", "valuation_sums"]),
+    ("hk", &["companies", "sessions", "market_days", "fx_days", "stock_days", "reports", "annual_facts", "annual_metadata", "valuation_sums"]),
+    ("jp", &["companies", "sessions", "market_days", "fx_days", "stock_days", "reports", "annual_facts", "annual_metadata", "valuation_sums"]),
 ];
 
 /// The as-of time of the expected tables: the Hong Kong session of the last

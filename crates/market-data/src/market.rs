@@ -1,6 +1,8 @@
-//! The markets: which saved listings each admits, its currency, and which
-//! index days are completed local sessions at an as-of time.
+//! The markets: which saved listings each admits, its currency, which index
+//! days are completed local sessions at an as-of time, and when a report
+//! becomes known.
 
+use crate::day::days_in_month;
 use crate::{Day, Error};
 use chrono::{DateTime, Datelike, FixedOffset, TimeDelta, Timelike};
 use serde::{Deserialize, Serialize};
@@ -74,6 +76,59 @@ impl Market {
         let local = as_of.naive_utc() + TimeDelta::hours(offset);
         let today = Day::from_ymd(local.year(), local.month(), local.day()).expect("an as-of date in years 1 to 9999");
         day < today || (day == today && (local.hour(), local.minute()) >= closing)
+    }
+
+    /// When an annual statement of fiscal date `fiscal` becomes known, and
+    /// why (`market.available`). US: 90 days after the fiscal date, whatever
+    /// the publication date. Hong Kong and Tokyo: `publication`, the
+    /// statement's one publication date, when it is later than the fiscal
+    /// date; otherwise 4 (Hong Kong) or 3 (Tokyo) months after the fiscal
+    /// date, on the same day of the month or the month's last day.
+    pub(crate) fn available(self, fiscal: Day, publication: Option<Day>) -> (Day, Basis) {
+        let months = match self {
+            Market::Us => return (Day(fiscal.0 + 90), Basis::FiscalPlus90),
+            Market::Hk => 4,
+            Market::Jp => 3,
+        };
+        if let Some(published) = publication.filter(|&p| p > fiscal) {
+            return (published, Basis::PublicationDate);
+        }
+        let (year, month, day) = fiscal.ymd();
+        let absolute = year * 12 + month as i32 - 1 + months;
+        let (year, month) = (absolute.div_euclid(12), absolute.rem_euclid(12) as u32 + 1);
+        let known = Day::from_ymd(year, month, day.min(days_in_month(year, month))).expect("a known date in years 1 to 9999");
+        (known, Basis::FiscalPlusMonths)
+    }
+}
+
+/// Why a statement is known on its known date ([`Market::available`]). The
+/// prepared store holds the code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum Basis {
+    FiscalPlus90 = 0,
+    PublicationDate = 1,
+    FiscalPlusMonths = 2,
+}
+
+impl Basis {
+    /// The basis of a stored code.
+    pub(crate) fn from_code(code: u8) -> Basis {
+        match code {
+            0 => Basis::FiscalPlus90,
+            1 => Basis::PublicationDate,
+            2 => Basis::FiscalPlusMonths,
+            _ => panic!("unknown basis code {code}"),
+        }
+    }
+
+    /// The oracle's text.
+    pub(crate) fn text(self) -> &'static str {
+        match self {
+            Basis::FiscalPlus90 => "fiscal-plus-90",
+            Basis::PublicationDate => "publication-date",
+            Basis::FiscalPlusMonths => "fiscal-plus-months",
+        }
     }
 }
 

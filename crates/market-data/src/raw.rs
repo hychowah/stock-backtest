@@ -57,6 +57,18 @@ impl Raw {
         self.root.join("px").join(file_name(symbol))
     }
 
+    /// The unadjusted (native) price file of a Hong Kong or Tokyo company,
+    /// `px-full/<symbol>.json`.
+    pub(crate) fn native(&self, symbol: &str) -> PathBuf {
+        self.root.join("px-full").join(file_name(symbol))
+    }
+
+    /// A company's saved annual statements of one endpoint, such as
+    /// `financial-inputs/income-statement/<symbol>.json`.
+    pub(crate) fn statement(&self, endpoint: &str, symbol: &str) -> PathBuf {
+        self.root.join("financial-inputs").join(endpoint).join(file_name(symbol))
+    }
+
     pub(crate) fn spy(&self) -> PathBuf {
         self.root.join("spy-div.json")
     }
@@ -158,6 +170,18 @@ impl Reason {
     /// The reason's code in a reason column. 0 means valid.
     pub(crate) fn code(state: State) -> u8 {
         state.err().map_or(0, |reason| reason as u8)
+    }
+
+    /// The reason of a stored code other than 0.
+    pub(crate) fn from_code(code: u8) -> Reason {
+        match code {
+            1 => Reason::Missing,
+            2 => Reason::Invalid,
+            3 => Reason::Conflicting,
+            4 => Reason::NonUsd,
+            5 => Reason::InconsistentSeries,
+            _ => panic!("unknown reason code {code}"),
+        }
     }
 
     /// The reason text of a code, or `None` for 0 (valid).
