@@ -26,6 +26,11 @@ impl Day {
         Some(Day(era * 146_097 + doe - 719_468))
     }
 
+    /// The day of the week, as Python's `date.weekday()`: Monday is 0.
+    pub(crate) fn weekday(self) -> i32 {
+        (self.0 + 3).rem_euclid(7)
+    }
+
     /// Reads ISO text, exactly `YYYY-MM-DD`; `None` for any other text or an
     /// impossible date.
     pub fn parse(text: &str) -> Option<Day> {
@@ -48,7 +53,8 @@ impl Day {
         Day::from_ymd(year, m, d.min(days_in_month(year, m))).expect("anniversary outside years 1 to 9999")
     }
 
-    fn ymd(self) -> (i32, u32, u32) {
+    /// The year, month and day.
+    pub(crate) fn ymd(self) -> (i32, u32, u32) {
         // Civil from days (H. Hinnant), the inverse of `from_ymd`.
         let z = self.0 + 719_468;
         let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));

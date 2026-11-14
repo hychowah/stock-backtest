@@ -5,11 +5,17 @@
 //! [`commands`]; the store layout and its publish rules in [`store`].
 
 pub mod commands;
+mod companies;
 mod day;
 mod error;
 mod market;
+mod prices;
+mod raw;
+mod reports;
+mod series;
 pub mod store;
 
+pub use companies::{Companies, CompanyId};
 pub use day::Day;
 pub use error::Error;
 pub use market::Market;
@@ -38,5 +44,16 @@ impl MarketData {
     /// The generation's record: its number, as-of time and program.
     pub fn manifest(&self) -> &Manifest {
         self.generation.manifest()
+    }
+
+    /// The market's sessions, ascending: US the SPY days, Hong Kong and Tokyo
+    /// the completed local sessions at the as-of time.
+    pub fn sessions(&self) -> &[Day] {
+        series::Series::open(&self.generation).sessions()
+    }
+
+    /// The market's companies, in symbol order.
+    pub fn companies(&self) -> Companies<'_> {
+        Companies::open(&self.generation)
     }
 }

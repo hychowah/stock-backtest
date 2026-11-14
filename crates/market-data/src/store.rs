@@ -68,7 +68,7 @@ compile_error!("the prepared store maps little-endian column files as native val
 
 /// The layout version this program writes and reads. Raise it whenever the
 /// meaning, type or name of any column changes.
-pub const FORMAT: u32 = 1;
+pub const FORMAT: u32 = 2;
 
 /// A type a column holds: plain values for which every bit pattern is valid.
 /// Implemented for `i32`, [`Day`], `f64`, `u8`, `u32` and `u64` only.
