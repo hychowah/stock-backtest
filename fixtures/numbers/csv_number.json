@@ -1,0 +1,23 @@
+{"behavior": "csv_number", "python": "3.14", "source": "backtest.application.result_exports.number", "cases": [
+{"value": 0.0, "text": "0"},
+{"value": -0.0, "text": "0"},
+{"value": 1.0, "text": "1"},
+{"value": -1.5, "text": "-1.5"},
+{"value": 0.1, "text": "0.1"},
+{"value": 100.0, "text": "100"},
+{"value": 123.456, "text": "123.456"},
+{"value": -1.234e-06, "text": "-0.000001234"},
+{"value": 0.000123, "text": "0.000123"},
+{"value": 1e-06, "text": "0.000001"},
+{"value": 1e-07, "text": "1e-7"},
+{"value": 1.5e-07, "text": "1.5e-7"},
+{"value": 9007199254740992.0, "text": "9007199254740992"},
+{"value": 1e+20, "text": "100000000000000000000"},
+{"value": 1.2345678901234568e+20, "text": "123456789012345680000"},
+{"value": 1e+21, "text": "1e+21"},
+{"value": 1.5e+21, "text": "1.5e+21"},
+{"value": 1e+300, "text": "1e+300"},
+{"value": 5e-324, "text": "5e-324"},
+{"value": 1.7976931348623157e+308, "text": "1.7976931348623157e+308"},
+{"value": 4294967295.0, "text": "4294967295"}
+]}

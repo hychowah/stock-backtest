@@ -1,0 +1,18 @@
+{"behavior": "statistics", "python": "3.14", "source": "statistics.mean, statistics.median, statistics.pstdev, min and max, as called in backtest.engines.original.robustness.distribution (statistics.mean also in backtest.financial.metrics, statistics.median also in backtest.application.result_curves)", "cases": [
+{"values": [1.0], "mean": 1.0, "median": 1.0, "pstdev": 0.0, "min": 1.0, "max": 1.0},
+{"values": [-0.0], "mean": 0.0, "median": -0.0, "pstdev": 0.0, "min": -0.0, "max": -0.0},
+{"values": [-0.0, -0.0], "mean": 0.0, "median": -0.0, "pstdev": 0.0, "min": -0.0, "max": -0.0},
+{"values": [0.0, -0.0, 1.0], "mean": 0.3333333333333333, "median": -0.0, "pstdev": 0.4714045207910317, "min": 0.0, "max": 1.0},
+{"values": [-0.0, 0.0, 1.0], "mean": 0.3333333333333333, "median": 0.0, "pstdev": 0.4714045207910317, "min": -0.0, "max": 1.0},
+{"values": [0.0, -0.0], "mean": 0.0, "median": 0.0, "pstdev": 0.0, "min": 0.0, "max": 0.0},
+{"values": [-0.0, 0.0], "mean": 0.0, "median": 0.0, "pstdev": 0.0, "min": -0.0, "max": -0.0},
+{"values": [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], "mean": 0.1, "median": 0.1, "pstdev": 0.0, "min": 0.1, "max": 0.1},
+{"values": [0.1, 0.2, 0.3], "mean": 0.2, "median": 0.2, "pstdev": 0.0816496580927726, "min": 0.1, "max": 0.3},
+{"values": [1.0, 2.0, 3.0, 4.0], "mean": 2.5, "median": 2.5, "pstdev": 1.118033988749895, "min": 1.0, "max": 4.0},
+{"values": [3.0, 1.0, 2.0], "mean": 2.0, "median": 2.0, "pstdev": 0.816496580927726, "min": 1.0, "max": 3.0},
+{"values": [1e+308, 1e+308], "mean": 1e+308, "median": "Infinity", "pstdev": 0.0, "min": 1e+308, "max": 1e+308},
+{"values": [1e+16, 1.0, -1e+16], "mean": 0.3333333333333333, "median": 1.0, "pstdev": 8164965809277260.0, "min": -1e+16, "max": 1e+16},
+{"values": [1e-310, 2e-310, 4e-310], "mean": 2.3333333333333e-310, "median": 2e-310, "pstdev": 1.24721912892465e-310, "min": 1e-310, "max": 4e-310},
+{"values": [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0], "mean": 5.0, "median": 5.0, "pstdev": 0.0, "min": 5.0, "max": 5.0},
+{"values": [0.1213, 0.0874, 0.1532, -0.0215, 0.0991, 0.1103, 0.0874, 0.1678, 0.0432, 0.1287, 0.0655, 0.1419, 0.0912, 0.1056, -0.0047, 0.1201, 0.1388, 0.0779, 0.1124, 0.0968, 0.1501, 0.0823, 0.1342, 0.1009], "mean": 0.09957916666666666, "median": 0.10325000000000001, "pstdev": 0.04457460019606333, "min": -0.0215, "max": 0.1678}
+]}

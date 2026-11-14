@@ -1,0 +1,21 @@
+{"behavior": "canonical", "python": "3.14", "source": "backtest.application.scalar_execution._canonical: float(Decimal(str(value)).scaleb(scale))", "cases": [
+{"value": 0.1, "scale": 6, "result": 100000.0},
+{"value": 0.1, "scale": -2, "result": 0.001},
+{"value": 0.07, "scale": -2, "result": 0.0007},
+{"value": 1.1, "scale": -2, "result": 0.011},
+{"value": 33.333333333333336, "scale": -2, "result": 0.33333333333333337},
+{"value": 123.456, "scale": 6, "result": 123456000.0},
+{"value": 2.5e-08, "scale": 6, "result": 0.025},
+{"value": 1234567.891, "scale": 6, "result": 1234567891000.0},
+{"value": 0.3, "scale": 0, "result": 0.3},
+{"value": -0.0, "scale": 6, "result": -0.0},
+{"value": -0.0, "scale": -2, "result": -0.0},
+{"value": -0.0, "scale": 0, "result": -0.0},
+{"value": 0.0, "scale": -2, "result": 0.0},
+{"value": 1e+308, "scale": 6, "result": null},
+{"value": 1.7976931348623157e+308, "scale": -2, "result": 1.7976931348623156e+306},
+{"value": 5e-324, "scale": -2, "result": 0.0},
+{"value": 1e-320, "scale": 6, "result": 1e-314},
+{"value": "Infinity", "scale": 0, "result": null},
+{"value": "NaN", "scale": 6, "result": null}
+]}

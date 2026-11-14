@@ -1,0 +1,22 @@
+{"behavior": "sqlite_real", "python": "3.14", "source": "a REAL lane written by backtest.inputs.book_store.store and read by book_store.lanes", "cases": [
+{"value": 0.0, "stored": 0.0},
+{"value": -0.0, "stored": 0.0},
+{"value": 1.0, "stored": 1.0},
+{"value": -1.5, "stored": -1.5},
+{"value": 0.1, "stored": 0.1},
+{"value": 5e-324, "stored": 5e-324},
+{"value": 2.2250738585072014e-308, "stored": 2.2250738585072014e-308},
+{"value": 1e-300, "stored": 1e-300},
+{"value": 123456789.0, "stored": 123456789.0},
+{"value": -123456789.0, "stored": -123456789.0},
+{"value": 9007199254740992.0, "stored": 9007199254740992.0},
+{"value": 1000000000000000.0, "stored": 1000000000000000.0},
+{"value": 1e+18, "stored": 1e+18},
+{"value": 9.223372036854776e+18, "stored": 9.223372036854776e+18},
+{"value": -9.223372036854776e+18, "stored": -9.223372036854776e+18},
+{"value": 1e+19, "stored": 1e+19},
+{"value": 1.7976931348623157e+308, "stored": 1.7976931348623157e+308},
+{"value": "Infinity", "stored": "Infinity"},
+{"value": "-Infinity", "stored": "-Infinity"},
+{"value": "NaN", "stored": null}
+]}
