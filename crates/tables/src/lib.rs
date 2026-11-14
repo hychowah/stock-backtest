@@ -1,4 +1,5 @@
-//! Keyed tables: an exact way to compare two exports of the same data.
+//! Keyed tables: an exact way to write and compare two exports of the same
+//! data. [`Writer`] writes the format below and [`compare`] reads it.
 //!
 //! # Format
 //!
@@ -45,8 +46,8 @@ use serde_json::{Map, Value};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Lines};
-use std::path::Path;
+use std::io::{BufRead, BufReader, BufWriter, Lines, Write};
+use std::path::{Path, PathBuf};
 
 /// How many differing examples the report keeps for each field.
 const EXAMPLES: usize = 5;
@@ -256,4 +257,123 @@ fn relative(x: Option<&Value>, y: Option<&Value>) -> Option<f64> {
     let (x, y) = (x.as_f64().unwrap(), y.as_f64().unwrap());
     let gap = (y - x).abs();
     Some(if gap == 0.0 { 0.0 } else { gap / x.abs() })
+}
+
+/// Writes one export folder in the format above. Start each table with
+/// [`table`](Self::table), write and finish its rows, then [`finish`](Self::finish)
+/// the export to write `manifest.json`. What it writes, [`compare`] reads.
+pub struct Writer {
+    dir: PathBuf,
+    producer: String,
+    settings: Value,
+    tables: Map<String, Value>,
+}
+
+impl Writer {
+    /// Starts an export in `dir`, creating the folder when missing. Fails when
+    /// the folder exists and is not empty, so no table of an earlier export
+    /// can stay beside this one.
+    pub fn create(dir: &Path, producer: &str, settings: Value) -> Result<Writer, String> {
+        if std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some()) {
+            return Err(format!("the export folder is not empty: {}", dir.display()));
+        }
+        std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        Ok(Writer { dir: dir.to_path_buf(), producer: producer.to_string(), settings, tables: Map::new() })
+    }
+
+    /// Starts table `name` with key fields `keys`, in `<name>.jsonl`.
+    pub fn table(&mut self, name: &str, keys: &[&str]) -> Result<Table, String> {
+        let path = self.dir.join(format!("{name}.jsonl"));
+        let file = File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+        self.tables.insert(name.to_string(), keys.iter().map(|k| Value::from(*k)).collect());
+        let keys = keys.iter().map(|k| k.to_string()).collect();
+        Ok(Table { path, keys, out: BufWriter::new(file), line: Vec::new(), last: None, rows: 0 })
+    }
+
+    /// Writes `manifest.json`, which lists every table started.
+    pub fn finish(self) -> Result<(), String> {
+        let manifest = serde_json::json!({ "producer": self.producer, "settings": self.settings, "tables": self.tables });
+        let path = self.dir.join("manifest.json");
+        let text = serde_json::to_string_pretty(&manifest).expect("a manifest is JSON") + "\n";
+        std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))
+    }
+}
+
+/// One table being written. Rows must come in ascending, unique key order;
+/// a row out of order, or whose key field is missing, null or a boolean, is
+/// an error that names the file.
+pub struct Table {
+    path: PathBuf,
+    keys: Vec<String>,
+    out: BufWriter<File>,
+    line: Vec<u8>,
+    last: Option<Vec<Value>>,
+    rows: u64,
+}
+
+/// One value of a row. Numbers are written in the shortest spelling that
+/// reads back to the same binary64 value; non-finite numbers as the strings
+/// the format names.
+#[derive(Debug, Clone, Copy)]
+pub enum Cell<'a> {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Number(f64),
+    Text(&'a str),
+}
+
+impl Table {
+    /// Writes one row: its fields in the given order. An integer wider than
+    /// 53 bits is an error: the format holds it only as text.
+    pub fn row(&mut self, fields: &[(&str, Cell<'_>)]) -> Result<(), String> {
+        let at = |msg: &str| format!("{}:{}: {msg}", self.path.display(), self.rows + 1);
+        if let Some((name, _)) = fields.iter().find(|(_, cell)| matches!(cell, Cell::Int(n) if n.unsigned_abs() > 1 << 53)) {
+            return Err(at(&format!("field {name}: integer wider than 53 bits: write it as text")));
+        }
+        let mut key = Vec::with_capacity(self.keys.len());
+        for name in &self.keys {
+            let value = match fields.iter().find(|(field, _)| field == name).map(|(_, cell)| cell) {
+                Some(Cell::Int(n)) => Value::from(*n),
+                Some(Cell::Number(x)) if x.is_finite() => Value::from(*x),
+                Some(Cell::Text(s)) => Value::from(*s),
+                _ => return Err(at(&format!("key field {name} is missing, null or not a number or text"))),
+            };
+            key.push(value);
+        }
+        if self.last.as_deref().is_some_and(|last| compare_keys(last, &key) != Ordering::Less) {
+            return Err(at("the rows are not in ascending key order"));
+        }
+        self.last = Some(key);
+        self.line.clear();
+        self.line.push(b'{');
+        for (i, (name, cell)) in fields.iter().enumerate() {
+            if i > 0 {
+                self.line.push(b',');
+            }
+            serde_json::to_writer(&mut self.line, name).expect("writing to memory");
+            self.line.push(b':');
+            match *cell {
+                Cell::Null => self.line.extend_from_slice(b"null"),
+                Cell::Bool(b) => serde_json::to_writer(&mut self.line, &b).expect("writing to memory"),
+                Cell::Int(n) => serde_json::to_writer(&mut self.line, &n).expect("writing to memory"),
+                Cell::Number(x) if x.is_nan() => self.line.extend_from_slice(b"\"NaN\""),
+                Cell::Number(x) if x.is_infinite() => {
+                    self.line.extend_from_slice(if x > 0.0 { b"\"Infinity\"" } else { b"\"-Infinity\"" })
+                }
+                Cell::Number(x) => serde_json::to_writer(&mut self.line, &x).expect("writing to memory"),
+                Cell::Text(s) => serde_json::to_writer(&mut self.line, s).expect("writing to memory"),
+            }
+        }
+        self.line.extend_from_slice(b"}\n");
+        self.out.write_all(&self.line).map_err(|e| at(&e.to_string()))?;
+        self.rows += 1;
+        Ok(())
+    }
+
+    /// Flushes the file and returns the number of rows written.
+    pub fn finish(mut self) -> Result<u64, String> {
+        self.out.flush().map_err(|e| format!("cannot write {}: {e}", self.path.display()))?;
+        Ok(self.rows)
+    }
 }
