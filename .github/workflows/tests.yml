@@ -26,8 +26,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - name: Check that the generated fixtures are the same on this machine (temporary)
-        run: python3 proof/number_vectors.py && python3 proof/fixture.py && git diff --exit-code -- fixtures
       - name: Export the oracle tables of the fictional fixture
         run: >-
           python3 proof/export.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00

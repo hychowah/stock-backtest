@@ -1,7 +1,7 @@
 """Export the oracle's values as keyed tables in the neutral form.
 
     python3 proof/export.py (--raw DIR | --workspace DIR) --as-of TIME --out DIR
-                            [--tests DIR] [--tables NAME ...]
+                            [--tests DIR]
 
 - `--raw DIR`: build a temporary oracle workspace from this checkout's Python
   product and the raw folder DIR (proof/oracle.py), prepare it, run the tests
@@ -15,7 +15,6 @@
 - `--tests DIR`: every `*.json` file in DIR is one test request in intent form
   (proof/oracle.py); the file name without `.json` names the test.
 - `--out DIR`: the export folder; its table files are replaced.
-- `--tables NAME ...`: export only these tables (default: all).
 
 Example, the fictional fixture's expected export:
 
@@ -96,15 +95,16 @@ def neutral(value):
     return value
 
 
-def write(out, settings, results, names):
+def write(out, settings, results):
     out.mkdir(parents=True, exist_ok=True)
-    for name in names:
+    for name in TABLES:
         keys, rows = TABLES[name]
         ordered = sorted(rows(results), key=lambda row: tuple(row[key] for key in keys))
         text = ''.join(json.dumps({key: neutral(value) for key, value in row.items()}, ensure_ascii=False,
                                   separators=(',', ':'), allow_nan=False) + '\n' for row in ordered)
         (out / f'{name}.jsonl').write_text(text, encoding='utf-8')
-    manifest = dict(producer='python-oracle', settings=settings, tables={name: list(TABLES[name][0]) for name in names})
+    manifest = dict(producer='python-oracle', settings=settings,
+                    tables={name: list(keys) for name, (keys, _) in TABLES.items()})
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=1) + '\n', encoding='utf-8')
 
 
@@ -123,7 +123,6 @@ def main():
     parser.add_argument('--as-of', type=as_of, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--tests', type=Path)
-    parser.add_argument('--tables', nargs='+', choices=sorted(TABLES), default=list(TABLES))
     args = parser.parse_args()
     tests = {path.stem: json.loads(path.read_text(encoding='utf-8'))
              for path in sorted(args.tests.glob('*.json'))} if args.tests else {}
@@ -135,8 +134,8 @@ def main():
             oracle.prepare(args.as_of)
         results = {name: oracle.run(request, args.as_of) for name, request in tests.items()}
     settings = dict(as_of=args.as_of.isoformat(), tests=list(tests))
-    write(args.out, settings, results, args.tables)
-    print(f'Exported {", ".join(args.tables)} for {len(tests)} tests to {args.out}')
+    write(args.out, settings, results)
+    print(f'Exported {", ".join(TABLES)} for {len(tests)} tests to {args.out}')
 
 
 if __name__ == '__main__':
