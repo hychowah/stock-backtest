@@ -1,0 +1,17 @@
+[package]
+name = "engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+market-data = { path = "../market-data" }
+numbers = { path = "../numbers" }
+tables = { path = "../tables" }
+rayon = "1"
+rusqlite = { version = "0.42", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip", "raw_value"] }
+sha2 = "0.11"
+
+[dev-dependencies]
+tempfile = "3"
