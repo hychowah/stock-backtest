@@ -1,6 +1,6 @@
 //! The formula parameters ([`PARAMETERS`], the oracle's catalog
 //! `financial-parameters/4`) and their observations
-//! ([`MarketData::observe`](crate::MarketData::observe), the oracle's
+//! ([`Observer::observe`](crate::Observer::observe), the oracle's
 //! `columns.Formulas._observation` over `fact_view.View`). Each reading
 //! calls the module that owns its rule; this module only chooses the
 //! context's anchor report and valuation.
@@ -159,7 +159,7 @@ pub enum At<'a> {
     Dated(CompanyId, Day),
 }
 
-/// See [`MarketData::observe`](crate::MarketData::observe).
+/// See [`Observer::observe`](crate::Observer::observe).
 pub(crate) fn observe(columns: &Columns<'_>, at: At<'_>, p: Parameter, count: usize) -> Option<Vec<f64>> {
     assert!(count == 1 || p.yearly, "{} has one value", p.id);
     let (c, day, root) = match at {

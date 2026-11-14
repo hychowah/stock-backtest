@@ -202,24 +202,21 @@ pub struct MarketStatus {
     pub market: Market,
     /// Whether `raw/` holds the market's data.
     pub raw: bool,
-    pub prepared: Prepared,
+    /// The current generation; `None` when the market is not prepared, or
+    /// was prepared by a program with another store format.
+    pub prepared: Option<Prepared>,
 }
 
-/// The market's current generation, or why it cannot be opened.
+/// A market's current generation.
 #[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum Prepared {
-    Generation {
-        generation: u64,
-        as_of: String,
-        program: String,
-        bytes: u64,
-        companies: usize,
-        first_session: Option<String>,
-        last_session: Option<String>,
-    },
-    /// The open error's message, such as "us is not prepared: run `bt data prepare`".
-    Not(String),
+pub struct Prepared {
+    pub generation: u64,
+    pub as_of: String,
+    pub program: String,
+    pub bytes: u64,
+    pub companies: usize,
+    pub first_session: Option<String>,
+    pub last_session: Option<String>,
 }
 
 /// Reports each market's raw data and current generation. Does not fail.
@@ -229,21 +226,18 @@ pub fn status(home: &Home) -> StatusReply {
         .map(|market| MarketStatus {
             market,
             raw: raw_present(home, market),
-            prepared: match MarketData::open(home, market) {
-                Ok(data) => {
-                    let (m, sessions) = (data.manifest(), data.sessions());
-                    Prepared::Generation {
-                        generation: m.generation,
-                        as_of: m.as_of.clone(),
-                        program: m.program.clone(),
-                        bytes: m.bytes(),
-                        companies: data.companies().len(),
-                        first_session: sessions.first().map(Day::to_string),
-                        last_session: sessions.last().map(Day::to_string),
-                    }
+            prepared: MarketData::open(home, market).ok().map(|data| {
+                let (m, sessions) = (data.manifest(), data.sessions());
+                Prepared {
+                    generation: m.generation,
+                    as_of: m.as_of.clone(),
+                    program: m.program.clone(),
+                    bytes: m.bytes(),
+                    companies: data.companies().len(),
+                    first_session: sessions.first().map(Day::to_string),
+                    last_session: sessions.last().map(Day::to_string),
                 }
-                Err(error) => Prepared::Not(error.message),
-            },
+            }),
         })
         .collect();
     StatusReply { markets }

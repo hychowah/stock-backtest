@@ -131,15 +131,7 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
     let sessions = data.sessions();
     let (start, end) = plan.window();
     let marked = |exit: Day| plan.final_mark() && exit == end;
-    // Each entry day with its distinct exits, both in date order.
-    let mut days: Vec<(Day, Vec<Day>)> = plan.entry_days().into_iter().map(|day| (day, Vec::new())).collect();
-    for period in plan.trials().iter().flat_map(|t| &t.periods) {
-        let at = days.partition_point(|(d, _)| *d < period.entry);
-        let exits = &mut days[at].1;
-        if let Err(at) = exits.binary_search(&period.exit) {
-            exits.insert(at, period.exit);
-        }
-    }
+    let days = plan.exits_by_entry();
     // valued[day][strategy][exit]
     let valued: Vec<Vec<Vec<Result<Arc<PeriodRun>, Error>>>> = days
         .par_iter()

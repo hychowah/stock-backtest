@@ -2,28 +2,15 @@
 //! gives the stored results; `bt export holdings`: a column for each numeric
 //! source of the steps; `bt catalog`: a name and the market's sectors.
 
+mod common;
+
+use common::{bt, path, prepared};
 use serde_json::{Value, json};
-use std::path::Path;
-use std::process::Command;
-
-/// Runs `bt`; returns its reply and whether it succeeded.
-fn bt(args: &[&str]) -> (Value, bool) {
-    let output = Command::new(env!("CARGO_BIN_EXE_bt")).args(args).output().expect("run bt");
-    (serde_json::from_slice(&output.stdout).unwrap(), output.status.success())
-}
-
-fn path(p: &Path) -> &str {
-    p.to_str().unwrap()
-}
 
 #[test]
 fn explore_holdings_and_the_catalog_read_a_run_and_its_market() {
     let dir = tempfile::tempdir().unwrap();
-    let home = dir.path().join("home");
-    std::fs::create_dir(&home).unwrap();
-    let raw = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/fictional/raw");
-    std::os::unix::fs::symlink(raw.canonicalize().unwrap(), home.join("raw")).unwrap();
-    assert!(bt(&["data", "prepare", "--as-of", "2023-06-30T07:30:00+00:00", "--home", path(&home)]).1);
+    let home = prepared(dir.path());
     let file = dir.path().join("value.json");
     let steps = json!([
         {"filter": "Market cap in dollars", "op": ">=", "value": "100000000"},

@@ -787,7 +787,7 @@ impl Reader {
             None => {
                 let usable = self.known().filter(|k| !matches!(k.term, Term::StepOnly)).map(|k| k.label.as_str());
                 let hint = hint(name, usable, "");
-                Err(fault("UNKNOWN_NAME", start, end, format!("“{name}” is not an input or a saved variable.{hint}")))
+                Err(fault("UNKNOWN_NAME", start, end, format!("“{name}” is not a known name or a variable of this file.{hint}")))
             }
         }
     }

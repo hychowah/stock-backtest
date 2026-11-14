@@ -1,18 +1,22 @@
 //! The values a strategy's steps read on one screen day.
 
 use crate::Error;
+use crate::evaluation;
 use crate::names::Field;
 use crate::strategy::Source;
-use market_data::{Candidate, Companies, Day, MarketData, Screen};
+use market_data::{Candidate, Companies, Day, MarketData, Observer, Screen};
 
 /// One screen day's candidates and each source's value per candidate. A
 /// built-in reads its stored lane, and counts only when it is finite in
-/// canonical units. A field reads the candidate.
+/// canonical units. A field reads the candidate. A formula is evaluated for
+/// a candidate when a step asks for its value, so only for the candidates
+/// that reach its step.
 ///
-/// Both are read from the candidates, so a `DayValues` holds no mutable
-/// state: it is `Sync`, and several strategies can share one by reference
-/// across threads.
+/// A `DayValues` holds no mutable state: it is `Sync`, and several
+/// strategies can share one by reference across threads.
 pub struct DayValues<'d> {
+    observer: Observer<'d>,
+    day: Day,
     companies: Companies<'d>,
     candidates: Vec<Candidate>,
 }
@@ -20,7 +24,7 @@ pub struct DayValues<'d> {
 impl<'d> DayValues<'d> {
     /// The candidates of `day` (a session) on `screen`.
     pub fn new(data: &'d MarketData, day: Day, screen: Screen) -> Self {
-        DayValues { companies: data.companies(), candidates: data.candidates(day, screen) }
+        DayValues { observer: data.observer(), day, companies: data.companies(), candidates: data.candidates(day, screen) }
     }
 
     /// The day's candidates, in company order; `of` takes a position in
@@ -32,7 +36,11 @@ impl<'d> DayValues<'d> {
     /// The value of `source` for candidate `i`, in its stored units, or
     /// `None` when it is missing. A built-in is missing when its stored lane
     /// is absent or not finite in canonical units. Sector and Exchange are
-    /// text and have no number.
+    /// text and have no number. A formula's value is in its unit. Its errors
+    /// stop a run, as the oracle's do: FUTURE_DATE, an `at` date after the
+    /// day it is read on, and INVALID_DATE, a lookback before year 1. The
+    /// place of either is the candidate's symbol and the formula's label
+    /// (the variable's name or the formula's text): `ABC, Debt to EV`.
     pub fn of(&self, source: &Source, i: usize) -> Result<Option<f64>, Error> {
         let candidate = &self.candidates[i];
         Ok(match *source {
@@ -42,7 +50,8 @@ impl<'d> DayValues<'d> {
             Source::Field(Field::MarketCap) => Some(candidate.market_cap),
             Source::Field(Field::EnterpriseValue) => Some(candidate.enterprise_value),
             Source::Field(Field::Sector | Field::Exchange) => None,
-            Source::Formula(_) => return Err(Error::new("this program does not evaluate formulas yet", source.label())),
+            Source::Formula(ref formula) => evaluation::value(&self.observer, formula, candidate, self.day)
+                .map_err(|e| Error::new(e.message, format!("{}, {}", self.symbol(i), source.label())))?,
         })
     }
 

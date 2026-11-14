@@ -16,8 +16,7 @@ fn status_on_an_empty_home_reports_no_raw_data_and_nothing_prepared() {
     assert_eq!(ids, [&json!("us"), &json!("hk"), &json!("jp")]);
     for market in markets {
         assert_eq!(market["raw"], json!(false));
-        let prepared = market["prepared"].as_str().unwrap();
-        assert!(prepared.contains("not prepared: run `bt data prepare`"), "{prepared}");
+        assert_eq!(market["prepared"], Value::Null);
     }
     let wrong = Command::new(env!("CARGO_BIN_EXE_bt")).args(["data", "status", "--nonsense"]).output().unwrap();
     assert_eq!(wrong.status.code(), Some(1));

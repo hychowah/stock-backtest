@@ -7,6 +7,7 @@ use chrono::{DateTime, SubsecRound, Utc};
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use engine::commands::{CatalogRequest, CheckRequest, ExploreRequest, ExportResultsRequest, RunRequest, ScreenRequest};
+use engine::cross_section::CrossSectionRequest;
 use engine::{Dates, Interval, Schedule, Selection};
 use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
 use market_data::{Day, Error, Market};
@@ -109,6 +110,9 @@ enum Export {
     Tables(ExportArgs),
     /// Export every holding with the value of each numeric source of its steps
     Holdings(ExportArgs),
+    /// Export every candidate of the schedule's entry days with the file's variables and its return to each exit
+    #[command(mut_arg("files", |a| a.help("A strategy file").value_name("FILE").num_args(1).action(clap::ArgAction::Set)))]
+    CrossSection(RunArgs),
 }
 
 #[derive(Args)]
@@ -175,6 +179,11 @@ fn main() -> ExitCode {
         Command::Export(Export::Holdings(ExportArgs { results, out })) => {
             reply(engine::commands::export_holdings(&ExportResultsRequest { results, out }))
         }
+        Command::Export(Export::CrossSection(args)) => reply(home.and_then(|home| {
+            let (market, schedule) = schedule(&args)?;
+            let request = CrossSectionRequest { file: args.files[0].clone(), market, schedule, out: args.out };
+            engine::cross_section::cross_section(&home, &request)
+        })),
         Command::Explore { result, trial, periods, ranks } => reply((|| {
             let trial = match trial.as_str() {
                 "all" => None,
@@ -216,15 +225,20 @@ fn main() -> ExitCode {
 /// `bt run`: the schedule from the arguments, with a drawn seed when random
 /// dates have none.
 fn run(home: &Home, args: RunArgs) -> Result<engine::commands::RunReply, Error> {
+    let (market, schedule) = schedule(&args)?;
+    engine::commands::run(home, &RunRequest { files: args.files, market, schedule, out: args.out })
+}
+
+/// The market and schedule of `bt run` and `bt export cross-section`.
+fn schedule(args: &RunArgs) -> Result<(Market, Schedule), Error> {
     let market: Market = args.market.parse()?;
-    let dates = match (args.every, args.random, args.dates) {
-        (Some(every), None, None) => Dates::Every(interval(&every)?),
-        (Some(every), Some(trials), None) => Dates::Random { every: interval(&every)?, trials, seed: args.seed.unwrap_or_else(draw_seed) },
-        (None, None, Some(dates)) => Dates::Explicit(dates),
+    let dates = match (&args.every, args.random, &args.dates) {
+        (Some(every), None, None) => Dates::Every(interval(every)?),
+        (Some(every), Some(trials), None) => Dates::Random { every: interval(every)?, trials, seed: args.seed.unwrap_or_else(draw_seed) },
+        (None, None, Some(dates)) => Dates::Explicit(dates.clone()),
         _ => unreachable!("clap checks that --every or --dates is given, and --random only with --every"),
     };
-    let schedule = Schedule { start: args.start, end: args.end, dates };
-    engine::commands::run(home, &RunRequest { files: args.files, market, schedule, out: args.out })
+    Ok((market, Schedule { start: args.start.clone(), end: args.end.clone(), dates }))
 }
 
 /// `Nw` or `Nm`.

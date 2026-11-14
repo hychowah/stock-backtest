@@ -49,6 +49,27 @@ pub struct MarketData {
     generation: Generation,
 }
 
+/// Formula observations ([`MarketData::observer`]). It opens the columns
+/// they read once, for many observations: opening them costs about 25
+/// times one reading.
+pub struct Observer<'a>(Columns<'a>);
+
+impl Observer<'_> {
+    /// The last `count` values of formula parameter `p` at `at`, oldest
+    /// first, as the oracle's formulas read them; `None` when the oracle has
+    /// no value for any reason or a value is not finite. For a
+    /// [`yearly`](Parameter::yearly) parameter `count` is the number of
+    /// calendar years ending at the year of the report the context's day
+    /// selects; otherwise it is 1. The rules live with their owners: the
+    /// income fiscal spine and the formula reading of statements in
+    /// `annual`, the report EBITDA in `reports`, the session and Treasury
+    /// day in `series`, and the shifted context's valuation in `screen` and
+    /// `builtins`. At [`At::Root`] owner values and EV are the candidate's.
+    pub fn observe(&self, at: At<'_>, p: Parameter, count: usize) -> Option<Vec<f64>> {
+        parameters::observe(&self.0, at, p, count)
+    }
+}
+
 impl MarketData {
     /// Opens the market's current generation. Fails, asking to run
     /// `bt data prepare`, when the market is not prepared or was prepared by a
@@ -144,18 +165,9 @@ impl MarketData {
         holding::usd_closes(&series, &prices, self.companies().quote(self.manifest().market, c), from, to)
     }
 
-    /// The last `count` values of formula parameter `p` at `at`, oldest
-    /// first, as the oracle's formulas read them; `None` when the oracle has
-    /// no value for any reason or a value is not finite. For a
-    /// [`yearly`](Parameter::yearly) parameter `count` is the number of
-    /// calendar years ending at the year of the report the context's day
-    /// selects; otherwise it is 1. The rules live with their owners: the
-    /// income fiscal spine and the formula reading of statements in
-    /// `annual`, the report EBITDA in `reports`, the session and Treasury
-    /// day in `series`, and the shifted context's valuation in `screen` and
-    /// `builtins`. At [`At::Root`] owner values and EV are the candidate's.
-    pub fn observe(&self, at: At<'_>, p: Parameter, count: usize) -> Option<Vec<f64>> {
-        parameters::observe(&Columns::open(&self.generation), at, p, count)
+    /// Formula observations of this data ([`Observer`]).
+    pub fn observer(&self) -> Observer<'_> {
+        Observer(Columns::open(&self.generation))
     }
 
     /// The 3-month Treasury rate of `day` as a fraction (the yield / 100):

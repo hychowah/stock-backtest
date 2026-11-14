@@ -4,30 +4,21 @@
 //! and `bt data inspect` explains a stale report and a day that is not a
 //! session. One test does both, so the inspect checks reuse the prepared home.
 
+mod common;
+
+use common::{AS_OF, fixtures, path};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 const MARKETS: [&str; 3] = ["us", "hk", "jp"];
 
-/// The as-of time of the expected tables: the Hong Kong session of the last
-/// day has not closed yet.
-const AS_OF: &str = "2023-06-30T07:30:00+00:00";
-
-fn fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/fictional")
-}
-
-/// Runs `bt`; returns its reply and whether it succeeded.
+/// Runs `bt` on `home`; returns its reply and whether it succeeded.
 fn run(home: &Path, args: &[&str]) -> (Value, bool) {
-    let output = Command::new(env!("CARGO_BIN_EXE_bt")).args(args).arg("--home").arg(home).output().expect("run bt");
-    (serde_json::from_slice(&output.stdout).unwrap(), output.status.success())
+    common::bt(&[args, &["--home", path(home)]].concat())
 }
 
 fn bt(home: &Path, args: &[&str]) -> Value {
-    let (reply, success) = run(home, args);
-    assert!(success, "bt {args:?}: {reply}");
-    reply
+    common::bt_ok(&[args, &["--home", path(home)]].concat())
 }
 
 #[test]

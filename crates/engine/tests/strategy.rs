@@ -161,12 +161,12 @@ fn formula_faults_name_the_variable_or_step_and_the_characters() {
         (
             with(r#""Debt to EV": {"formula": "Total debt / Enterprse value"}"#, rank),
             r#"variables."Debt to EV", characters 14–28"#,
-            "“Enterprse value” is not an input or a saved variable. Did you mean “Enterprise value”?",
+            "“Enterprse value” is not a known name or a variable of this file. Did you mean “Enterprise value”?",
         ),
         (
             with(r#""A": {"formula": "B * 2"}, "B": {"formula": "Revenue"}"#, rank),
             r#"variables."A", character 1"#,
-            "“B” is not an input or a saved variable.",
+            "“B” is not a known name or a variable of this file.",
         ),
         (
             with(r#""A": {"formula": "Revenue", "display": "percent"}"#, rank),

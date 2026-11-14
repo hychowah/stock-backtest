@@ -1,35 +1,17 @@
-//! `bt run`: its argument rules, the place of a run-stopping error, and a
-//! seed that gives the same result file again; and the files `bt export
-//! tables` refuses.
+//! `bt run`: its argument rules, an `is` text no company has, the place of
+//! a run-stopping error, and a seed that gives the same result file again;
+//! and the files `bt export tables` refuses.
 
+mod common;
+
+use common::{bt, path, prepared};
 use serde_json::{Value, json};
 use std::path::Path;
-use std::process::Command;
-
-/// Runs `bt`; returns its reply and whether it succeeded.
-fn bt(args: &[&str]) -> (Value, bool) {
-    let output = Command::new(env!("CARGO_BIN_EXE_bt")).args(args).output().expect("run bt");
-    (serde_json::from_slice(&output.stdout).unwrap(), output.status.success())
-}
-
-fn path(p: &Path) -> &str {
-    p.to_str().unwrap()
-}
 
 /// Writes a strategy file of one sleeve with `steps`.
 fn strategy(file: &Path, steps: Value) {
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(file, json!({ "sleeves": [{ "steps": steps }] }).to_string()).unwrap();
-}
-
-/// A home in `dir` with the fictional raw cache prepared.
-fn prepared(dir: &Path) -> std::path::PathBuf {
-    let home = dir.join("home");
-    std::fs::create_dir(&home).unwrap();
-    let raw = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/fictional/raw");
-    std::os::unix::fs::symlink(raw.canonicalize().unwrap(), home.join("raw")).unwrap();
-    assert!(bt(&["data", "prepare", "--as-of", "2023-06-30T07:30:00+00:00", "--home", path(&home)]).1);
-    home
 }
 
 const RANK: &str = r#"{"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 50}"#;
@@ -69,12 +51,34 @@ fn arguments_and_strategy_files_are_checked_before_any_data_is_read() {
 }
 
 #[test]
+fn an_is_text_that_no_company_of_the_market_has_is_refused_before_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let rank: Value = serde_json::from_str(RANK).unwrap();
+    let run = |name: &str, op: &str, text: &str| {
+        let file = dir.path().join(format!("{name}.json"));
+        strategy(&file, json!([{"filter": "Sector", "op": op, "value": text}, rank]));
+        let out = dir.path().join(name);
+        let args = ["run", path(&file), "--market", "hk", "--start", "2021-07-01", "--end", "2022-06-30", "--every", "6m"];
+        (bt(&[&args[..], &["--out", path(&out), "--home", path(&home)]].concat()), file)
+    };
+    // The sector is Utilities: the text's case differs.
+    let ((reply, success), file) = run("wrong", "is", "utilities");
+    assert!(!success);
+    assert_eq!(reply["error"]["place"], format!("{}: sleeves[1].steps[1]", path(&file)), "{reply}");
+    assert!(reply["error"]["message"].as_str().unwrap().contains("bt catalog --market hk"), "{reply}");
+    // A file may run on several markets, so `is not` takes any text.
+    assert!(run("other", "is not", "utilities").0.1);
+    assert!(run("right", "is", "Utilities").0.1);
+}
+
+#[test]
 fn a_run_stops_at_a_holding_without_an_exit_price_and_a_seed_repeats_its_result() {
     let dir = tempfile::tempdir().unwrap();
     let home = prepared(dir.path());
     let rank: Value = serde_json::from_str(RANK).unwrap();
     let (empty, gap) = (dir.path().join("empty.json"), dir.path().join("gap.json"));
-    strategy(&empty, json!([{"filter": "Sector", "op": "is", "value": "None"}, rank]));
+    strategy(&empty, json!([{"filter": "Market cap in dollars", "op": ">=", "value": "1000000000000000"}, rank]));
     strategy(&gap, json!([rank]));
 
     // USDJPY has no fixing from 2021-06-21 to 2021-07-02, so no Tokyo

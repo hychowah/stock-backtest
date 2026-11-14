@@ -3,6 +3,7 @@
 use market_data::{Day, Error, FIRST_DAY, MarketData};
 use numbers::Random;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The run settings that set the trade dates. Days are ISO text,
 /// `YYYY-MM-DD`; [`Plan::new`] checks every setting against the data.
@@ -206,6 +207,16 @@ impl Plan {
         days.sort_unstable();
         days.dedup();
         days
+    }
+
+    /// Every entry day of the plan with its distinct exits, both in date
+    /// order.
+    pub fn exits_by_entry(&self) -> Vec<(Day, Vec<Day>)> {
+        let mut days: BTreeMap<Day, BTreeSet<Day>> = BTreeMap::new();
+        for period in self.trials.iter().flat_map(|t| &t.periods) {
+            days.entry(period.entry).or_default().insert(period.exit);
+        }
+        days.into_iter().map(|(day, exits)| (day, exits.into_iter().collect())).collect()
     }
 }
 

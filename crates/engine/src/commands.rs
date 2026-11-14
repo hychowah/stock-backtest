@@ -8,7 +8,8 @@ use crate::results::{self, ResultFile};
 use crate::statistics::{self, Statistics};
 use crate::names;
 use crate::run::Screened;
-use crate::strategy::{self, Step, Test};
+use crate::names::Field;
+use crate::strategy::{self, Source, Step, Test};
 use crate::formula;
 use crate::views::{self, Exploration, ExploredTrial, Explored, Selection, Window};
 use crate::{Error, Plan, Schedule, Strategy};
@@ -69,10 +70,11 @@ pub struct RunResult {
 
 /// Runs every strategy file on the same plan as one batch and writes one
 /// result file for each. Every file is read and checked before any market
-/// data; then the schedule is checked against the data. The first
-/// run-stopping error (by file, trial and period) stops the batch before any
-/// result file is written; its place starts with the strategy file. A
-/// failure while writing can leave the files written before it.
+/// data; then each file's `is` texts ([`check_texts`]) and the schedule are
+/// checked against the data. The first run-stopping error (by file, trial
+/// and period) stops the batch before any result file is written; its place
+/// starts with the strategy file. A failure while writing can leave the
+/// files written before it.
 pub fn run(home: &Home, request: &RunRequest) -> Result<RunReply, Error> {
     let started = Instant::now();
     let strategies = request.files.iter().map(|file| Strategy::read(file)).collect::<Result<Vec<_>, _>>()?;
@@ -87,6 +89,9 @@ pub fn run(home: &Home, request: &RunRequest) -> Result<RunReply, Error> {
         return Err(Error::new("the result folder must be new or empty", out.display()));
     }
     let data = MarketData::open(home, request.market)?;
+    for (strategy, file) in strategies.iter().zip(&request.files) {
+        check_texts(strategy, file, &data)?;
+    }
     let plan = Plan::new(&data, &request.schedule)?;
     let runs = crate::run::run(&data, &plan, &strategies)
         .map_err(|(at, e)| Error::new(e.message, format!("{}: {}", request.files[at].display(), e.place)))?;
@@ -471,10 +476,12 @@ pub struct ScreenReply {
 }
 
 /// The strategy's picks of the market's latest session, with each step's
-/// value. The file is checked before any market data is read.
+/// value. The file is checked before any market data is read, then its
+/// `is` texts against the market's companies.
 pub fn screen(home: &Home, request: &ScreenRequest) -> Result<ScreenReply, Error> {
     let strategy = Strategy::read(&request.file)?;
     let data = MarketData::open(home, request.market)?;
+    check_texts(&strategy, &request.file, &data)?;
     let (day, picks) = crate::run::screen(&data, &strategy)?;
     let manifest = data.manifest();
     Ok(ScreenReply {
@@ -665,9 +672,7 @@ pub struct Limits {
 /// sectors and exchanges from its prepared data.
 pub fn catalog(home: &Home, request: &CatalogRequest) -> Result<CatalogReply, Error> {
     let data = MarketData::open(home, request.market)?;
-    let companies = data.companies();
-    let sectors: BTreeSet<&str> = companies.ids().map(|c| companies.sector(c)).collect();
-    let exchanges: BTreeSet<&str> = companies.ids().map(|c| companies.exchange(c)).collect();
+    let (sectors, exchanges) = (texts(&data, Field::Sector), texts(&data, Field::Exchange));
     let forms = |lines: Vec<(String, String)>| lines.into_iter().map(|(form, meaning)| Form { form, meaning }).collect();
     Ok(CatalogReply {
         market: request.market,
@@ -742,6 +747,37 @@ fn named_statistics(s: &Statistics) -> Vec<(String, Statistic)> {
     }
     rows.sort_by(|a, b| a.0.cmp(&b.0));
     rows
+}
+
+/// The distinct sectors or exchanges of the market's companies, in order.
+fn texts(data: &MarketData, field: Field) -> BTreeSet<&str> {
+    let companies = data.companies();
+    companies
+        .ids()
+        .map(|c| match field {
+            Field::Sector => companies.sector(c),
+            Field::Exchange => companies.exchange(c),
+            Field::MarketCap | Field::EnterpriseValue => panic!("{field:?} is a number"),
+        })
+        .collect()
+}
+
+/// Refuses an `is` step whose text no company of the market has, before
+/// anything runs: its sleeve would hold nothing, most likely from a typing
+/// slip. `is not` takes any text, since a file may run on several markets.
+pub(crate) fn check_texts(strategy: &Strategy, file: &Path, data: &MarketData) -> Result<(), Error> {
+    for (s, sleeve) in strategy.sleeves().iter().enumerate() {
+        for (n, step) in sleeve.steps.iter().enumerate() {
+            if let Step::Filter { source: Source::Field(field), test: Test::Is(text) } = step
+                && !texts(data, *field).contains(text.as_str())
+            {
+                let (market, name) = (data.manifest().market.id(), names::of_field(*field).name.to_lowercase());
+                let message = format!("no company of {market} has the {name} {text:?}: `bt catalog --market {market}` lists them");
+                return Err(Error::new(message, format!("{}: sleeves[{}].steps[{}]", file.display(), s + 1, n + 1)));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The result files of an export by case (their stems; two of one stem

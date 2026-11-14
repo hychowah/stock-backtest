@@ -2,15 +2,10 @@
 //! strategy file reads and its canonical form reads back to itself; the
 //! first file that fails names its place.
 
-use serde_json::{Value, json};
-use std::path::Path;
-use std::process::Command;
+mod common;
 
-/// Runs `bt`; returns its reply and whether it succeeded.
-fn bt(args: &[&str]) -> (Value, bool) {
-    let output = Command::new(env!("CARGO_BIN_EXE_bt")).args(args).output().expect("run bt");
-    (serde_json::from_slice(&output.stdout).unwrap(), output.status.success())
-}
+use common::{bt, fixtures};
+use serde_json::{Value, json};
 
 #[test]
 fn check_reports_each_source_and_its_canonical_form_is_a_fixed_point() {
@@ -51,7 +46,7 @@ fn check_reports_each_source_and_its_canonical_form_is_a_fixed_point() {
     );
     assert_eq!(checked["sleeves"][0]["steps"][1]["stored"], json!(0.5));
 
-    let cases = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/fictional/cases");
+    let cases = fixtures().join("cases");
     let mut files = Vec::new();
     for kind in std::fs::read_dir(cases).unwrap() {
         for case in std::fs::read_dir(kind.unwrap().path()).unwrap() {
