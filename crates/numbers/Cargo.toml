@@ -1,0 +1,11 @@
+[package]
+name = "numbers"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+num-bigint = "0.4"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
