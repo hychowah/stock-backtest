@@ -3,7 +3,7 @@
  "settings": {
   "as_of": "2023-06-30T07:30:00+00:00",
   "backtest": "272bc8b3e88a50740326481acfd49ad191225a98",
-  "tests": [
+  "cases": [
    "hk-sleeves",
    "jp-monthly",
    "us-random"
@@ -11,12 +11,76 @@
  },
  "tables": {
   "trials": [
-   "test",
+   "case",
    "trial"
   ],
   "statistics": [
-   "test",
+   "case",
    "statistic"
+  ],
+  "periods": [
+   "case",
+   "trial",
+   "period"
+  ],
+  "holdings": [
+   "case",
+   "trial",
+   "period",
+   "rank"
+  ],
+  "steps": [
+   "case",
+   "trial",
+   "period",
+   "rank",
+   "sleeve",
+   "step"
+  ],
+  "curve": [
+   "case",
+   "trial",
+   "period",
+   "day"
+  ],
+  "growth": [
+   "case",
+   "trial",
+   "day"
+  ],
+  "band": [
+   "case",
+   "day"
+  ],
+  "sectors": [
+   "case",
+   "trial",
+   "sector"
+  ],
+  "contributions": [
+   "case",
+   "trial",
+   "period"
+  ],
+  "explore": [
+   "case",
+   "selection"
+  ],
+  "picks": [
+   "case",
+   "rank"
+  ],
+  "pick_steps": [
+   "case",
+   "rank",
+   "sleeve",
+   "step"
+  ],
+  "formula_values": [
+   "case",
+   "day",
+   "symbol",
+   "variable"
   ]
  }
 }

@@ -1,0 +1,11 @@
+{
+ "sleeves": [
+  {"name": "Value", "steps": [
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "Income", "steps": [
+   {"filter": "Dividend yield", "op": ">", "value": "0.8"},
+   {"rank": "P/E 5-year average", "order": "highest", "from": 1, "to": 3}
+  ]}
+ ]
+}

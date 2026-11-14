@@ -1,7 +1,7 @@
 """Export the oracle's values as keyed tables in the neutral form.
 
     python3 proof/export.py (--raw DIR | --workspace DIR [--prepare]) --as-of TIME --out DIR
-                            (--tests DIR | --market MARKET --random-days N [--tests DIR])
+                            --market MARKET --random-days N --cases DIR
 
 - `--raw DIR`: build a temporary oracle workspace from this checkout's Python
   product and the raw folder DIR (proof/oracle.py), prepare it, export and
@@ -14,19 +14,17 @@
   folder's data: its cache lock and the dated books it needs.
 - `--as-of TIME`: an ISO date-time with a UTC offset; the oracle's
   completed-session clock reads it as the current time.
-- `--tests DIR`: every `*.json` file in DIR is one test request in intent form
-  (proof/oracle.py); the file name without `.json` names the test.
-- `--market MARKET` (us, hk or jp): export that market's prepared data and
-  candidates. Without it, the export runs the tests and holds their summaries.
+- `--cases DIR`: the cases of proof/l3.py, `DIR/<kind>/<name>/run.json`; the
+  day set holds the entry days of the market's cases.
+- `--market MARKET` (us, hk or jp): the market whose prepared data and
+  candidates the export holds.
 - `--random-days N`: the number of random sessions in a market's day set.
 - `--out DIR`: the export folder; its table files are replaced.
 
 The fictional fixture's expected exports (fixtures/fictional/expected/):
 
     python3 proof/export.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 \\
-        --tests fixtures/fictional/tests --out fixtures/fictional/expected/runs
-    python3 proof/export.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 \\
-        --tests fixtures/fictional/tests --market us --random-days 40 --out fixtures/fictional/expected/us
+        --cases fixtures/fictional/cases --market us --random-days 40 --out fixtures/fictional/expected/us
 
 and the same for hk and jp. At that time the Hong Kong session of 2023-06-30
 has not closed (16:00 local), so the fixture's last Hong Kong session is
@@ -40,8 +38,8 @@ non-finite numbers as "NaN", "Infinity" or "-Infinity", a missing value as
 null. `settings` record the as-of time and `backtest`, the git tree id of the
 workspace's product. Running the same export twice writes the same bytes.
 
-A market export holds the market's prepared data (L1) and its candidates on
-the days of its day set (L2). `MARKET_TABLES = {name: (key fields,
+An export holds the market's prepared data (L1) and its candidates on the
+days of its day set (L2). `MARKET_TABLES = {name: (key fields,
 rows(db, market, days))}` registers them: a rows function reads the daily
 connection (research attached as `research`) and yields rows in key order,
 which its SQL ORDER BY gives. Field names are the oracle's column names.
@@ -68,23 +66,9 @@ The dated books are the oracle's own (oracle.store_books); the latest books
 come from the preparation.
 
 The day set, written as `days.txt` (one ISO day per line, ascending): the entry
-days of the market's tests (oracle.entry_dates), the latest session, every
+days of the market's cases (oracle.entry_dates), the latest session, every
 session from 1996-01-01 dated 29 February, and N sessions from 1996-01-01
 drawn with random.Random(market).
-
-A run export holds the test summaries, `RUN_TABLES = {name: (key fields,
-rows(results))}` with results `{test name: result summary}` (oracle.run).
-`trials` (key: test, trial) and `statistics` (key: test, statistic) are
-provisional: they keep the oracle's result field names without the timing
-fields, until the rewrite sets the product's result tables and this exporter
-adapts to them.
-- `trials`: one row per trial of a random test (its trial summary; `dates`
-  joins the trial's trade dates with spaces) and one row (trial 1) per custom
-  test (its summary); fields a summary lacks are null.
-- `statistics`: per random test, `<field>.<statistic>` for each distribution
-  (cagr, spy_cagr, excess_cagr, total_return, growth) and its n, mean,
-  median, p10, p25, p75, p90, min, max and stddev, and the counts completed,
-  valid, incomplete, beat_spy and unique_schedules. The value is `value`.
 """
 import argparse
 from contextlib import closing, nullcontext
@@ -96,13 +80,6 @@ import random
 import tempfile
 
 import oracle
-
-TRIAL_FIELDS = ('start', 'first_trade', 'end', 'dates', 'cash_days', 'periods', 'cagr', 'spy_cagr', 'excess_cagr',
-                'total_return', 'growth', 'spy_growth', 'empty_periods', 'short_periods')
-DISTRIBUTIONS = ('cagr', 'spy_cagr', 'excess_cagr', 'total_return', 'growth')
-STATISTICS = ('n', 'mean', 'median', 'p10', 'p25', 'p75', 'p90', 'min', 'max', 'stddev')
-COUNTS = ('completed', 'valid', 'incomplete', 'beat_spy', 'unique_schedules')
-STATISTIC_NAMES = sorted([f'{field}.{statistic}' for field in DISTRIBUTIONS for statistic in STATISTICS] + list(COUNTS))
 
 
 def query(db, sql, *args):
@@ -212,40 +189,15 @@ MARKET_TABLES = {
 }
 
 
-def trial_rows(results):
-    for test, summary in results.items():
-        for number, trial in enumerate(summary['trials'] if summary.get('kind') == 'random_dates' else [summary], 1):
-            row = dict(test=test, trial=number, **{field: trial.get(field) for field in TRIAL_FIELDS})
-            if row['dates'] is not None:
-                row['dates'] = ' '.join(row['dates'])
-            yield row
-
-
-def statistic_rows(results):
-    for test, summary in results.items():
-        if summary.get('kind') != 'random_dates':
-            continue
-        for name in STATISTIC_NAMES:
-            field, _, statistic = name.partition('.')
-            yield dict(test=test, statistic=name,
-                       value=summary['distributions'][field][statistic] if statistic else summary[name])
-
-
-RUN_TABLES = {
-    'trials': (('test', 'trial'), trial_rows),
-    'statistics': (('test', 'statistic'), statistic_rows),
-}
-
-
-def day_set(db, market, tests, count):
+def day_set(db, market, runs, count):
     """The ISO days of a market export's candidates, ascending."""
     from backtest.financial import rules
     sessions = [date.fromisoformat(row['day']) for row in session_rows(db, market, None)]
     eligible = [str(day) for day in sessions if day >= rules.FIRST_DAY]
     days = {eligible[-1]} | {day for day in eligible if day[5:] == '02-29'}
-    for request in tests.values():
-        if request['options'].get('market', 'us') == market:
-            days |= oracle.entry_dates(request, sessions)
+    for run in runs.values():
+        if run['market'] == market:
+            days |= oracle.entry_dates(run, sessions)
     days |= set(random.Random(market).sample(eligible, count))
     return sorted(days)
 
@@ -288,35 +240,29 @@ def main():
     parser.add_argument('--prepare', action='store_true')
     parser.add_argument('--as-of', type=as_of, required=True)
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--tests', type=Path)
-    parser.add_argument('--market', choices=('us', 'hk', 'jp'))
-    parser.add_argument('--random-days', type=int)
+    parser.add_argument('--cases', type=Path, required=True)
+    parser.add_argument('--market', choices=('us', 'hk', 'jp'), required=True)
+    parser.add_argument('--random-days', type=int, required=True)
     args = parser.parse_args()
     if args.prepare and (args.workspace is None or (args.workspace / 'data').exists()):
         parser.error('--prepare needs a --workspace without data/')
-    if (args.market is None) != (args.random_days is None) or (args.market is None and args.tests is None):
-        parser.error('give --tests, or --market with --random-days')
-    tests = {path.stem: json.loads(path.read_text(encoding='utf-8'))
-             for path in sorted(args.tests.glob('*.json'), key=lambda path: path.stem)} if args.tests else {}
+    runs = {path.parent.name: json.loads(path.read_text(encoding='utf-8'))
+            for path in sorted(args.cases.glob('*/*/run.json'), key=lambda path: path.parent.name)}
     with tempfile.TemporaryDirectory() if args.workspace is None else nullcontext(args.workspace) as folder:
         if args.workspace is None:
             oracle.build(args.raw, folder)
         oracle.load(folder)
         if args.workspace is None or args.prepare:
             oracle.prepare(args.as_of)
-        settings = dict(as_of=args.as_of.isoformat(), backtest=oracle.tree(folder), tests=list(tests))
-        if args.market is None:
-            results = {name: oracle.run(request, args.as_of) for name, request in tests.items()}
-            counts = write(args.out, settings, {name: (keys, rows(results)) for name, (keys, rows) in RUN_TABLES.items()})
-        else:
-            settings.update(market=args.market, random_days=args.random_days)
-            with closing(oracle.connect()) as db:
-                days = day_set(db, args.market, tests, args.random_days)
-                oracle.store_books(db, args.market, days)
-                counts = write(args.out, settings, {name: (keys, rows(db, args.market, days))
-                                                    for name, (keys, rows) in MARKET_TABLES.items()
-                                                    if name != 'fx_days' or args.market != 'us'})
-            (args.out / 'days.txt').write_text(''.join(day + '\n' for day in days), encoding='utf-8', newline='\n')
+        settings = dict(as_of=args.as_of.isoformat(), backtest=oracle.tree(folder), cases=list(runs),
+                        market=args.market, random_days=args.random_days)
+        with closing(oracle.connect()) as db:
+            days = day_set(db, args.market, runs, args.random_days)
+            oracle.store_books(db, args.market, days)
+            counts = write(args.out, settings, {name: (keys, rows(db, args.market, days))
+                                                for name, (keys, rows) in MARKET_TABLES.items()
+                                                if name != 'fx_days' or args.market != 'us'})
+        (args.out / 'days.txt').write_text(''.join(day + '\n' for day in days), encoding='utf-8', newline='\n')
     print(f'Exported to {args.out}: ' + ', '.join(f'{name} {count}' for name, count in counts.items()))
 
 

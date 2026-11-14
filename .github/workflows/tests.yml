@@ -26,10 +26,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Export the oracle tables of the fictional fixture
         run: |
-          options="--raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 --tests fixtures/fictional/tests"
-          python3 proof/export.py $options --out "$RUNNER_TEMP/oracle-export/runs"
+          options="--raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 --cases fixtures/fictional/cases"
+          python3 proof/l3.py $options --out "$RUNNER_TEMP/oracle-export/runs"
           for market in us hk jp; do
             python3 proof/export.py $options --market $market --random-days 40 --out "$RUNNER_TEMP/oracle-export/$market"
           done

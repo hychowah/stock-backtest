@@ -3,7 +3,7 @@
  "settings": {
   "as_of": "2023-06-30T07:30:00+00:00",
   "backtest": "272bc8b3e88a50740326481acfd49ad191225a98",
-  "tests": [
+  "cases": [
    "hk-sleeves",
    "jp-monthly",
    "us-random"

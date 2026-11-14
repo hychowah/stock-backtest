@@ -14,12 +14,12 @@ The product resolves every file location from its own source folder
   already prepared runtime folder. Call it once, before any other function.
 - `prepare(as_of)` runs the ordinary preparation (research, then the daily
   cache with the latest books) with the clock pinned.
-- `run(request, as_of)` runs one strategy request in process (no queue, no
-  server) with the clock pinned, and returns the result summary.
 - `connect()` opens the prepared daily cache with the research database
   attached as `research`, as every run does.
-- `entry_dates(request, sessions)` gives the entry days of a request's
-  schedule from the product's planner.
+- `schedule(run)` gives the run mode and schedule options of a case's run
+  settings.
+- `entry_dates(run, sessions)` gives the entry days of a case's schedule from
+  the product's planner.
 - `store_books(db, market, days)` stores the dated cached-pool book of each
   day that the daily cache does not hold yet, as the book batch does.
 
@@ -31,12 +31,12 @@ research build's worker processes (2,000 companies or more), a preparation is
 exact only when the as-of time falls after the close of the last saved
 calendar row of each market.
 
-A request is one test in intent form, as the website submits it:
-`{mode, options, intent, submitted?, labels?}`. `mode` is "random" or
-"custom"; `options` are the calculation options without the strategy
-(market, start, end, months, and for random trials and seed); `intent` is a
-strategy-intent; `submitted` and `labels` carry the formula definitions and
-names that the intent's formula sources name.
+A case's run settings (`run.json`, see proof/l3.py) are `market`, `start`
+and `end`, then either `interval` (a count and `w` or `m`, such as "6m") or
+`dates` (a list of ISO days), and, for random trials, `trials` and `seed`.
+`schedule` turns them into the options the website sends: an interval becomes
+a version-1 calendar, run once (mode "custom") or, with trials, as random
+trials (mode "random"); explicit dates become `dates` (mode "custom").
 """
 from contextlib import contextmanager
 import datetime
@@ -44,7 +44,6 @@ import hashlib
 from pathlib import Path
 import shutil
 import sys
-import tempfile
 
 CHECKOUT = Path(__file__).resolve().parents[1]
 
@@ -113,31 +112,29 @@ def prepare(as_of):
         daily.prepare(repair=book_batch.repair)
 
 
-def run(request, as_of):
-    """Capture the request's strategy as the website does, run it and return the result summary."""
-    from backtest.application import variable_authoring
-    from backtest.application.original_calculations import Original
-    options = request['options']
-    capture = dict(market=options['market'], intent=request['intent'],
-                   submitted=request.get('submitted', []), labels=request.get('labels', []))
-    strategy = variable_authoring.prepare(capture, None)['strategy']
-    with pinned(as_of), tempfile.TemporaryFile() as destination:
-        result = Original().calculate_into(request['mode'], dict(options, strategy=strategy), destination, None, None)
-    return result['manifest']['summary']
-
-
 def connect():
     """The daily connection of a run: the daily cache, with the research database attached as 'research'."""
     from backtest.inputs import daily
     return daily.connect()
 
 
-def entry_dates(request, sessions):
-    """The ISO entry days of a request's schedule: its random trials' dates, or its fixed periods' entries."""
+def schedule(run):
+    """(mode, options) of a case's run settings: the calculation options without the strategy."""
+    options = dict(market=run['market'])
+    if 'dates' in run:
+        return 'custom', dict(options, start=run['start'], end=run['end'], dates=run['dates'])
+    count, unit = int(run['interval'][:-1]), dict(w='week', m='month')[run['interval'][-1]]
+    options['calendar'] = dict(version=1, start=run['start'], end=run['end'], interval=dict(unit=unit, count=count))
+    if 'trials' not in run:
+        return 'custom', options
+    return 'random', dict(options, trials=run['trials'], seed=run['seed'])
+
+
+def entry_dates(run, sessions):
+    """The ISO entry days of a case's schedule: its random trials' dates, or its fixed periods' entries."""
     from backtest import calendar_requests
-    options = {key: value for key, value in request['options'].items()
-               if key in ('start', 'end', 'months', 'calendar', 'trials', 'seed')}
-    if request['mode'] == 'random':
+    mode, options = schedule(run)
+    if mode == 'random':
         return {day for sample in calendar_requests.plan(sessions, options)['samples'] for day in sample}
     return {str(entry) for entry, _ in calendar_requests.periods(sessions, options)[0]}
 

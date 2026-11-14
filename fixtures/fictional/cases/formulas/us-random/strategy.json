@@ -1,0 +1,11 @@
+{
+ "variables": {
+  "Operating income to revenue": {"formula": "Operating income / Revenue"}
+ },
+ "sleeves": [
+  {"steps": [
+   {"filter": "P/E 5-year average", "op": "<", "value": "60"},
+   {"rank": "Operating income to revenue", "order": "highest", "from": 1, "to": 3}
+  ]}
+ ]
+}

@@ -1,0 +1,44 @@
+{"case":"hk-sleeves","trial":1,"period":1,"count":4,"gains":0.223542701788069,"losses":0,"net":0.223542701788069,"top_total":0.223542701788069,"other_total":0,"top":"0101.HK 0102.HK 0105.HK 0104.HK"}
+{"case":"hk-sleeves","trial":1,"period":2,"count":2,"gains":0.02346766148099788,"losses":0,"net":0.02346766148099788,"top_total":0.02346766148099788,"other_total":0,"top":"0102.HK 0105.HK"}
+{"case":"hk-sleeves","trial":1,"period":3,"count":2,"gains":0.04268733806989711,"losses":0.04701058110875689,"net":-0.004323243038859781,"top_total":-0.004323243038859781,"other_total":0,"top":"0103.HK 0102.HK"}
+{"case":"hk-sleeves","trial":1,"period":4,"count":2,"gains":0.1307749644239088,"losses":0.01806068512769654,"net":0.11271427929621225,"top_total":0.11271427929621225,"other_total":0,"top":"0102.HK 0105.HK"}
+{"case":"hk-sleeves","trial":2,"period":1,"count":4,"gains":0.16507827303321987,"losses":0,"net":0.16507827303321987,"top_total":0.16507827303321987,"other_total":0,"top":"0101.HK 0104.HK 0102.HK 0105.HK"}
+{"case":"hk-sleeves","trial":2,"period":2,"count":2,"gains":0.048692710210904044,"losses":0,"net":0.048692710210904044,"top_total":0.048692710210904044,"other_total":0,"top":"0104.HK 0102.HK"}
+{"case":"hk-sleeves","trial":2,"period":3,"count":2,"gains":0.13332373175503354,"losses":0,"net":0.13332373175503354,"top_total":0.13332373175503354,"other_total":0,"top":"0103.HK 0102.HK"}
+{"case":"hk-sleeves","trial":2,"period":4,"count":2,"gains":0.10330511874329629,"losses":0.03459667712860548,"net":0.06870844161469081,"top_total":0.06870844161469081,"other_total":0,"top":"0102.HK 0103.HK"}
+{"case":"jp-monthly","trial":1,"period":1,"count":0,"gains":0,"losses":0,"net":0,"top_total":0,"other_total":0,"top":""}
+{"case":"jp-monthly","trial":1,"period":2,"count":2,"gains":0.08352761541943055,"losses":0,"net":0.08352761541943055,"top_total":0.08352761541943055,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":3,"count":2,"gains":0.017794036407155156,"losses":0.021171243288010178,"net":-0.0033772068808550215,"top_total":-0.0033772068808550215,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":4,"count":2,"gains":0.0011161463075969325,"losses":0.01597638522776229,"net":-0.014860238920165358,"top_total":-0.014860238920165358,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":5,"count":2,"gains":0.018140571365971137,"losses":0.06092539266847091,"net":-0.042784821302499776,"top_total":-0.042784821302499776,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":6,"count":2,"gains":0.020811709569641734,"losses":0.008294430116425888,"net":0.012517279453215846,"top_total":0.012517279453215846,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":7,"count":2,"gains":0.01469556721663623,"losses":0.017084341692105542,"net":-0.002388774475469313,"top_total":-0.002388774475469313,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":8,"count":2,"gains":0.04024336304722498,"losses":0,"net":0.04024336304722498,"top_total":0.04024336304722498,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":9,"count":2,"gains":0.07719193186818818,"losses":0.003299587059145681,"net":0.0738923448090425,"top_total":0.0738923448090425,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":10,"count":2,"gains":0.06287894573287389,"losses":0,"net":0.06287894573287389,"top_total":0.06287894573287389,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":11,"count":2,"gains":0,"losses":0.04720722688668133,"net":-0.04720722688668133,"top_total":-0.04720722688668133,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":12,"count":2,"gains":0.04026305859795798,"losses":0.017147072908642758,"net":0.02311598568931522,"top_total":0.02311598568931522,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":13,"count":2,"gains":0.05394874492137758,"losses":0.002245861708057628,"net":0.05170288321331995,"top_total":0.05170288321331995,"other_total":0,"top":"7103.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":14,"count":2,"gains":0,"losses":0.0192010527919822,"net":-0.0192010527919822,"top_total":-0.0192010527919822,"other_total":0,"top":"7103.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":15,"count":2,"gains":0.012090249873802139,"losses":0.019053297146725323,"net":-0.006963047272923184,"top_total":-0.006963047272923184,"other_total":0,"top":"7103.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":16,"count":2,"gains":0,"losses":0.03569720578589097,"net":-0.03569720578589097,"top_total":-0.03569720578589097,"other_total":0,"top":"7101.T 7103.T"}
+{"case":"jp-monthly","trial":1,"period":17,"count":2,"gains":0.08937374587031321,"losses":0,"net":0.08937374587031321,"top_total":0.08937374587031321,"other_total":0,"top":"7103.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":18,"count":2,"gains":0.037406188723156486,"losses":0.007564796091525827,"net":0.02984139263163066,"top_total":0.02984139263163066,"other_total":0,"top":"7101.T 7103.T"}
+{"case":"jp-monthly","trial":1,"period":19,"count":2,"gains":0.005416025450961759,"losses":0.0008804275285654861,"net":0.004535597922396273,"top_total":0.004535597922396273,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":20,"count":2,"gains":0,"losses":0.04058041439893717,"net":-0.04058041439893717,"top_total":-0.04058041439893717,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":21,"count":2,"gains":0.036995935563635673,"losses":0.012563825699725972,"net":0.0244321098639097,"top_total":0.0244321098639097,"other_total":0,"top":"7101.T 7102.T"}
+{"case":"jp-monthly","trial":1,"period":22,"count":2,"gains":0.04017737217707562,"losses":0,"net":0.04017737217707562,"top_total":0.04017737217707562,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":23,"count":2,"gains":0.0013439152232075369,"losses":0.053422938015471655,"net":-0.05207902279226412,"top_total":-0.05207902279226412,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"jp-monthly","trial":1,"period":24,"count":2,"gains":0.04054840585911468,"losses":0.04732905658489811,"net":-0.0067806507257834325,"top_total":-0.0067806507257834325,"other_total":0,"top":"7102.T 7101.T"}
+{"case":"us-random","trial":1,"period":1,"count":3,"gains":0.5388282778402095,"losses":0.03600228854419781,"net":0.5028259892960116,"top_total":0.5028259892960116,"other_total":0,"top":"QST QAD QDL"}
+{"case":"us-random","trial":1,"period":2,"count":3,"gains":0.14632336547438554,"losses":0,"net":0.14632336547438554,"top_total":0.14632336547438557,"other_total":0,"top":"QAD QAC QDL"}
+{"case":"us-random","trial":1,"period":3,"count":3,"gains":0.08223521622589865,"losses":0,"net":0.08223521622589865,"top_total":0.08223521622589865,"other_total":0,"top":"QAC QFS QAD"}
+{"case":"us-random","trial":1,"period":4,"count":3,"gains":0.05519384187597668,"losses":0.07089518707797737,"net":-0.015701345202000692,"top_total":-0.015701345202000692,"other_total":0,"top":"QAD QFS QAC"}
+{"case":"us-random","trial":2,"period":1,"count":3,"gains":0.2555543695901727,"losses":0.05633331169002942,"net":0.19922105790014324,"top_total":0.19922105790014327,"other_total":0,"top":"QST QAD QDL"}
+{"case":"us-random","trial":2,"period":2,"count":3,"gains":0.1843821327638835,"losses":0.004487678959130492,"net":0.179894453804753,"top_total":0.179894453804753,"other_total":0,"top":"QAD QAC QDL"}
+{"case":"us-random","trial":2,"period":3,"count":3,"gains":0.025603834406179228,"losses":0,"net":0.025603834406179228,"top_total":0.025603834406179228,"other_total":0,"top":"QAD QFS QAC"}
+{"case":"us-random","trial":2,"period":4,"count":3,"gains":0.048704234609478224,"losses":0.04606090285271599,"net":0.0026433317567622332,"top_total":0.002643331756762235,"other_total":0,"top":"QAD QFS QAC"}
+{"case":"us-random","trial":3,"period":1,"count":3,"gains":0.20619696905838417,"losses":0.0407427057650754,"net":0.16545426329330876,"top_total":0.16545426329330876,"other_total":0,"top":"QST QAD QDL"}
+{"case":"us-random","trial":3,"period":2,"count":3,"gains":0.2024326638226051,"losses":0.016447340901675694,"net":0.18598532292092942,"top_total":0.18598532292092942,"other_total":0,"top":"QAC QAD QDL"}
+{"case":"us-random","trial":3,"period":3,"count":3,"gains":0.08077490512036004,"losses":0,"net":0.08077490512036004,"top_total":0.08077490512036004,"other_total":0,"top":"QAC QAD QFS"}
+{"case":"us-random","trial":3,"period":4,"count":3,"gains":0.04351125151503473,"losses":0.07165821503470253,"net":-0.0281469635196678,"top_total":-0.0281469635196678,"other_total":0,"top":"QAD QFS QAC"}
