@@ -1,0 +1,12 @@
+{
+ "sleeves": [
+  {"steps": [
+   {"filter": "Market cap in dollars", "op": ">=", "value": "1000000000"},
+   {"filter": "Enterprise value in dollars", "op": ">=", "value": "50000000"},
+   {"filter": "EV/EBITDA", "op": "<=", "value": "35"},
+   {"filter": "EBITDA yield", "op": ">", "value": "4.5"},
+   {"filter": "P/B", "op": "<", "value": "12.5"},
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 3}
+  ]}
+ ]
+}

@@ -88,8 +88,8 @@ import tempfile
 import export
 import oracle
 
-FIELDS = {'sector': 'sector', 'exchange': 'exchange', 'market cap in dollars': 'market_cap',
-          'enterprise value in dollars': 'enterprise_value'}
+FIELD_NAMES = {'Sector': 'sector', 'Exchange': 'exchange', 'Market cap in dollars': 'market_cap',
+               'Enterprise value in dollars': 'enterprise_value'}
 OPS = {'<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge', 'is': 'eq', 'is not': 'ne'}
 TRIAL_FIELDS = ('start', 'first_trade', 'end', 'cash_days', 'periods', 'cagr', 'spy_cagr', 'excess_cagr',
                 'total_return', 'growth', 'spy_growth', 'empty_periods', 'short_periods')
@@ -105,6 +105,18 @@ CONTRIBUTIONS = ("const {analyze}=require(process.argv[1]);let text='';process.s
 
 def key(name):
     return ' '.join(name.split()).casefold()
+
+
+FIELDS = {key(name): field for name, field in FIELD_NAMES.items()}
+
+
+def source_names():
+    """The source names that read a built-in or a field, as spelled: {name: ('builtin', first link) or ('field', field)}."""
+    from backtest.application import vocabulary
+    names = {item['name']: ('builtin', item['builtins'][0]) for item in vocabulary.entries() if item['builtins']}
+    names['Free cash flow'] = ('builtin', 'filter:fcf')
+    names.update((name, ('field', field)) for name, field in FIELD_NAMES.items())
+    return names
 
 
 def content(submitted, labels):
@@ -153,8 +165,7 @@ def request(strategy, market):
     """The website's capture request {market, intent, submitted, labels} of a strategy file."""
     from backtest.application import strategy_requests, vocabulary
     builtins = {item['id']: item for item in strategy_requests.builtin_catalog()}
-    names = {key(item['name']): item['builtins'][0] for item in vocabulary.entries() if item['builtins']}
-    names[key('Free cash flow')] = 'filter:fcf'
+    names = {key(name): source for name, source in source_names().items()}
     inputs = {key(item['name']): item['display'] for item in vocabulary.entries() if item['term'] and not item['builtins']}
     library, used = Library(), []
     variables = {key(name): library.define(name, variable) for name, variable in strategy.get('variables', {}).items()}
@@ -164,10 +175,11 @@ def request(strategy, market):
         name = key(text)
         if name in variables:
             checked = variables[name]
-        elif name in FIELDS:
-            return dict(kind='field', field=FIELDS[name]), strategy_requests.field_descriptor(FIELDS[name])['display']
         elif name in names:
-            return dict(kind='builtin', id=names[name]), builtins[names[name]]['display']
+            kind, value = names[name]
+            if kind == 'field':
+                return dict(kind='field', field=value), strategy_requests.field_descriptor(value)['display']
+            return dict(kind='builtin', id=value), builtins[value]['display']
         else:
             checked = library.check(text, inputs.get(name))
         used.append(checked)
@@ -213,13 +225,19 @@ def calculate(mode, options, as_of):
 
 def run(folder, as_of):
     """Run one case and its latest screen."""
-    from backtest.application import evidence_views
-    from backtest.engines.original import robustness
     strategy = json.loads((folder / 'strategy.json').read_text(encoding='utf-8'))
     settings = json.loads((folder / 'run.json').read_text(encoding='utf-8'))
     mode, options = oracle.schedule(settings)
     captured = capture(strategy, settings['market'])
     reader = calculate(mode, dict(options, strategy=captured), as_of)
+    screen = calculate('latest', dict(market=settings['market'], strategy=captured), as_of)
+    return case(folder.name, folder.parent.name, strategy, settings['market'], mode, reader, screen)
+
+
+def case(name, kind, strategy, market, mode, reader, screen):
+    """A run's case: its trial summaries, the summary of its trials, and the reader of its latest screen."""
+    from backtest.application import evidence_views
+    from backtest.engines.original import robustness
     summary = reader.manifest['summary']
     if mode == 'random':
         trials = summary['trials']
@@ -229,9 +247,8 @@ def run(folder, as_of):
         trials = [robustness.summarize(dict(dict(first_trade=None, cash_days=None), **view['summary']), 1, dates,
                                        period_counts=(view['periods'], view['empty'], view['short']))]
         summary = robustness.summarize_trials(None, trials, 0.)
-    return dict(name=folder.name, kind=folder.parent.name, strategy=strategy, market=settings['market'],
-                random=mode == 'random', reader=reader, trials=trials, summary=summary,
-                screen=calculate('latest', dict(market=settings['market'], strategy=captured), as_of))
+    return dict(name=name, kind=kind, strategy=strategy, market=market, random=mode == 'random', reader=reader,
+                trials=trials, summary=summary, screen=screen)
 
 
 def stored(reader):
@@ -402,33 +419,45 @@ def pick_step_rows(cases):
 
 def formula_value_rows(cases):
     """Each named variable over each entry day's whole book scope, as the scope's formula evaluation reads it."""
-    from backtest.application import scalar_execution, strategy_requests
+    for case in cases:
+        if case['kind'] == 'formulas':
+            yield from variable_values(case, sorted(case['strategy']['variables']))
+
+
+def variable_values(case, names, trials=None):
+    """formula_values rows of the file variables names of a case, on the entry days of its trials (the first trials only)."""
+    from backtest.application import strategy_requests
+    # One Rank per variable makes every named variable a root of the program.
+    ranks = [{'rank': name, 'order': 'highest', 'from': 1, 'to': 1} for name in names]
+    checked = strategy_requests.check_options(dict(market=case['market'], strategy=capture(
+        dict(variables=case['strategy']['variables'], sleeves=[dict(steps=ranks)]), case['market'])))
+    outputs = [(step['source']['variable_id'], step['source']['revision']) for step in checked['steps']]
+    yield from formula_values(case, checked, list(zip(names, outputs)), trials)
+
+
+def formula_values(case, checked, named, trials=None):
+    """Rows (case, day, symbol, variable, value) of the outputs named [(name, (variable_id, revision))] of a checked
+    strategy, over the whole book scope (scalar_execution._scope, no exit) of each entry day of the case's trials
+    (or of its first trials only). A value that is not valid is null."""
+    from backtest.application import scalar_execution
     from backtest.inputs import book_store, fact_view
     from backtest.variables import columns
+    formulas = columns.Formulas(checked['variables']['program'])
+    days = sorted({period['entry'] for trial, _, period, _ in stored(case['reader']) if trials is None or trial <= trials})
     with closing(oracle.connect()) as db:
-        for case in cases:
-            if case['kind'] != 'formulas':
+        view = fact_view.View(db, lambda: None, lambda: None, market=case['market'])
+        for day in days:
+            book = book_store.find(db, day, 'cached', market=case['market'])
+            rows, admission = scalar_execution._scope(db, checked, book, day, latest=False, market=case['market'])
+            if not rows:
                 continue
-            names = sorted(case['strategy']['variables'])
-            # One Rank per variable makes every named variable a root of the program.
-            ranks = [{'rank': name, 'order': 'highest', 'from': 1, 'to': 1} for name in names]
-            checked = strategy_requests.check_options(dict(market=case['market'], strategy=capture(
-                dict(variables=case['strategy']['variables'], sleeves=[dict(steps=ranks)]), case['market'])))
-            formulas = columns.Formulas(checked['variables']['program'])
-            outputs = [(step['source']['variable_id'], step['source']['revision']) for step in checked['steps']]
-            view = fact_view.View(db, lambda: None, lambda: None, market=case['market'])
-            for day in sorted({period['entry'] for _, _, period, _ in stored(case['reader'])}):
-                book = book_store.find(db, day, 'cached', market=case['market'])
-                rows, admission = scalar_execution._scope(db, checked, book, day, latest=False, market=case['market'])
-                if not rows:
-                    continue
-                roots, decisions = zip(*map(admission, range(len(rows))))
-                values = formulas.evaluate(list(roots), view, lambda: None, decisions=list(decisions), outputs=outputs)
-                for row, found in zip(rows, values):
-                    for name, output in zip(names, outputs):
-                        value, valid, _ = found[output]
-                        yield dict(case=case['name'], day=day, symbol=row[0], variable=name,
-                                   value=value if valid else None)
+            roots, decisions = zip(*map(admission, range(len(rows))))
+            values = formulas.evaluate(list(roots), view, lambda: None, decisions=list(decisions),
+                                       outputs=[output for _, output in named])
+            for row, found in zip(rows, values):
+                for name, output in named:
+                    value, valid, _ = found[output]
+                    yield dict(case=case['name'], day=day, symbol=row[0], variable=name, value=value if valid else None)
 
 
 TABLES = {

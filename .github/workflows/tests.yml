@@ -41,6 +41,13 @@ jobs:
           for folder in runs us hk jp; do
             cargo run -q -p tables -- "fixtures/fictional/expected/$folder" "$RUNNER_TEMP/oracle-export/$folder"
           done
+      - name: Convert the fictional saved tests and run each against its original
+        run: |
+          inputs="--data fixtures/fictional/saved/data fixtures/fictional/saved/requests/us-intent.json"
+          python3 proof/convert.py $inputs --out "$RUNNER_TEMP/converted"
+          diff -r fixtures/fictional/saved/expected "$RUNNER_TEMP/converted"
+          python3 proof/convert_proof.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 \
+            --out "$RUNNER_TEMP/convert-proof" $inputs
 
   web:
     runs-on: ubuntu-latest

@@ -1,0 +1,11 @@
+{
+ "variables": {
+  "Working capital (2)": {"formula": "Working capital", "display": "usd_million"}
+ },
+ "sleeves": [
+  {"steps": [
+   {"filter": "Working capital (2)", "op": ">", "value": "200"},
+   {"rank": "EV/EBITDA", "order": "lowest", "from": 1, "to": 3}
+  ]}
+ ]
+}

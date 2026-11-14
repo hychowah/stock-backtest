@@ -1,0 +1,13 @@
+{
+ "variables": {
+  "Cash cover": {"formula": "Cash and equivalents / positive(Current liabilities)", "display": "multiple"},
+  "Cash cover doubled": {"formula": "Cash cover * 2", "display": "multiple"}
+ },
+ "sleeves": [
+  {"steps": [
+   {"filter": "Cash cover doubled", "op": ">", "value": "0.5"},
+   {"filter": "EBITDA yield", "op": ">=", "value": "8"},
+   {"rank": "ROE", "order": "highest", "from": 1, "to": 2}
+  ]}
+ ]
+}

@@ -1,0 +1,2 @@
+{"name": "Debt to value", "favourite": true, "revisions": [{"formula": "Total debt / Enterprise value", "display": "percent", "current": false}, {"formula": "Total debt / positive(Enterprise value)", "display": "percent", "current": true}]}
+{"name": "Cash cover", "favourite": false, "revisions": [{"formula": "Cash and equivalents / positive(Current liabilities)", "display": "multiple", "current": false}, {"formula": "Cash and equivalents / positive(Total liabilities)", "display": "multiple", "current": true}]}

@@ -1,0 +1,2 @@
+{"source": "queue", "id": "12f3dc57d92f4afea108577f5a976343", "name": "Old default", "reason": "it selects from the legacy US pool (the top 250 by report yield), which the new program does not have"}
+{"source": "variables", "id": "var:78fc0bc4002f4521b26bcef5a5d1e7f2 sha256:0c57e3e1f64facd82f5096c2ba3f25360b0d45dadbb5fd78e3ad3b03cc9c0631", "name": "Cash cover doubled", "reason": "the revision does not convert: its text reads back as a different formula"}

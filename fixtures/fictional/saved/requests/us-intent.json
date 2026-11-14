@@ -1,0 +1,75 @@
+{
+ "mode": "custom",
+ "options": {
+  "market": "us",
+  "calendar": {
+   "version": 1,
+   "start": "2023-01-02",
+   "end": "2023-03-31",
+   "interval": {
+    "unit": "week",
+    "count": 2
+   }
+  }
+ },
+ "intent": {
+  "format": "strategy-intent",
+  "version": 2,
+  "universe": {
+   "pool": "cached"
+  },
+  "steps": [
+   {
+    "kind": "filter",
+    "source": {
+     "kind": "formula",
+     "variable_id": "local:working-capital",
+     "revision": "sha256:68673872c536ac0fed5574ad2322bc927cecd162272773df5dfd0ccb4f22af8f"
+    },
+    "op": "gt",
+    "threshold": {
+     "value": "200",
+     "unit": "usd_million"
+    }
+   },
+   {
+    "kind": "rank",
+    "source": {
+     "kind": "builtin",
+     "id": "filter:ev_ebitda"
+    },
+    "direction": "lowest",
+    "rank_from": 1,
+    "rank_to": 3
+   }
+  ]
+ },
+ "submitted": [
+  {
+   "variable_id": "local:working-capital",
+   "revision": "sha256:68673872c536ac0fed5574ad2322bc927cecd162272773df5dfd0ccb4f22af8f",
+   "definition": {
+    "format": "variable-definition",
+    "version": 3,
+    "parameter_catalog": "financial-parameters/4",
+    "temporal_policy": "market-annual/1",
+    "expression": {
+     "op": "ref",
+     "variable_id": "measure:working_capital",
+     "revision": "sha256:34c2fa2d0d29dc897a0840a20e2edf2dcee78655cd3ad81230a4b294b5a0fc28"
+    },
+    "output": {
+     "unit": "USD",
+     "display": "usd_million"
+    }
+   }
+  }
+ ],
+ "labels": [
+  {
+   "variable_id": "local:working-capital",
+   "revision": "sha256:68673872c536ac0fed5574ad2322bc927cecd162272773df5dfd0ccb4f22af8f",
+   "name": "Working capital"
+  }
+ ]
+}

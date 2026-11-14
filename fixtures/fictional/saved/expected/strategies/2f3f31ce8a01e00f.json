@@ -1,0 +1,13 @@
+{
+ "sleeves": [
+  {"name": "Value", "steps": [
+   {"filter": "Market cap in dollars", "op": ">=", "value": "1000000000"},
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "Margin", "steps": [
+   {"filter": "Sector", "op": "is not", "value": "Real Estate"},
+   {"filter": "Net margin", "op": ">", "value": "10"},
+   {"rank": "P/B", "order": "lowest", "from": 1, "to": 2}
+  ]}
+ ]
+}

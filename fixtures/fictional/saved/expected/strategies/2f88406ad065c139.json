@@ -1,0 +1,16 @@
+{
+ "variables": {
+  "Debt to value": {"formula": "Total debt / Enterprise value", "display": "percent"}
+ },
+ "sleeves": [
+  {"steps": [
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 3},
+   {"filter": "Market cap in dollars", "op": ">=", "value": "2000000000"},
+   {"filter": "Enterprise value in dollars", "op": ">=", "value": "1000000000"},
+   {"filter": "EBITDA yield", "op": ">=", "value": "3"},
+   {"filter": "EV/EBITDA", "op": "<=", "value": "40"},
+   {"filter": "Debt to value", "op": "<", "value": "70"},
+   {"filter": "P/E", "op": "<", "value": "45"}
+  ]}
+ ]
+}
