@@ -41,7 +41,7 @@ impl Home {
         self.root.join("raw")
     }
 
-    /// `data/prepared/`: the prepared store (see [`crate::store`]).
+    /// `data/prepared/`: the prepared store (see the `store` module).
     pub fn prepared(&self) -> PathBuf {
         self.root.join("data").join("prepared")
     }

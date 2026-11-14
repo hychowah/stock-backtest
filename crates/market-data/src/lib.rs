@@ -2,7 +2,7 @@
 //! store, and the read interface the engine uses ([`MarketData`]).
 //!
 //! Only this crate opens store files. The `data` commands live in
-//! [`commands`]; the store layout and its publish rules in [`store`].
+//! [`commands`]; the store layout and its publish rules in the private `store` module.
 
 mod annual;
 pub mod builtins;
@@ -16,7 +16,7 @@ mod raw;
 mod reports;
 mod screen;
 mod series;
-pub mod store;
+mod store;
 mod valuation;
 
 pub use companies::{Companies, CompanyId};
@@ -24,11 +24,12 @@ pub use day::Day;
 pub use error::Error;
 pub use market::Market;
 pub use screen::{Candidate, Denial, Screen};
+pub use store::{ColumnInfo, Manifest};
 
 use commands::Home;
 use screen::{Columns, DayScreen};
 use series::Series;
-use store::{Generation, Manifest};
+use store::Generation;
 
 /// This program and its version, as manifests and exports record it.
 const PROGRAM: &str = concat!("bt ", env!("CARGO_PKG_VERSION"));

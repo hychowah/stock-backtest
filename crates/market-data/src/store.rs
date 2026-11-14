@@ -69,11 +69,11 @@ compile_error!("the prepared store maps little-endian column files as native val
 
 /// The layout version this program writes and reads. Raise it whenever the
 /// meaning, type or name of any column changes.
-pub const FORMAT: u32 = 3;
+pub(crate) const FORMAT: u32 = 3;
 
 /// A type a column holds: plain values for which every bit pattern is valid.
 /// Implemented for `i32`, [`Day`], `f64`, `u8`, `u32` and `u64` only.
-pub trait Element: Copy + sealed::Sealed + 'static {
+pub(crate) trait Element: Copy + sealed::Sealed + 'static {
     /// The type's name in the manifest. [`Day`] columns are `i32`.
     const TYPE: &'static str;
 }
@@ -141,7 +141,7 @@ impl Manifest {
 /// One column's entry in the manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnInfo {
-    /// [`Element::TYPE`] of its values.
+    /// `Element::TYPE` of its values.
     #[serde(rename = "type")]
     pub kind: String,
     /// The number of values.
@@ -151,14 +151,14 @@ pub struct ColumnInfo {
 /// The preparation lock. While a `Lock` lives, no other preparation can take
 /// it; the operating system releases it when the value is dropped or the
 /// process ends, so a crash leaves no stale lock.
-pub struct Lock {
+pub(crate) struct Lock {
     _file: File,
     prepared: PathBuf,
 }
 
 impl Lock {
     /// Takes the lock without waiting. Fails when another preparation holds it.
-    pub fn take(home: &Home) -> Result<Lock, Error> {
+    pub(crate) fn take(home: &Home) -> Result<Lock, Error> {
         let prepared = home.prepared();
         let path = prepared.join("prepare.lock");
         fs::create_dir_all(&prepared).map_err(|e| io_error("cannot create the folder", &prepared, e))?;
@@ -178,7 +178,7 @@ impl Lock {
     /// Starts the next generation of `market`: deletes the market's
     /// generations except `current` (old ones and failed builds), then
     /// creates an empty folder numbered one above any seen.
-    pub fn begin(&self, market: Market) -> Result<GenerationWriter<'_>, Error> {
+    pub(crate) fn begin(&self, market: Market) -> Result<GenerationWriter<'_>, Error> {
         let dir = self.prepared.join(market.id());
         fs::create_dir_all(&dir).map_err(|e| io_error("cannot create the folder", &dir, e))?;
         let current = read_current(&dir)?;
@@ -205,7 +205,7 @@ impl Lock {
 /// A generation being built. Write each column once; nothing is visible to
 /// readers until [`publish`](Self::publish). Dropping it without publishing
 /// leaves an unpublished folder that the next preparation deletes.
-pub struct GenerationWriter<'lock> {
+pub(crate) struct GenerationWriter<'lock> {
     _lock: PhantomData<&'lock Lock>,
     market: Market,
     generation: u64,
@@ -217,7 +217,7 @@ pub struct GenerationWriter<'lock> {
 impl GenerationWriter<'_> {
     /// Writes column `name` (`<group>.<name>`), with `values` in order. The
     /// reader gets them back as a slice from [`Generation::column`].
-    pub fn column<T: Element>(&mut self, name: &str, values: &[T]) -> Result<(), Error> {
+    pub(crate) fn column<T: Element>(&mut self, name: &str, values: &[T]) -> Result<(), Error> {
         let path = self.folder.join(name);
         let write = || -> io::Result<()> {
             let mut out = BufWriter::new(File::create(&path)?);
@@ -233,7 +233,7 @@ impl GenerationWriter<'_> {
 
     /// Writes text column `name`: the columns `<name>.bytes` and
     /// `<name>.offsets`. The reader gets them back from [`Generation::text`].
-    pub fn text<S: AsRef<str>>(&mut self, name: &str, values: &[S]) -> Result<(), Error> {
+    pub(crate) fn text<S: AsRef<str>>(&mut self, name: &str, values: &[S]) -> Result<(), Error> {
         let mut bytes = Vec::new();
         let mut offsets = Vec::with_capacity(values.len() + 1);
         offsets.push(0u64);
@@ -247,7 +247,7 @@ impl GenerationWriter<'_> {
 
     /// Writes the manifest and makes this generation the market's `current`.
     /// Returns the manifest written.
-    pub fn publish(self, as_of: &DateTime<FixedOffset>, build_seconds: f64) -> Result<Manifest, Error> {
+    pub(crate) fn publish(self, as_of: &DateTime<FixedOffset>, build_seconds: f64) -> Result<Manifest, Error> {
         let manifest = Manifest {
             format: FORMAT,
             market: self.market,
@@ -271,7 +271,7 @@ impl GenerationWriter<'_> {
 /// One opened generation: its manifest and its columns, mapped. It reads the
 /// generation `current` named at open, unchanged until dropped, even after a
 /// later preparation publishes another or deletes it.
-pub struct Generation {
+pub(crate) struct Generation {
     manifest: Manifest,
     maps: HashMap<String, Mmap>,
 }
@@ -281,7 +281,7 @@ impl Generation {
     /// `bt data prepare`, when the market has no `current` or its manifest has
     /// another [`FORMAT`]; fails, naming the column, when a column file's size
     /// differs from its manifest entry. Reads after open trust the store.
-    pub fn open(home: &Home, market: Market) -> Result<Generation, Error> {
+    pub(crate) fn open(home: &Home, market: Market) -> Result<Generation, Error> {
         let dir = home.prepared().join(market.id());
         let Some(generation) = read_current(&dir)? else {
             let message = format!("{} is not prepared: run `bt data prepare`", market.id());
@@ -319,14 +319,14 @@ impl Generation {
         Ok(Generation { manifest, maps })
     }
 
-    pub fn manifest(&self) -> &Manifest {
+    pub(crate) fn manifest(&self) -> &Manifest {
         &self.manifest
     }
 
     /// Column `name` as written by [`GenerationWriter::column`]. Panics when
     /// the generation has no such column or it holds another type: the build
     /// and the readers of one [`FORMAT`] agree on both.
-    pub fn column<T: Element>(&self, name: &str) -> &[T] {
+    pub(crate) fn column<T: Element>(&self, name: &str) -> &[T] {
         let kind = self.manifest.columns.get(name).map(|c| c.kind.as_str());
         assert_eq!(kind, Some(T::TYPE), "column {name}");
         let bytes: &[u8] = &self.maps[name];
@@ -338,25 +338,25 @@ impl Generation {
     }
 
     /// Text column `name` as written by [`GenerationWriter::text`].
-    pub fn text(&self, name: &str) -> Text<'_> {
+    pub(crate) fn text(&self, name: &str) -> Text<'_> {
         Text { bytes: self.column(&format!("{name}.bytes")), offsets: self.column(&format!("{name}.offsets")) }
     }
 }
 
 /// A mapped text column: `len()` texts, read by position.
 #[derive(Clone, Copy)]
-pub struct Text<'a> {
+pub(crate) struct Text<'a> {
     bytes: &'a [u8],
     offsets: &'a [u64],
 }
 
 impl<'a> Text<'a> {
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.offsets.len() - 1
     }
 
     /// Text `i`. Panics when `i >= len()`.
-    pub fn get(&self, i: usize) -> &'a str {
+    pub(crate) fn get(&self, i: usize) -> &'a str {
         let range = self.offsets[i] as usize..self.offsets[i + 1] as usize;
         std::str::from_utf8(&self.bytes[range]).expect("text columns hold UTF-8")
     }
@@ -419,4 +419,101 @@ fn sync_folder(dir: &Path) -> Result<(), Error> {
 
 fn io_error(what: &str, path: &Path, error: io::Error) -> Error {
     Error::new(format!("{what}: {error}"), path.display())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::Home;
+
+    /// Prepares one generation of HK with column `t.x` and text column `t.name`.
+    fn publish(home: &Home, values: &[f64]) {
+        let lock = Lock::take(home).unwrap();
+        let mut out = lock.begin(Market::Hk).unwrap();
+        out.column("t.x", values).unwrap();
+        out.text("t.name", &["Aé", "", "b"]).unwrap();
+        out.publish(&DateTime::parse_from_rfc3339("2023-06-30T07:30:00+00:00").unwrap(), 0.0).unwrap();
+    }
+
+    fn folders(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> =
+            std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_reader_keeps_its_generation_after_later_publishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::new(dir.path());
+        publish(&home, &[1.0, 2.0]);
+        let reader = Generation::open(&home, Market::Hk).unwrap();
+        publish(&home, &[3.0]);
+        publish(&home, &[4.0]); // deletes the reader's generation from disk
+        assert!(!dir.path().join("data/prepared/hk/1").exists());
+        assert_eq!(reader.manifest().generation, 1);
+        assert_eq!(reader.column::<f64>("t.x"), &[1.0, 2.0]);
+        let text = reader.text("t.name");
+        assert_eq!((text.len(), text.get(0), text.get(1), text.get(2)), (3, "Aé", "", "b"));
+        let newest = Generation::open(&home, Market::Hk).unwrap();
+        assert_eq!((newest.manifest().generation, newest.column::<f64>("t.x")), (3, &[4.0][..]));
+    }
+
+    #[test]
+    fn a_second_preparation_fails_while_one_holds_the_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::new(dir.path());
+        let lock = Lock::take(&home).unwrap();
+        let error = Lock::take(&home).err().expect("the lock is busy");
+        assert!(error.message.contains("another preparation"), "{error}");
+        drop(lock);
+        Lock::take(&home).unwrap();
+    }
+
+    #[test]
+    fn a_preparation_deletes_old_and_failed_generations_but_not_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::new(dir.path());
+        let hk = dir.path().join("data/prepared/hk");
+        publish(&home, &[1.0]);
+        publish(&home, &[2.0]);
+        assert_eq!(folders(&hk), ["1", "2", "current"]);
+        {
+            let lock = Lock::take(&home).unwrap();
+            let mut failed = lock.begin(Market::Hk).unwrap();
+            failed.column("t.x", &[9.0]).unwrap();
+        } // dropped without publishing: a failed build
+        assert_eq!(folders(&hk), ["2", "3", "current"]);
+        assert_eq!(Generation::open(&home, Market::Hk).unwrap().column::<f64>("t.x"), &[2.0]);
+        let lock = Lock::take(&home).unwrap();
+        let _next = lock.begin(Market::Hk).unwrap();
+        assert_eq!(folders(&hk), ["2", "4", "current"]);
+    }
+
+    #[test]
+    fn a_store_of_another_format_asks_for_a_new_preparation() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::new(dir.path());
+        let missing = Generation::open(&home, Market::Hk).err().expect("not prepared");
+        assert!(missing.message.contains("run `bt data prepare`"), "{missing}");
+        publish(&home, &[1.0]);
+        let path = dir.path().join("data/prepared/hk/1/manifest.json");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let old = format!("\"format\": {FORMAT},");
+        assert!(text.contains(&old));
+        std::fs::write(&path, text.replace(&old, &format!("\"format\": {},", FORMAT + 1))).unwrap();
+        let error = Generation::open(&home, Market::Hk).err().expect("another format");
+        assert!(error.message.contains("run `bt data prepare`"), "{error}");
+    }
+
+    #[test]
+    fn a_column_of_the_wrong_length_fails_open_and_names_the_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::new(dir.path());
+        publish(&home, &[1.0, 2.0]);
+        let file = std::fs::OpenOptions::new().write(true).open(dir.path().join("data/prepared/hk/1/t.x")).unwrap();
+        file.set_len(12).unwrap();
+        let error = Generation::open(&home, Market::Hk).err().expect("a short column");
+        assert!(error.message.contains("t.x"), "{error}");
+    }
 }
