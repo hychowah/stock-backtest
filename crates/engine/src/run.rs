@@ -9,6 +9,7 @@ use crate::values::DayValues;
 use crate::Error;
 use market_data::{CompanyId, Day, Market, MarketData, Screen};
 use rayon::prelude::*;
+use serde::Serialize;
 use std::sync::Arc;
 
 /// This program and its version, as result files and exports record it.
@@ -162,7 +163,8 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
     let manifest = data.manifest();
     let mut runs = Vec::with_capacity(strategies.len());
     for (s, strategy) in strategies.iter().enumerate() {
-        let requested = requested(strategy);
+        let (from, to) = rank_range(strategy);
+        let requested = (to - from + 1) as usize;
         let mut trials = Vec::with_capacity(plan.trials().len());
         for (trial, number) in plan.trials().iter().zip(1..) {
             let mut periods = Vec::with_capacity(trial.periods.len());
@@ -212,12 +214,71 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
     Ok(runs)
 }
 
-/// The most holdings a period can have (`selection.rank_range`): the size
-/// of each sleeve's last Rank step, added over the sleeves.
-fn requested(strategy: &Strategy) -> usize {
-    let size = |steps: &[Step]| match steps.iter().rev().find(|s| matches!(s, Step::Rank { .. })) {
-        Some(&Step::Rank { from, to, .. }) => (to - from + 1) as usize,
+/// The ranks a period's holdings can have (`selection.rank_range`): one
+/// sleeve, its last Rank step's; several, 1 to the sum of the sizes of their
+/// last Rank steps.
+pub(crate) fn rank_range(strategy: &Strategy) -> (u32, u32) {
+    let last = |steps: &[Step]| match steps.iter().rev().find(|s| matches!(s, Step::Rank { .. })) {
+        Some(&Step::Rank { from, to, .. }) => (from, to),
         _ => panic!("a sleeve has a Rank step"),
     };
-    strategy.sleeves().iter().map(|sleeve| size(&sleeve.steps)).sum()
+    match strategy.sleeves() {
+        [one] => last(&one.steps),
+        several => (1, several.iter().map(|s| last(&s.steps)).map(|(from, to)| to - from + 1).sum()),
+    }
+}
+
+/// One pick of the latest screen.
+#[derive(Debug, Serialize)]
+pub struct Screened {
+    pub rank: u32,
+    pub symbol: String,
+    pub name: String,
+    pub sector: String,
+    /// The value of the first picking sleeve's last Rank step.
+    pub ranking_value: f64,
+    /// Each picking sleeve's step trail, in sleeve order; written as the
+    /// `steps` rows of a result: sleeve and step from 1, value, step_rank.
+    #[serde(rename = "steps", serialize_with = "trail_rows")]
+    pub sleeves: Vec<Trail>,
+}
+
+fn trail_rows<S: serde::Serializer>(sleeves: &[Trail], s: S) -> Result<S::Ok, S::Error> {
+    #[derive(Serialize)]
+    struct Row {
+        sleeve: u32,
+        step: u32,
+        value: Option<f64>,
+        step_rank: Option<u32>,
+    }
+    s.collect_seq(sleeves.iter().flat_map(|trail| {
+        (1..).zip(&trail.steps).map(|(step, o)| Row { sleeve: trail.sleeve as u32 + 1, step, value: o.value, step_rank: o.rank })
+    }))
+}
+
+/// The strategy's picks on the market's last session, as the oracle's
+/// latest screen: listed companies entering at that session's close, with no
+/// exit. Gives the session and the picks in rank order. An error's place
+/// names the market and the session.
+pub(crate) fn screen(data: &MarketData, strategy: &Strategy) -> Result<(Day, Vec<Screened>), Error> {
+    let market = data.manifest().market;
+    let &day = data.sessions().last().ok_or_else(|| Error::new("the market has no session", market.id()))?;
+    let values = DayValues::new(data, day, Screen::Latest);
+    let picks = select(strategy, &values, None).map_err(|e| {
+        let place = format!("{}, latest {day}", market.id());
+        Error::new(e.message, if e.place.is_empty() { place } else { format!("{place}, {}", e.place) })
+    })?;
+    let companies = data.companies();
+    let picks = picks
+        .into_iter()
+        .map(|pick| Screened {
+            rank: pick.rank,
+            symbol: companies.symbol(pick.candidate.company).to_string(),
+            name: companies.name(pick.candidate.company).to_string(),
+            sector: companies.sector(pick.candidate.company).to_string(),
+            ranking_value: pick.value,
+            sleeves: pick.sleeves,
+        })
+        .collect();
+    Ok((day, picks))
 }

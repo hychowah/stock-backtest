@@ -23,6 +23,7 @@ use crate::Error;
 use crate::run::{Point, Run};
 use crate::schedule::Schedule;
 use crate::statistics::Summary;
+use crate::strategy::Strategy;
 use market_data::Day;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OpenFlags, Row, params};
@@ -229,6 +230,15 @@ impl ResultFile {
         let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(fail)?;
         db.query_row("SELECT count(*) FROM run", [], |_| Ok(())).map_err(fail)?;
         Ok(ResultFile { db })
+    }
+
+    /// The run's strategy, read back from its canonical form, and its
+    /// schedule.
+    pub(crate) fn run(&self) -> Result<(Strategy, Schedule), Error> {
+        let rows = self.rows("SELECT strategy, schedule FROM run", |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        let (strategy, schedule) = rows.into_iter().next().expect("a result file has one run row");
+        let place = format!("{}: run.strategy", self.db.path().unwrap_or_default());
+        Ok((Strategy::from_text(&strategy, &place)?, serde_json::from_str(&schedule).expect("a stored schedule is JSON")))
     }
 
     /// Each trial's summary, with the entries of its periods as its dates.

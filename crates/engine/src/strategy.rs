@@ -46,9 +46,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// The most steps a strategy has across its sleeves.
-const MAX_STEPS: usize = 50;
+pub(crate) const MAX_STEPS: usize = 50;
 /// The highest rank a Rank step keeps.
-const MAX_RANK: u32 = 5000;
+pub(crate) const MAX_RANK: u32 = 5000;
 /// The longest threshold text, and the longest decimal it expands to
 /// (`definitions.CEILINGS` literal and expanded_literal).
 pub(crate) const MAX_LITERAL: usize = 64;
@@ -104,6 +104,32 @@ impl Source {
             &Source::Builtin(index) => names::of_builtin(index).name,
             &Source::Field(field) => names::of_field(field).name,
             Source::Formula(formula) => formula.name().unwrap_or(formula.text()),
+        }
+    }
+
+    /// What it reads: the [kind](Kind::id) of a name of the list when it is
+    /// that whole name, `variable` for a file variable, else `formula`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            &Source::Builtin(index) => names::of_builtin(index).kind.id(),
+            &Source::Field(field) => names::of_field(field).kind.id(),
+            Source::Formula(formula) if formula.name().is_some() => "variable",
+            // A formula that prints as an input's or a measure's name is
+            // that name only when it is what the whole name reads.
+            Source::Formula(formula) => match names::find(formula.text()) {
+                Some(name) if whole(name.name, &[]).as_ref() == Some(self) => name.kind.id(),
+                _ => "formula",
+            },
+        }
+    }
+
+    /// `USD`, `scalar`, `USD/share`, `share`, or `text` for sector and
+    /// exchange.
+    pub fn unit(&self) -> &'static str {
+        match self {
+            &Source::Builtin(index) => BUILTINS[index].unit,
+            &Source::Field(field) => names::of_field(field).unit(),
+            Source::Formula(formula) => formula.unit().id(),
         }
     }
 
@@ -313,6 +339,12 @@ impl Strategy {
         Reader { file }.strategy(&text)
     }
 
+    /// Reads a strategy from `text`, such as a canonical form stored in a
+    /// result file; an error's place starts with `place`.
+    pub(crate) fn from_text(text: &str, place: &str) -> Result<Strategy, Error> {
+        Reader { file: place.to_string() }.strategy(text)
+    }
+
     pub fn sleeves(&self) -> &[Sleeve] {
         &self.sleeves
     }
@@ -326,6 +358,13 @@ impl Strategy {
     /// spells it and prints each formula in its canonical text.
     pub fn canonical(&self) -> &str {
         &self.canonical
+    }
+
+    /// How the canonical form writes `source`, one of this strategy's
+    /// sources: a name, or a formula's canonical text, in parentheses when
+    /// it would read as a whole name of another meaning.
+    pub(crate) fn written(&self, source: &Source) -> String {
+        written(source, &self.variables)
     }
 
     /// The SHA-256 of the canonical form, in lower-case hex.

@@ -53,6 +53,18 @@ pub enum Field {
     EnterpriseValue,
 }
 
+impl Kind {
+    /// `built-in`, `input`, `measure` or `field`.
+    pub fn id(&self) -> &'static str {
+        match self {
+            Kind::Builtin { .. } => "built-in",
+            Kind::Input { .. } => "input",
+            Kind::Measure { .. } => "measure",
+            Kind::Field(_) => "field",
+        }
+    }
+}
+
 impl Field {
     /// Sector and exchange are text; the two size fields are numbers.
     pub fn is_text(self) -> bool {

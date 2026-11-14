@@ -4,10 +4,14 @@
 //! A strategy is read once ([`Strategy::read`], its formulas by
 //! [`Formula::read`]); each screen day's candidates and their source values
 //! are read once ([`DayValues`]); [`select`] gives a strategy's picks of a
-//! day; and a [`Plan`] holds the trade dates of a run. A run values every strategy of a batch on one plan,
-//! with each trial's summary and the statistics over the trials, and writes
-//! one SQLite result file per strategy. [`commands`] holds the `run` and
-//! `export tables` commands that `bt` calls.
+//! day; and a [`Plan`] holds the trade dates of a run. A run values every
+//! strategy of a batch on one plan, with each trial's summary and the
+//! statistics over the trials, and writes one SQLite result file per
+//! strategy. The views (growth curves, sectors, contributions, exploration
+//! and joined holdings) read a result file alone. [`commands`] holds the
+//! commands that `bt` calls: `check` and `catalog` (what a strategy file
+//! can write), `run`, `screen` (the picks of the latest session), `explore`
+//! and the exports of result files.
 
 pub mod commands;
 pub mod formula;
@@ -20,6 +24,7 @@ pub mod selection;
 mod statistics;
 pub mod strategy;
 mod values;
+mod views;
 
 pub use formula::Formula;
 pub use market_data::Error;
@@ -27,3 +32,4 @@ pub use schedule::{Dates, Interval, Period, Plan, Schedule, Trial};
 pub use selection::{Pick, select};
 pub use strategy::{Source, Strategy};
 pub use values::DayValues;
+pub use views::Selection;

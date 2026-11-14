@@ -81,8 +81,13 @@ const STATS: [(Stat, &str, bool); 5] = [
     (Stat::Cagr, "cagr", true),
 ];
 
-/// The functions that are not statistics.
-const OTHER_FUNCTIONS: [&str; 3] = ["ago", "at", "positive"];
+/// The functions that are not statistics: the word, and how a catalog
+/// shows it with what it gives.
+const OTHER_FUNCTIONS: [(&str, &str, &str); 3] = [
+    ("ago", "ago(X, N months)", "X as known N calendar months earlier; N from 1 to 120"),
+    ("at", "at(X, YYYY-MM-DD)", "X as known on that date, which must not be after the screen day (a later date stops the run)"),
+    ("positive", "A / positive(B)", "A / B where B is above zero, else no value; only as the bottom of a division"),
+];
 
 /// A unit of the formula catalog.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,7 +98,7 @@ pub enum Unit {
     Share,
 }
 
-const UNITS: [Unit; 4] = [Unit::Scalar, Unit::Usd, Unit::UsdPerShare, Unit::Share];
+pub(crate) const UNITS: [Unit; 4] = [Unit::Scalar, Unit::Usd, Unit::UsdPerShare, Unit::Share];
 
 impl Unit {
     /// `scalar`, `USD`, `USD/share` or `share`.
@@ -122,7 +127,7 @@ impl Unit {
     }
 
     /// The display of a formula that names none (`vocabulary.DISPLAYS`).
-    fn default_display(self) -> &'static str {
+    pub(crate) fn default_display(self) -> &'static str {
         match self {
             Unit::Scalar => "percent",
             Unit::Usd => "usd_million",
@@ -220,6 +225,41 @@ impl Formula {
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
+}
+
+/// For a catalog: each function as it is written, with one line on what it
+/// gives.
+pub(crate) fn functions() -> Vec<(String, String)> {
+    let stats = STATS.iter().map(|&(stat, word, spread)| {
+        let most = MAX_YEARLY - u64::from(spread);
+        let gives = match stat {
+            Stat::Mean => "the mean of the input's N latest yearly values",
+            Stat::Min => "the lowest of the input's N latest yearly values",
+            Stat::Max => "the highest of the input's N latest yearly values",
+            Stat::Growth => "the latest yearly value / the value N years earlier - 1; no value when that earlier value is not above zero",
+            Stat::Cagr => {
+                "the growth per year over the latest N years, from N + 1 yearly values; no value when the earliest or the latest of them is not above zero"
+            }
+        };
+        (format!("{word}(INPUT, N years)"), format!("{gives}; INPUT is one yearly input; N from 1 to {most}"))
+    });
+    let others = OTHER_FUNCTIONS.iter().map(|&(_, form, meaning)| (form.to_string(), meaning.to_string()));
+    stats.chain(others).collect()
+}
+
+/// For a catalog: the operators and the other ways to write a value, with
+/// one line each.
+pub(crate) fn operators() -> Vec<(String, String)> {
+    [
+        ("A + B, A - B, A * B, A / B, -A", "arithmetic; + and - join values of one unit; * and / bind before + and -"),
+        ("(A)", "grouping"),
+        ("NAME, [NAME]", "a name of the list (not a step-only one) or a variable above, ignoring case and repeated spaces; brackets are accepted around any name and needed where a bare name cannot be read, such as one that does not start with a letter; ] is written ]]"),
+        ("12.5, 1e3", "a number"),
+        ("100 USD, 2 USD per share, 1000 shares", "a number in US dollars, US dollars per share or shares (unit words ignore case)"),
+    ]
+    .into_iter()
+    .map(|(form, meaning)| (form.to_string(), meaning.to_string()))
+    .collect()
 }
 
 /// Two formulas are the same when they print the same, show the same and
@@ -499,12 +539,17 @@ impl Closure {
     }
 }
 
-const MAX_NODES: usize = 256;
-const MAX_DEPTH: usize = 32;
-const MAX_DEFINITIONS: usize = 32;
-const MAX_DEPENDENCY: usize = 8;
-const MAX_MONTHS: u64 = 120;
-const MAX_YEARLY: u64 = 10;
+/// The most parts (nodes) of a formula, alone or with the variables and
+/// measures it uses, and the most levels, also counted through them.
+pub(crate) const MAX_NODES: usize = 256;
+pub(crate) const MAX_DEPTH: usize = 32;
+/// The most variables and measures a formula uses, itself included.
+pub(crate) const MAX_DEFINITIONS: usize = 32;
+/// The most levels of definitions that refer to definitions.
+pub(crate) const MAX_DEPENDENCY: usize = 8;
+/// The most months `ago` goes back, and yearly values a statistic reads.
+pub(crate) const MAX_MONTHS: u64 = 120;
+pub(crate) const MAX_YEARLY: u64 = 10;
 /// Brackets and signs nested deeper than this stop the reader. The oracle's
 /// reader recurses as this one does and fails at Python's recursion limit,
 /// around 240 levels; a formula has at most 32 levels of nodes.
@@ -762,8 +807,8 @@ impl Reader {
         let function = word.to_lowercase();
         let opening = self.at;
         let stat = STATS.iter().find(|s| s.1 == function).map(|&(stat, _, spread)| (stat, spread));
-        if stat.is_none() && !OTHER_FUNCTIONS.contains(&function.as_str()) {
-            let hint = hint(&function, STATS.iter().map(|s| s.1).chain(OTHER_FUNCTIONS), "(");
+        if stat.is_none() && !OTHER_FUNCTIONS.iter().any(|f| f.0 == function) {
+            let hint = hint(&function, STATS.iter().map(|s| s.1).chain(OTHER_FUNCTIONS.iter().map(|f| f.0)), "(");
             return Err(fault("UNKNOWN_NAME", start, opening, format!("There is no function called “{word}”.{hint}")));
         }
         self.at += 1;

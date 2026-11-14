@@ -6,8 +6,8 @@
 use chrono::{DateTime, SubsecRound, Utc};
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use engine::commands::{ExportTablesRequest, RunRequest};
-use engine::{Dates, Interval, Schedule};
+use engine::commands::{CatalogRequest, CheckRequest, ExploreRequest, ExportResultsRequest, RunRequest, ScreenRequest};
+use engine::{Dates, Interval, Schedule, Selection};
 use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
 use market_data::{Day, Error, Market};
 use serde::Serialize;
@@ -35,6 +35,40 @@ enum Command {
     /// Export result files
     #[command(subcommand)]
     Export(Export),
+    /// Explore one result over a window of periods and a range of ranks
+    Explore {
+        /// A result file
+        result: PathBuf,
+        /// A trial's number, or all (the trials of random dates)
+        #[arg(long)]
+        trial: String,
+        /// The periods A-B of each trial, from 1
+        #[arg(long)]
+        periods: String,
+        /// The ranks A-B, within the strategy's
+        #[arg(long)]
+        ranks: String,
+    },
+    /// Read strategy files without market data: canonical form, identity and each step's source
+    Check {
+        /// Strategy files
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+    },
+    /// What a strategy file can write, and the market's sectors and exchanges
+    Catalog {
+        /// us, hk or jp
+        #[arg(long)]
+        market: String,
+    },
+    /// The picks of a strategy file on the market's latest session
+    Screen {
+        /// A strategy file
+        file: PathBuf,
+        /// us, hk or jp
+        #[arg(long)]
+        market: String,
+    },
 }
 
 #[derive(Args)]
@@ -71,15 +105,20 @@ struct RunArgs {
 
 #[derive(Subcommand)]
 enum Export {
-    /// Export result files' rows and statistics as keyed tables
-    Tables {
-        /// Result files; each one's stem names its case
-        #[arg(required = true)]
-        results: Vec<PathBuf>,
-        /// The export folder: new or empty
-        #[arg(long)]
-        out: PathBuf,
-    },
+    /// Export result files' rows, statistics and views as keyed tables
+    Tables(ExportArgs),
+    /// Export every holding with the value of each numeric source of its steps
+    Holdings(ExportArgs),
+}
+
+#[derive(Args)]
+struct ExportArgs {
+    /// Result files; each one's stem names its case
+    #[arg(required = true)]
+    results: Vec<PathBuf>,
+    /// The export folder: new or empty
+    #[arg(long)]
+    out: PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -130,9 +169,29 @@ fn main() -> ExitCode {
     };
     match cli.command {
         Command::Run(args) => reply(home.and_then(|home| run(&home, args))),
-        Command::Export(Export::Tables { results, out }) => {
-            reply(engine::commands::export_tables(&ExportTablesRequest { results, out }))
+        Command::Export(Export::Tables(ExportArgs { results, out })) => {
+            reply(engine::commands::export_tables(&ExportResultsRequest { results, out }))
         }
+        Command::Export(Export::Holdings(ExportArgs { results, out })) => {
+            reply(engine::commands::export_holdings(&ExportResultsRequest { results, out }))
+        }
+        Command::Explore { result, trial, periods, ranks } => reply((|| {
+            let trial = match trial.as_str() {
+                "all" => None,
+                text => Some(text.parse().map_err(|_| Error::new(format!("{text:?} is not a trial: use its number, or all"), "trial"))?),
+            };
+            let selection = Selection { trial, periods: range(&periods, "periods")?, ranks: range(&ranks, "ranks")? };
+            engine::commands::explore(&ExploreRequest { result, selection })
+        })()),
+        Command::Check { files } => reply(engine::commands::check(&CheckRequest { files })),
+        Command::Catalog { market } => reply(home.and_then(|home| {
+            let market: Market = market.parse()?;
+            engine::commands::catalog(&home, &CatalogRequest { market })
+        })),
+        Command::Screen { file, market } => reply(home.and_then(|home| {
+            let market: Market = market.parse()?;
+            engine::commands::screen(&home, &ScreenRequest { file, market })
+        })),
         Command::Data(Data::Prepare { as_of }) => reply(home.and_then(|home| {
             let as_of = match as_of {
                 Some(text) => DateTime::parse_from_rfc3339(&text)
@@ -177,6 +236,12 @@ fn interval(text: &str) -> Result<Interval, Error> {
         (_, Some(months)) => Ok(Interval::Months(count(months)?)),
         _ => Err(invalid()),
     }
+}
+
+/// `A-B`: two whole numbers, which the command checks.
+fn range(text: &str, place: &str) -> Result<(u32, u32), Error> {
+    let bounds = text.split_once('-').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
+    bounds.ok_or_else(|| Error::new(format!("{text:?} is not a range: use A-B, such as 2-5"), place))
 }
 
 /// A seed from the process's random hash keys, which the system seeds.
