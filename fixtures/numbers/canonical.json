@@ -17,5 +17,6 @@
 {"value": 5e-324, "scale": -2, "result": 0.0},
 {"value": 1e-320, "scale": 6, "result": 1e-314},
 {"value": "Infinity", "scale": 0, "result": null},
-{"value": "NaN", "scale": 6, "result": null}
+{"value": "NaN", "scale": 6, "result": null},
+{"value": 973012718181.5312, "scale": -2, "result": 9730127181.815311}
 ]}

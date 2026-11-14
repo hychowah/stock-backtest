@@ -9,7 +9,8 @@ All companies, names and symbols are fictional. Prices run on weekdays from
 2015-12-01 to 2023-06-30: a span that gives 5-year valuation
 averages, 3-year returns and an 800-day stale report inside the test window
 (2021-07-01 to 2023-06-28). Annual reports end on 31 December (US, Hong Kong)
-or 31 March (Tokyo).
+or 31 March (Tokyo), except where a case below says otherwise. 2016-02-29 is
+a session in all three markets.
 
 Cases, and the company or date that carries each:
 
@@ -29,11 +30,30 @@ Cases, and the company or date that carries each:
   lists with full data; preparation leaves them out. 130A.T is the admitted
   letter form. The US rules (a dot, an ETF name, an OTC exchange) apply when
   the universe is downloaded; preparation never re-filters the saved US list,
-  so no saved US file carries them.
+  so no saved US file carries them. 0102.HK's saved row is flagged isEtf;
+  preparation passes no flags to the symbol rule, so it stays admitted.
 - Delisted company: QDL is not listed and its prices stop on 2022-08-12; a
   holding over that day exits at its last available price.
-- Price spike: QSP closes at ten times its neighbours on 2019-05-15, so its
-  whole price series is left out.
+- Price spikes: QSP closes at ten times its neighbours on 2019-05-15, and
+  0106.HK at a tenth of them on 2019-10-01, a Hong Kong holiday. The rule
+  reads every saved day, so both whole price series are left out, although
+  0106.HK's spike falls on no session.
+- Price gaps: 7103.T has no price row on the weekdays of GAPS. Fiscal
+  2019-03-31 has no close in its 7-day window (that report has no fiscal
+  cap); fiscal 2020-03-31 takes the close of 2020-03-27; the Tokyo test entry
+  2021-08-02 rolls to 2021-08-04, and 2021-09-01 has no price within 4 days
+  (MISSING_PRICE).
+- Loss: QPX has a negative EBITDA in fiscal 2017 and 2018, so those
+  key-metrics rows have a negative EV/EBITDA and give no report, and a
+  negative net income in fiscal 2021 (a negative E/P in its valuation sums).
+- Net cash: 0105.HK's cash less its debt is a share of its fiscal market cap
+  (NET_CASH). Above the cap in fiscal 2019, that report's EV is negative, so
+  it converts to no report; just below it in fiscal 2020 and 2021, a lower
+  entry price makes the EV non-positive (NONPOSITIVE_VALUATION, first on
+  2022-05-23 among the Hong Kong days). Its fiscal-2017 EBITDA is negative,
+  so that year has no report.
+- Fiscal year-end change: 7104.T ends its year on 31 March through 2019, then
+  on 31 December, so 2019 has two reports.
 - Stale report: QST reports only through fiscal 2019, so from 2022-03-11 its
   last report is more than 800 days old.
 - Conflicting and repeated annual rows: QCF has two income rows for fiscal
@@ -47,6 +67,11 @@ Cases, and the company or date that carries each:
 - Publication dates: 0101.HK has a filing date after the fiscal date; 0102.HK
   has one equal to the fiscal date (not admitted, so fiscal + 4 months);
   7103.T has an accepted date; the others have none (fiscal + 4 or 3 months).
+  0103.HK's income and cash-flow rows have a filing date (fiscal + 45 days)
+  and an earlier accepted date; the filing date wins. Its balance-sheet rows
+  have a later filing date (fiscal + 55 days), and its report is known on the
+  later of the two, so its fiscal-2015 report is known on 2016-02-24 and is
+  the one candidate of 2016-02-29.
 - FX gap: USDJPY has no fixing from 2021-06-21 to 2021-07-02, so on the
   first Tokyo book day, 2021-07-01, the last fixing is more than 7 days old:
   no Tokyo report converts and that period holds cash. A gap on a later book
@@ -65,8 +90,8 @@ Cases, and the company or date that carries each:
   every price row has a volume.
 - Sectors: US Industrials, Technology, Consumer Cyclical, Basic Materials,
   Consumer Defensive and Communication Services (QDL, delisted, has none);
-  Hong Kong Financial Services, Real Estate and Utilities; Tokyo Industrials
-  and Consumer Cyclical.
+  Hong Kong Financial Services, Real Estate, Utilities and Industrials; Tokyo
+  Industrials and Consumer Cyclical.
 """
 from datetime import date, timedelta
 import json
@@ -116,23 +141,31 @@ COMPANIES = {
     'QST': ('us', 'Quartz Stale Mining', 'AMEX', 'Basic Materials', 3, 20e6, 0.2e9, .02, .28, .5, .05, .2, {'stale'}),
     'QFS': ('us', 'Quartz Fern Software', 'NASDAQ', 'Technology', 50, 60e6, 1.2e9, .10, .16, .1, .4, .1, {'first_seen'}),
     'QCF': ('us', 'Quartz Copper Foods', 'NYSE', 'Consumer Defensive', 28, 110e6, 2.2e9, .03, .14, .3, .1, .5, {'conflict'}),
-    'QPX': ('us', 'Quartz Pixel Media', 'NASDAQ', 'Communication Services', 15, 200e6, 1.6e9, .06, .15, .2, .2, .2, {'bad_rows'}),
+    'QPX': ('us', 'Quartz Pixel Media', 'NASDAQ', 'Communication Services', 15, 200e6, 1.6e9, .06, .15, .2, .2, .2, {'bad_rows', 'loss'}),
     '0101.HK': ('hk', 'Harbour Lantern Bank', 'HKSE', 'Financial Services', 60, 900e6, 20e9, .04, .30, .8, .3, .4, {'published'}),
-    '0102.HK': ('hk', 'Harbour Pine Estates', 'HKSE', 'Real Estate', 12, 2000e6, 9e9, .03, .35, .9, .1, .5, {'same_day_filing'}),
-    '0103.HK': ('hk', 'Harbour Tide Power', 'HKSE', 'Utilities', 35, 800e6, 12e9, .02, .25, .7, .1, 0, set()),
+    '0102.HK': ('hk', 'Harbour Pine Estates', 'HKSE', 'Real Estate', 12, 2000e6, 9e9, .03, .35, .9, .1, .5, {'same_day_filing', 'flagged'}),
+    '0103.HK': ('hk', 'Harbour Tide Power', 'HKSE', 'Utilities', 35, 800e6, 12e9, .02, .25, .7, .1, 0, {'dates'}),
     '0104.HK': ('hk', 'Harbour Kite Land', 'HKSE', 'Real Estate', 8, 3000e6, 10e9, .03, .32, .9, .2, .3, {'currency_conflict'}),
-    '0105.HK': ('hk', 'Harbour Reed Water', 'HKSE', 'Utilities', 20, 1000e6, 8e9, .03, .28, .6, .1, .45, set()),
+    '0105.HK': ('hk', 'Harbour Reed Water', 'HKSE', 'Utilities', 20, 1000e6, 8e9, .03, .28, .6, .1, .45, {'net_cash'}),
+    '0106.HK': ('hk', 'Harbour Mist Logistics', 'HKSE', 'Industrials', 7, 1200e6, 7e9, .04, .18, .4, .2, .3, {'dip'}),
     '4101.HK': ('hk', 'Harbour Line of Quartz Alder', 'HKSE', 'Industrials', 5, 3000e6, 30e9, .05, .40, .1, .3, .3, {'excluded'}),
     '80101.HK': ('hk', 'Harbour Lantern Bank RMB counter', 'HKSE', 'Financial Services', 6, 900e6, 20e9, .04, .45, .1, .3, .4, {'excluded'}),
     '7101.T': ('jp', 'Kumo Gear Works', 'JPX', 'Industrials', 2400, 50e6, 300e9, .03, .12, .3, .2, .3, {'twin'}),
     '7102.T': ('jp', 'Kumo Gear Systems', 'JPX', 'Industrials', 2600, 48e6, 300e9, .03, .12, .3, .2, .3, {'twin'}),
-    '7103.T': ('jp', 'Sora Kitchen', 'JPX', 'Consumer Cyclical', 1800, 80e6, 250e9, .05, .16, .2, .3, .25, {'published'}),
-    '7104.T': ('jp', 'Mori Rail Parts', 'JPX', 'Industrials', 900, 120e6, 200e9, .02, .08, .4, .1, .35, set()),
+    '7103.T': ('jp', 'Sora Kitchen', 'JPX', 'Consumer Cyclical', 1800, 80e6, 250e9, .05, .16, .2, .3, .25, {'published', 'gaps'}),
+    '7104.T': ('jp', 'Mori Rail Parts', 'JPX', 'Industrials', 900, 120e6, 200e9, .02, .08, .4, .1, .35, {'year_end'}),
     '130A.T': ('jp', 'Hoshi Apparel', 'JPX', 'Consumer Cyclical', 1500, 30e6, 60e9, .10, .14, .1, .3, .1, {'new'}),
     '1306.T': ('jp', 'Sakura Index ETF Units', 'JPX', 'Financial Services', 2000, 400e6, 100e9, .02, .50, .1, .1, .3, {'excluded'}),
     'A130.T': ('jp', 'Hoshi Apparel Class B', 'JPX', 'Consumer Cyclical', 1400, 30e6, 60e9, .10, .50, .1, .3, .1, {'excluded'}),
 }
 TWIN_SEED = {'QAC': 'QAC', 'QAD': 'QAC', '7101.T': '7101.T', '7102.T': '7101.T'}
+# The weekdays without any price row of the 'gaps' company: all of a 7-day
+# fiscal window, part of one, a gap the 4-day entry window rolls over, and a
+# gap longer than that window (Tokyo test entries 2021-08-02 and 2021-09-01).
+GAPS = ((date(2019, 3, 25), date(2019, 3, 29)), (date(2020, 3, 30), date(2020, 3, 31)),
+        (date(2021, 8, 2), date(2021, 8, 3)), (date(2021, 9, 1), date(2021, 9, 3)))
+# The 'net_cash' company's cash, less its debt, as a share of its fiscal market cap.
+NET_CASH = {2015: .5, 2016: .6, 2017: .8, 2018: .97, 2019: 1.15, 2020: .999, 2021: .999, 2022: .98}
 
 
 def save(relative, value):
@@ -156,7 +189,8 @@ def price_days(symbol, market):
     first = date(2021, 4, 1) if 'new' in flags else LATE_FIRST if 'excluded' in flags else FIRST
     last = date(2022, 8, 12) if 'delisted' in flags else LAST
     days = US_SESSIONS if market == 'us' else list(weekdays())
-    return [day for day in days if first <= day <= last]
+    gaps = GAPS if 'gaps' in flags else ()
+    return [day for day in days if first <= day <= last and not any(start <= day <= end for start, end in gaps)]
 
 
 def last_close(prices, day):
@@ -165,6 +199,8 @@ def last_close(prices, day):
 
 def fiscal_dates(symbol, market):
     flags = COMPANIES[symbol][-1]
+    if 'year_end' in flags:
+        return [date(year, 3, 31) for year in range(2016, 2020)] + [date(year, 12, 31) for year in range(2019, 2023)]
     if market == 'jp':
         years = range(2022, 2024) if 'new' in flags else range(2021, 2024) if 'excluded' in flags else range(2016, 2024)
         return [date(year, 3, 31) for year in years]
@@ -180,6 +216,8 @@ def write_company(symbol, metrics):
     prices = walk('price:' + symbol, days, price)
     if 'spike' in flags:
         prices[date(2019, 5, 15)] = round(prices[date(2019, 5, 15)] * 10, 4)
+    if 'dip' in flags:
+        prices[date(2019, 10, 1)] = round(prices[date(2019, 10, 1)] / 10, 4)
     volumes = random.Random('volume:' + symbol)
     rows = []
     for day in reversed(days):
@@ -190,10 +228,10 @@ def write_company(symbol, metrics):
             row['currency'] = 'EUR'
         rows.append(row)
     save(f'px/{symbol}.json', dict(div=rows))
+    # Native closes carry the dividend adjustment that the adjusted series removes.
+    native = {day: round(prices[day] * (1 + (LAST - day).days / 36500), 3) for day in days}
     if market != 'us':
-        # Native closes carry the dividend adjustment that the adjusted series removes.
-        save(f'px-full/{symbol}.json', [dict(date=str(day), close=round(prices[day] * (1 + (LAST - day).days / 36500), 3))
-                                       for day in reversed(days)])
+        save(f'px-full/{symbol}.json', [dict(date=str(day), close=native[day]) for day in reversed(days)])
     annual = random.Random('annual:' + TWIN_SEED.get(symbol, symbol))
     income, balance, cash_flow, key_metrics = [], [], [], []
     level = revenue
@@ -201,13 +239,17 @@ def write_company(symbol, metrics):
         level *= 1 + growth + annual.randint(-20, 20) / 1000
         sales = round(level)
         operating = round(sales * (margin + annual.randint(-15, 15) / 1000))
+        if ('loss' in flags and fiscal.year in (2017, 2018)) or ('net_cash' in flags and fiscal.year == 2017):
+            operating = -round(sales * .05)
         ebitda = round(operating * 1.25)
-        net = round(operating * .75)
+        net = -round(sales * .02) if 'loss' in flags and fiscal.year == 2021 else round(operating * .75)
         base = dict(date=str(fiscal), symbol=symbol, reportedCurrency=currency, period='FY')
         if 'published' in flags:
             base['filingDate' if market == 'hk' else 'acceptedDate'] = str(fiscal + timedelta(days=80))
         if 'same_day_filing' in flags:
             base['filingDate'] = str(fiscal)
+        if 'dates' in flags:
+            base['filingDate'], base['acceptedDate'] = str(fiscal + timedelta(days=45)), str(fiscal + timedelta(days=30))
         row = dict(base, revenue=sales, operatingIncome=operating, ebit=operating, ebitda=ebitda,
                    netIncome=net, eps=round(net / shares, 2), epsDiluted=round(net / shares * .98, 2),
                    interestExpense=round(sales * debt * .04), weightedAverageShsOut=round(shares))
@@ -225,8 +267,11 @@ def write_company(symbol, metrics):
         if 'currency_conflict' in flags and fiscal.year == 2020:
             income.append(dict(row, reportedCurrency='USD', revenue=round(sales / 7.8)))
         borrowing, holding = round(sales * debt), round(sales * cash)
+        if 'net_cash' in flags:
+            holding = round(shares * last_close(native, fiscal) * NET_CASH[fiscal.year]) + borrowing
         equity = round(sales * .6)
-        balance.append(dict(base, totalStockholdersEquity=equity, totalCurrentAssets=round(sales * .5),
+        dated = dict(base, filingDate=str(fiscal + timedelta(days=55))) if 'dates' in flags else base
+        balance.append(dict(dated, totalStockholdersEquity=equity, totalCurrentAssets=round(sales * .5),
                             totalCurrentLiabilities=round(sales * .3), totalDebt=borrowing,
                             cashAndCashEquivalents=holding,
                             **({'reportedCurrency': 'CAD'} if 'bad_rows' in flags and fiscal.year == 2018 else {})))
@@ -257,7 +302,8 @@ def write_company(symbol, metrics):
              dict(version=2, full_response=True, symbol=symbol, endpoint='key-metrics', rows=list(reversed(provider))))
         metrics[symbol] = list(reversed(key_metrics))
     return dict(symbol=symbol, name=name, exchange=exchange, sector=sector, listed='delisted' not in flags,
-                **({} if market == 'us' else dict(market=market, currency=currency)))
+                **({} if market == 'us' else dict(market=market, currency=currency)),
+                **({'isEtf': True} if 'flagged' in flags else {}))
 
 
 def main():

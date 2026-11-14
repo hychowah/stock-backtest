@@ -153,7 +153,8 @@ def threshold():
 def canonical():
     inputs = [(0.1, 6), (0.1, -2), (0.07, -2), (1.1, -2), (33.333333333333336, -2), (123.456, 6), (2.5e-08, 6),
               (1234567.891, 6), (0.3, 0), (-0.0, 6), (-0.0, -2), (-0.0, 0), (0.0, -2), (1e308, 6),
-              (1.7976931348623157e308, -2), (5e-324, -2), (1e-320, 6), (INF, 0), (NAN, 6)]
+              (1.7976931348623157e308, -2), (5e-324, -2), (1e-320, 6), (INF, 0), (NAN, 6),
+              (973012718181.5312, -2)]
     cases = [dict(value=value, scale=scale, result=scalar_execution._canonical(value, scale))
              for value, scale in inputs]
     return 'backtest.application.scalar_execution._canonical: float(Decimal(str(value)).scaleb(scale))', cases

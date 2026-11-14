@@ -1,0 +1,10 @@
+{"symbol":"QAA","market":"us","currency":"USD","name":"Quartz Alder Holdings","exchange":"NYSE","sector":"Industrials","listed":true,"priced":true,"order":2}
+{"symbol":"QAB","market":"us","currency":"USD","name":"Quartz Birch Systems","exchange":"NASDAQ","sector":"Technology","listed":true,"priced":true,"order":3}
+{"symbol":"QAC","market":"us","currency":"USD","name":"Quartz Cedar Tools","exchange":"NYSE","sector":"Industrials","listed":true,"priced":true,"order":5}
+{"symbol":"QAD","market":"us","currency":"USD","name":"Quartz Dogwood Tools","exchange":"NYSE","sector":"Industrials","listed":true,"priced":true,"order":4}
+{"symbol":"QCF","market":"us","currency":"USD","name":"Quartz Copper Foods","exchange":"NYSE","sector":"Consumer Defensive","listed":true,"priced":true,"order":9}
+{"symbol":"QDL","market":"us","currency":"USD","name":"Quartz Delta Energy","exchange":"NYSE","sector":"Unavailable","listed":false,"priced":true,"order":6}
+{"symbol":"QFS","market":"us","currency":"USD","name":"Quartz Fern Software","exchange":"NASDAQ","sector":"Technology","listed":true,"priced":true,"order":1}
+{"symbol":"QPX","market":"us","currency":"USD","name":"Quartz Pixel Media","exchange":"NASDAQ","sector":"Communication Services","listed":true,"priced":true,"order":10}
+{"symbol":"QSP","market":"us","currency":"USD","name":"Quartz Spire Retail","exchange":"NASDAQ","sector":"Consumer Cyclical","listed":true,"priced":true,"order":7}
+{"symbol":"QST","market":"us","currency":"USD","name":"Quartz Stale Mining","exchange":"AMEX","sector":"Basic Materials","listed":true,"priced":true,"order":8}

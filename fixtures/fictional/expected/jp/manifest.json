@@ -1,0 +1,61 @@
+{
+ "producer": "python-oracle",
+ "settings": {
+  "as_of": "2023-06-30T07:30:00+00:00",
+  "backtest": "272bc8b3e88a50740326481acfd49ad191225a98",
+  "tests": [
+   "hk-sleeves",
+   "jp-monthly",
+   "us-random"
+  ],
+  "market": "jp",
+  "random_days": 40
+ },
+ "tables": {
+  "companies": [
+   "symbol"
+  ],
+  "sessions": [
+   "day"
+  ],
+  "market_days": [
+   "day"
+  ],
+  "fx_days": [
+   "currency",
+   "day"
+  ],
+  "stock_days": [
+   "symbol",
+   "day"
+  ],
+  "reports": [
+   "symbol",
+   "fiscal"
+  ],
+  "annual_facts": [
+   "symbol",
+   "endpoint",
+   "fiscal",
+   "column"
+  ],
+  "annual_metadata": [
+   "symbol",
+   "endpoint",
+   "fiscal"
+  ],
+  "valuation_sums": [
+   "symbol",
+   "day"
+  ],
+  "candidates": [
+   "screen",
+   "day",
+   "symbol"
+  ],
+  "screens": [
+   "screen",
+   "day"
+  ]
+ }
+}

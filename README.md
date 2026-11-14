@@ -153,7 +153,7 @@ exit rules and its limits.
 | `scripts/` | Command-line preparation and the development check |
 | `crates/` | The Rust program that will replace the Python product |
 | `web/` | The TypeScript website that will replace the browser interface |
-| `fixtures/` | Number test vectors from the Python product and a fictional dataset with expected result tables, for checking the Rust program |
+| `fixtures/` | Number test vectors from the Python product and a fictional dataset with expected tables, for checking the Rust program |
 | `proof/` | Scripts that export the Python product's results for comparison with the Rust program |
 | `tools/` | Deployment, operations and FMP API probes |
 | `tests/` | Python and Node.js tests and the test runner |
@@ -250,8 +250,8 @@ own process, eight at a time (`--jobs` changes this), with a private temporary
 folder. It fails any test that touches the checkout's `data/` folder. Tests use
 small synthetic data and need no API key. GitHub Actions runs the fast tier on
 every push. It also builds and tests the Rust crates and the TypeScript project,
-and compares the Python product's result tables for the fictional dataset with
-the expected tables.
+and compares the Python product's prepared data, candidates and result tables
+for the fictional dataset with the expected tables.
 
 To run one file, call it directly, for example `python3 tests/test_queue.py` or
 `node tests/check-queue.cjs`. After `python3 website/build.py`, also run

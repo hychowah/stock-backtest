@@ -27,11 +27,17 @@ jobs:
         with:
           python-version: '3.14'
       - name: Export the oracle tables of the fictional fixture
-        run: >-
-          python3 proof/export.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00
-          --tests fixtures/fictional/tests --out "$RUNNER_TEMP/oracle-export"
+        run: |
+          options="--raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 --tests fixtures/fictional/tests"
+          python3 proof/export.py $options --out "$RUNNER_TEMP/oracle-export/runs"
+          for market in us hk jp; do
+            python3 proof/export.py $options --market $market --random-days 40 --out "$RUNNER_TEMP/oracle-export/$market"
+          done
       - name: Compare the oracle tables with the expected tables
-        run: cargo run -q -p tables -- fixtures/fictional/expected "$RUNNER_TEMP/oracle-export"
+        run: |
+          for folder in runs us hk jp; do
+            cargo run -q -p tables -- "fixtures/fictional/expected/$folder" "$RUNNER_TEMP/oracle-export/$folder"
+          done
 
   web:
     runs-on: ubuntu-latest
