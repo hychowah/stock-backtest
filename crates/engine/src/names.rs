@@ -7,12 +7,16 @@
 //!   built-in's stored lane when it is a whole step source. Its unit and
 //!   display come from [`BUILTINS`].
 //! - A field reads the candidate's own field.
-//! - An input or a measure without a built-in needs a formula of its term,
-//!   which this program does not read yet.
+//! - An input or a measure without a built-in reads a formula of its term
+//!   ([`crate::formula`]), shown in the vocabulary's display.
+//! - Inside a formula, a name reads its formula term; a step-only name or a
+//!   field there is an error.
 //! - Matching ignores case and repeated spaces; the list's spelling is the
 //!   canonical one.
 
+use crate::formula::Measure;
 use market_data::builtins::BUILTINS;
+use market_data::parameters::PARAMETERS;
 
 /// One source name.
 #[derive(Debug)]
@@ -28,11 +32,12 @@ pub enum Kind {
     /// formula input the name reads inside a formula, `None` when only a
     /// whole step can use the name.
     Builtin { id: &'static str, term: Option<&'static str> },
-    /// A formula input without a built-in: a parameter of the formula
-    /// catalog.
-    Input { parameter: &'static str, unit: &'static str, display: &'static str },
-    /// A named measure without a built-in: a formula of several inputs.
-    Measure { measure: &'static str, unit: &'static str, display: &'static str },
+    /// A formula input without a built-in: a parameter of
+    /// [`PARAMETERS`], which owns its unit.
+    Input { parameter: &'static str, display: &'static str },
+    /// A named measure without a built-in: a formula of several inputs
+    /// ([`Measure`], which owns its unit).
+    Measure { measure: &'static str, display: &'static str },
     /// A field of the candidate.
     Field(Field),
 }
@@ -60,7 +65,8 @@ impl Name {
     pub fn unit(&self) -> &'static str {
         match self.kind {
             Kind::Builtin { .. } => BUILTINS[self.builtin().expect("a built-in name")].unit,
-            Kind::Input { unit, .. } | Kind::Measure { unit, .. } => unit,
+            Kind::Input { parameter, .. } => PARAMETERS.iter().find(|p| p.id == parameter).expect("a formula parameter").unit,
+            Kind::Measure { measure, .. } => Measure::of(measure).unit().id(),
             Kind::Field(field) if field.is_text() => "text",
             Kind::Field(_) => "USD",
         }
@@ -147,16 +153,16 @@ fn edit_distance(a: &[char], b: &[char]) -> usize {
     row[b.len()]
 }
 
-const fn input(name: &'static str, parameter: &'static str, unit: &'static str, display: &'static str) -> Name {
-    Name { name, kind: Kind::Input { parameter, unit, display } }
+const fn input(name: &'static str, parameter: &'static str, display: &'static str) -> Name {
+    Name { name, kind: Kind::Input { parameter, display } }
 }
 
 const fn usd(name: &'static str, parameter: &'static str) -> Name {
-    input(name, parameter, "USD", "usd_million")
+    input(name, parameter, "usd_million")
 }
 
-const fn measure(name: &'static str, measure: &'static str, unit: &'static str, display: &'static str) -> Name {
-    Name { name, kind: Kind::Measure { measure, unit, display } }
+const fn measure(name: &'static str, measure: &'static str, display: &'static str) -> Name {
+    Name { name, kind: Kind::Measure { measure, display } }
 }
 
 const fn linked(name: &'static str, term: &'static str, id: &'static str) -> Name {
@@ -177,7 +183,7 @@ pub static NAMES: [Name; 106] = [
     // Income statement
     usd("Revenue", "annual.revenue"),
     usd("Cost of revenue", "annual.cost_of_revenue"),
-    measure("Gross profit", "gross_profit", "USD", "usd_million"),
+    measure("Gross profit", "gross_profit", "usd_million"),
     usd("SG&A expense", "annual.selling_general_administrative_expense"),
     usd("R&D expense", "annual.research_development_expense"),
     usd("Operating income", "annual.operating_income"),
@@ -188,10 +194,10 @@ pub static NAMES: [Name; 106] = [
     usd("Pretax income", "annual.pretax_income"),
     usd("Income tax expense", "annual.income_tax_expense"),
     usd("Net income", "annual.net_income"),
-    input("Basic shares", "annual.weighted_average_basic_shares", "share", "shares"),
-    input("Diluted shares", "annual.weighted_average_diluted_shares", "share", "shares"),
-    input("Basic EPS", "annual.basic_eps", "USD/share", "usd_per_share"),
-    input("Diluted EPS", "annual.diluted_eps", "USD/share", "usd_per_share"),
+    input("Basic shares", "annual.weighted_average_basic_shares", "shares"),
+    input("Diluted shares", "annual.weighted_average_diluted_shares", "shares"),
+    input("Basic EPS", "annual.basic_eps", "usd_per_share"),
+    input("Diluted EPS", "annual.diluted_eps", "usd_per_share"),
     // Balance sheet
     usd("Cash and equivalents", "annual.cash_and_equivalents"),
     usd("Short term investments", "annual.short_term_investments"),
@@ -210,21 +216,21 @@ pub static NAMES: [Name; 106] = [
     usd("Current deferred revenue", "annual.current_deferred_revenue"),
     usd("Noncurrent deferred revenue", "annual.noncurrent_deferred_revenue"),
     usd("Current liabilities", "annual.current_liabilities"),
-    measure("Working capital", "working_capital", "USD", "usd_million"),
+    measure("Working capital", "working_capital", "usd_million"),
     usd("Total liabilities", "annual.total_liabilities"),
     usd("Short term debt", "annual.short_term_debt"),
     usd("Long term debt", "annual.long_term_debt"),
     usd("Lease obligations", "annual.lease_obligations"),
     usd("Total debt", "annual.total_debt"),
-    measure("Net debt", "net_debt", "USD", "usd_million"),
+    measure("Net debt", "net_debt", "usd_million"),
     usd("Shareholders equity", "annual.equity"),
-    measure("Tangible book equity", "tangible_book_equity", "USD", "usd_million"),
+    measure("Tangible book equity", "tangible_book_equity", "usd_million"),
     usd("Preferred stock", "annual.preferred_stock"),
     usd("Minority interest", "annual.noncontrolling_interests"),
     // Cash flow
     usd("Operating cash flow", "annual.operating_cash_flow"),
     usd("CapEx", "annual.capital_expenditure"),
-    measure("Operating cash flow plus CapEx", "operating_cash_flow_plus_capex", "USD", "usd_million"),
+    measure("Operating cash flow plus CapEx", "operating_cash_flow_plus_capex", "usd_million"),
     usd("Reported free cash flow", "annual.free_cash_flow"),
     usd("Depreciation and amortization", "annual.depreciation_amortization"),
     usd("Stock based compensation", "annual.stock_based_compensation"),
@@ -237,16 +243,16 @@ pub static NAMES: [Name; 106] = [
     usd("Share buybacks", "annual.common_stock_repurchased"),
     usd("Share issuance", "annual.common_stock_issuance"),
     // Market
-    input("Share price", "market.adjusted_price", "USD/share", "usd_per_share"),
-    input("Trading volume", "market.volume", "share", "shares"),
+    input("Share price", "market.adjusted_price", "usd_per_share"),
+    input("Trading volume", "market.volume", "shares"),
     linked("Market cap", "owner.market_cap", "filter:market_cap"),
     linked("Enterprise value", "market.enterprise_value", "filter:enterprise_value"),
-    input("Treasury 3 month yield", "treasury.us_3m", "scalar", "percent"),
-    input("Treasury 10 year yield", "treasury.us_10y", "scalar", "percent"),
+    input("Treasury 3 month yield", "treasury.us_3m", "percent"),
+    input("Treasury 10 year yield", "treasury.us_10y", "percent"),
     // Valuation
     linked("P/E", "owner.pe", "filter:pe"),
     linked("P/B", "owner.pb", "filter:pb"),
-    measure("Price/sales", "price_sales", "scalar", "multiple"),
+    measure("Price/sales", "price_sales", "multiple"),
     linked("Price/FCF", "owner.price_fcf", "filter:price_fcf"),
     linked("FCF yield", "owner.fcf_yield", "filter:fcf_yield"),
     linked("PEG", "owner.peg", "filter:peg"),
@@ -271,8 +277,8 @@ pub static NAMES: [Name; 106] = [
     step_only("Dividend yield", "filter:dividend_yield"),
     step_only("Turnover rate 1-week average", "filter:turnover_1w"),
     // Margins and returns
-    input("Operating margin", "annual.operating_margin", "scalar", "percent"),
-    measure("Gross margin", "gross_margin", "scalar", "percent"),
+    input("Operating margin", "annual.operating_margin", "percent"),
+    measure("Gross margin", "gross_margin", "percent"),
     linked("Net margin", "owner.profit_margin", "filter:profit_margin"),
     linked("ROE", "owner.roe", "filter:roe"),
     linked("One year return", "owner.return_1y", "filter:return_1y"),
@@ -281,7 +287,7 @@ pub static NAMES: [Name; 106] = [
     linked("Current ratio", "owner.current_ratio", "filter:current_ratio"),
     linked("Interest coverage", "owner.interest_coverage", "filter:interest_coverage"),
     linked("Debt/equity", "owner.debt_equity", "filter:debt_equity"),
-    measure("Debt/assets", "debt_assets", "scalar", "multiple"),
+    measure("Debt/assets", "debt_assets", "multiple"),
     // The built-in the vocabulary does not name, and the fields.
     step_only("Free cash flow", "filter:fcf"),
     field("Sector", Field::Sector),

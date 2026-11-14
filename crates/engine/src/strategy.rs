@@ -16,21 +16,34 @@
 //!   a text.
 //! - A rank orders by its source, `highest` or `lowest` first, and keeps the
 //!   positions `from` to `to`, whole numbers with 1 ≤ from ≤ to ≤ 5000.
-//! - A source is a name of [`crate::names`]. `variables` maps a variable's
-//!   name to `{"formula": TEXT, "display"?: DISPLAY}`; its names must not
-//!   reuse the list's.
+//! - `variables` maps a variable's name to `{"formula": TEXT, "display"?:
+//!   DISPLAY}`. A name is not empty and must not reuse a name of the list
+//!   or another variable's. A formula ([`crate::formula`]) can name
+//!   the variables above it; `display` must be one of its unit's displays,
+//!   and is the unit's default when absent.
+//! - A source that is one whole name reads, as [`crate::names`] says, a
+//!   built-in's stored lane, a field, a file variable, or a formula of an
+//!   input or measure in the list's display. Any other source is formula
+//!   text, shown in the default display of its unit.
 //! - The canonical form is compact JSON: each name as the list spells it,
-//!   each threshold as its decimal text expanded without an exponent, the
-//!   keys in the order above and the variables by name.
+//!   each formula as its canonical text, each threshold as its decimal text
+//!   expanded without an exponent, the keys in the order above, the
+//!   variables in file order, each with its display. A formula step whose
+//!   text would read as a whole name of another meaning is printed in
+//!   parentheses.
 
 use crate::Error;
-use crate::names::{self, Field, Kind, Name, NAMES};
+use crate::formula::Formula;
+use crate::names::{self, Field, Kind};
 use market_data::builtins::BUILTINS;
-use serde::Serialize;
+use serde::de::{Deserializer, MapAccess, Visitor};
+use serde::ser::{SerializeMap, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 
 /// The most steps a strategy has across its sleeves.
 const MAX_STEPS: usize = 50;
@@ -38,12 +51,13 @@ const MAX_STEPS: usize = 50;
 const MAX_RANK: u32 = 5000;
 /// The longest threshold text, and the longest decimal it expands to
 /// (`definitions.CEILINGS` literal and expanded_literal).
-const MAX_LITERAL: usize = 64;
+pub(crate) const MAX_LITERAL: usize = 64;
 const MAX_EXPANDED: usize = 1024;
 
 /// A checked strategy file.
 #[derive(Debug)]
 pub struct Strategy {
+    variables: Vec<Arc<Formula>>,
     sleeves: Vec<Sleeve>,
     canonical: String,
 }
@@ -72,19 +86,33 @@ impl Step {
 }
 
 /// What a step reads for each candidate.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Source {
     /// A built-in's stored lane, by its position in [`BUILTINS`].
     Builtin(usize),
     Field(Field),
+    /// A formula (a file variable when it is [named](Formula::name)), whose
+    /// values are in its unit.
+    Formula(Arc<Formula>),
 }
 
 impl Source {
-    /// The source's row of the names list.
-    pub fn name(&self) -> &'static Name {
-        match *self {
-            Source::Builtin(index) => names::of_builtin(index),
-            Source::Field(field) => names::of_field(field),
+    /// The list's name of a built-in or field, the variable's name, or the
+    /// formula's canonical text.
+    pub fn label(&self) -> &str {
+        match self {
+            &Source::Builtin(index) => names::of_builtin(index).name,
+            &Source::Field(field) => names::of_field(field).name,
+            Source::Formula(formula) => formula.name().unwrap_or(formula.text()),
+        }
+    }
+
+    /// The display its threshold is written in.
+    pub fn display(&self) -> &'static str {
+        match self {
+            &Source::Builtin(index) => BUILTINS[index].display,
+            &Source::Field(field) => names::of_field(field).display(),
+            Source::Formula(formula) => formula.display(),
         }
     }
 
@@ -92,7 +120,7 @@ impl Source {
     pub(crate) fn scale(&self) -> i32 {
         match *self {
             Source::Builtin(index) => BUILTINS[index].scale,
-            Source::Field(_) => 0,
+            Source::Field(_) | Source::Formula(_) => 0,
         }
     }
 }
@@ -176,7 +204,7 @@ impl Threshold {
 /// or the sign of zero; `None` when `value` is not a decimal of 1 to
 /// `max_length` characters, its exponent exceeds 2048 or the result exceeds
 /// [`MAX_EXPANDED`] characters.
-fn expand(value: &str, max_length: usize) -> Option<String> {
+pub(crate) fn expand(value: &str, max_length: usize) -> Option<String> {
     if !(1..=max_length).contains(&value.chars().count()) {
         return None;
     }
@@ -277,12 +305,8 @@ fn scaled(text: &str, shift: i32) -> String {
 
 impl Strategy {
     /// Reads and checks a strategy file. Checks everything that needs no
-    /// market data. An error names the file and the step.
-    ///
-    /// A step source that is one name resolves to the built-in's stored lane
-    /// (a linked or step-only name) or to the candidate's field. A source
-    /// that needs a formula (a file variable, an input or measure without a
-    /// built-in, or formula text) is refused.
+    /// market data. An error names the file and the step or variable, and
+    /// the characters of a formula at fault.
     pub fn read(path: &Path) -> Result<Strategy, Error> {
         let file = path.display().to_string();
         let text = std::fs::read_to_string(path).map_err(|_| Error::new("the strategy file cannot be read as text", &file))?;
@@ -293,8 +317,13 @@ impl Strategy {
         &self.sleeves
     }
 
+    /// The file's variables, in file order.
+    pub fn variables(&self) -> &[Arc<Formula>] {
+        &self.variables
+    }
+
     /// The canonical form: compact JSON that names each source as the list
-    /// spells it.
+    /// spells it and prints each formula in its canonical text.
     pub fn canonical(&self) -> &str {
         &self.canonical
     }
@@ -305,19 +334,27 @@ impl Strategy {
     }
 }
 
-/// A file variable, as the canonical form prints it.
-#[derive(Serialize)]
-struct Variable {
-    formula: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    display: Option<String>,
-}
-
 #[derive(Serialize)]
 struct CanonicalFile<'a> {
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    variables: &'a BTreeMap<String, Variable>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    #[serde(serialize_with = "canonical_variables")]
+    variables: &'a [Arc<Formula>],
     sleeves: Vec<CanonicalSleeve<'a>>,
+}
+
+/// The variables as a JSON object in file order.
+fn canonical_variables<S: Serializer>(variables: &&[Arc<Formula>], serializer: S) -> Result<S::Ok, S::Error> {
+    #[derive(Serialize)]
+    struct Variable<'a> {
+        formula: &'a str,
+        display: &'a str,
+    }
+    let mut map = serializer.serialize_map(Some(variables.len()))?;
+    for formula in variables.iter() {
+        let name = formula.name().expect("a variable has a name");
+        map.serialize_entry(name, &Variable { formula: formula.text(), display: formula.display() })?;
+    }
+    map.end()
 }
 
 #[derive(Serialize)]
@@ -330,12 +367,12 @@ struct CanonicalSleeve<'a> {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum CanonicalStep<'a> {
-    Filter { filter: &'static str, op: &'static str, value: &'a str },
-    Rank { rank: &'static str, order: &'static str, from: u32, to: u32 },
+    Filter { filter: String, op: &'static str, value: &'a str },
+    Rank { rank: String, order: &'static str, from: u32, to: u32 },
 }
 
-fn canonical(sleeves: &[Sleeve], variables: &BTreeMap<String, Variable>) -> String {
-    fn step(step: &Step) -> CanonicalStep<'_> {
+fn canonical<'a>(sleeves: &'a [Sleeve], variables: &'a [Arc<Formula>]) -> String {
+    let step = |step: &'a Step| -> CanonicalStep<'a> {
         match step {
             Step::Filter { source, test } => {
                 let (op, value) = match test {
@@ -346,14 +383,14 @@ fn canonical(sleeves: &[Sleeve], variables: &BTreeMap<String, Variable>) -> Stri
                     Test::Is(text) => ("is", text),
                     Test::IsNot(text) => ("is not", text),
                 };
-                CanonicalStep::Filter { filter: source.name().name, op, value }
+                CanonicalStep::Filter { filter: written(source, variables), op, value }
             }
-            &Step::Rank { source, order, from, to } => {
+            &Step::Rank { ref source, order, from, to } => {
                 let order = if order == Order::Highest { "highest" } else { "lowest" };
-                CanonicalStep::Rank { rank: source.name().name, order, from, to }
+                CanonicalStep::Rank { rank: written(source, variables), order, from, to }
             }
         }
-    }
+    };
     let file = CanonicalFile {
         variables,
         sleeves: sleeves
@@ -362,6 +399,59 @@ fn canonical(sleeves: &[Sleeve], variables: &BTreeMap<String, Variable>) -> Stri
             .collect(),
     };
     serde_json::to_string(&file).expect("a strategy serializes")
+}
+
+/// The source that `text` names as one whole name of the list or of a file
+/// variable, if it is one.
+fn whole(text: &str, variables: &[Arc<Formula>]) -> Option<Source> {
+    if let Some(name) = names::find(text) {
+        return Some(match name.kind {
+            Kind::Builtin { .. } => Source::Builtin(name.builtin().expect("a built-in name")),
+            Kind::Field(field) => Source::Field(field),
+            Kind::Input { display, .. } | Kind::Measure { display, .. } => {
+                let formula = Formula::read(name.name, &[]).expect("a listed name reads as a formula");
+                Source::Formula(Arc::new(formula.shown_in(display).expect("the list's display suits its unit")))
+            }
+        });
+    }
+    let key = names::key(text);
+    variables.iter().find(|v| v.name().is_some_and(|name| names::key(name) == key)).map(|v| Source::Formula(v.clone()))
+}
+
+/// How the canonical form writes a step's source: its name, or a formula's
+/// canonical text, in parentheses while that would read as a whole name of
+/// another meaning (`(ROE)` is the formula of `owner.roe`, `ROE` the lane).
+fn written(source: &Source, variables: &[Arc<Formula>]) -> String {
+    let mut text = source.label().to_string();
+    if matches!(source, Source::Formula(formula) if formula.name().is_none()) {
+        while whole(&text, variables).is_some_and(|other| other != *source) {
+            text = format!("({text})");
+        }
+    }
+    text
+}
+
+/// A JSON object's entries in file order.
+struct Ordered<'a>(Vec<(String, &'a RawValue)>);
+
+impl<'de> Deserialize<'de> for Ordered<'de> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Entries;
+        impl<'de> Visitor<'de> for Entries {
+            type Value = Ordered<'de>;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a JSON object")
+            }
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Ordered<'de>, M::Error> {
+                let mut entries = Vec::new();
+                while let Some(entry) = map.next_entry()? {
+                    entries.push(entry);
+                }
+                Ok(Ordered(entries))
+            }
+        }
+        deserializer.deserialize_map(Entries)
+    }
 }
 
 /// Reads one file; `file` is its path as errors name it.
@@ -385,7 +475,7 @@ impl Reader {
         let root = self.object(root, "", &["sleeves"], &["variables"])?;
         let variables = match root.get("variables") {
             Some(raw) => self.variables(raw)?,
-            None => BTreeMap::new(),
+            None => Vec::new(),
         };
         let listed = self.list(root["sleeves"], "sleeves", "a list of sleeves")?;
         if listed.is_empty() {
@@ -426,33 +516,48 @@ impl Reader {
             sleeves.push(Sleeve { name, steps });
         }
         let canonical = canonical(&sleeves, &variables);
-        Ok(Strategy { sleeves, canonical })
+        Ok(Strategy { variables, sleeves, canonical })
     }
 
-    /// The file's variables, by name. Their formulas are kept as text.
-    fn variables(&self, raw: &RawValue) -> Result<BTreeMap<String, Variable>, Error> {
-        let mut variables = BTreeMap::new();
-        let mut keys = BTreeMap::new();
-        for (name, raw) in self.any_object(raw, "variables")? {
-            let place = format!("variables.{name:?}");
-            if let Some(listed) = names::find(&name) {
+    /// The file's variables in file order, each read with the ones above it.
+    fn variables(&self, raw: &RawValue) -> Result<Vec<Arc<Formula>>, Error> {
+        let Ok(Ordered(entries)) = serde_json::from_str(raw.get()) else {
+            return self.fail("variables", "must be a JSON object");
+        };
+        let mut variables: Vec<Arc<Formula>> = Vec::new();
+        for (written, raw) in entries {
+            let place = format!("variables.{written:?}");
+            let name = written.trim();
+            if name.is_empty() {
+                return self.fail(&place, "a variable name is not empty");
+            }
+            if let Some(listed) = names::find(name) {
                 return self.fail(&place, format!("a variable cannot reuse the name {:?}", listed.name));
             }
-            if let Some(other) = keys.insert(names::key(&name), name.clone()) {
+            if let Some(other) = variables.iter().filter_map(|v| v.name()).find(|v| names::key(v) == names::key(name)) {
                 return self.fail(&place, format!("is the same name as the variable {other:?}"));
             }
             let fields = self.object(raw, &place, &["formula"], &["display"])?;
-            let formula = self.string(fields["formula"], &format!("{place}.formula"), "the formula text")?;
-            let display = match fields.get("display") {
-                Some(raw) => Some(self.string(raw, &format!("{place}.display"), "a display name")?),
-                None => None,
+            let text = self.string(fields["formula"], &format!("{place}.formula"), "the formula text")?;
+            let formula = Formula::read(&text, &variables).or_else(|fault| self.fail(&format!("{place}, {}", fault.place()), fault.message))?;
+            let formula = match fields.get("display") {
+                Some(raw) => {
+                    let place = format!("{place}.display");
+                    let display = self.string(raw, &place, "a display name")?;
+                    let unit = formula.unit();
+                    formula.shown_in(&display).map_or_else(
+                        || self.fail(&place, format!("{display:?} is not a display of {}: use {}", unit.id(), unit.displays().join(", "))),
+                        Ok,
+                    )?
+                }
+                None => formula,
             };
-            variables.insert(name, Variable { formula, display });
+            variables.push(Arc::new(formula.named(name)));
         }
         Ok(variables)
     }
 
-    fn step(&self, raw: &RawValue, place: &str, variables: &BTreeMap<String, Variable>) -> Result<Step, Error> {
+    fn step(&self, raw: &RawValue, place: &str, variables: &[Arc<Formula>]) -> Result<Step, Error> {
         let fields = self.any_object(raw, place)?;
         if fields.contains_key("filter") {
             self.keys(&fields, place, &["filter", "op", "value"], &[])?;
@@ -468,7 +573,7 @@ impl Reader {
                 "is" | "is not" => None,
                 _ => return self.fail(place, format!("{op:?} is not a comparison: use <, <=, >, >=, is or is not")),
             };
-            let name = source.name().name;
+            let name = source.label();
             let test = match compare {
                 Some(_) if text_field => return self.fail(place, format!("{name} is text: compare it with is or is not")),
                 None if !text_field => return self.fail(place, format!("{op} compares Sector or Exchange only; {name} is a number")),
@@ -479,7 +584,7 @@ impl Reader {
                         Some(b'-' | b'0'..=b'9') => value.get().trim().to_string(),
                         _ => return self.fail(place, "the threshold is decimal text or a JSON number"),
                     };
-                    let threshold = Threshold::new(&text, source.name().display(), source.scale())
+                    let threshold = Threshold::new(&text, source.display(), source.scale())
                         .or_else(|message| self.fail(place, format!("threshold: {message}")))?;
                     Test::Number(compare, threshold)
                 }
@@ -495,7 +600,7 @@ impl Reader {
             let text = self.string(fields["rank"], place, "the rank's source")?;
             let source = self.source(&text, place, variables)?;
             if matches!(source, Source::Field(field) if field.is_text()) {
-                return self.fail(place, format!("{} is text and cannot rank", source.name().name));
+                return self.fail(place, format!("{} is text and cannot rank", source.label()));
             }
             let order = match self.string(fields["order"], place, "the order")?.as_str() {
                 "highest" => Order::Highest,
@@ -514,25 +619,15 @@ impl Reader {
         self.fail(place, "a step has the keys filter, op and value, or rank, order, from and to")
     }
 
-    /// The source one step names.
-    fn source(&self, text: &str, place: &str, variables: &BTreeMap<String, Variable>) -> Result<Source, Error> {
-        if let Some(name) = names::find(text) {
-            return match name.kind {
-                Kind::Builtin { .. } => Ok(Source::Builtin(name.builtin().expect("a built-in name"))),
-                Kind::Field(field) => Ok(Source::Field(field)),
-                Kind::Input { .. } | Kind::Measure { .. } => {
-                    self.fail(place, format!("{:?} is read with a formula, and this program does not read formulas yet", name.name))
-                }
-            };
+    /// The source one step names: a whole name, else formula text.
+    fn source(&self, text: &str, place: &str, variables: &[Arc<Formula>]) -> Result<Source, Error> {
+        if let Some(source) = whole(text, variables) {
+            return Ok(source);
         }
-        let key = names::key(text);
-        if let Some(variable) = variables.keys().find(|v| names::key(v) == key) {
-            return self.fail(place, format!("the variable {variable:?} is a formula, and this program does not read formulas yet"));
+        match Formula::read(text, variables) {
+            Ok(formula) => Ok(Source::Formula(Arc::new(formula))),
+            Err(fault) => self.fail(&format!("{place}, {}", fault.place()), fault.message),
         }
-        let known = NAMES.iter().map(|n| n.name).chain(variables.keys().map(String::as_str));
-        let suggestions: Vec<String> = names::suggestions(text, known).iter().map(|n| format!("{n:?}")).collect();
-        let hint = if suggestions.is_empty() { String::new() } else { format!("; did you mean {}?", suggestions.join(", ")) };
-        self.fail(place, format!("{text:?} is not a known name{hint}"))
     }
 
     /// A JSON object with the `required` keys and no keys outside

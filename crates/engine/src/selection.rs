@@ -120,7 +120,7 @@ pub fn select<'v>(strategy: &Strategy, day: &'v DayValues<'_>, exit: Option<Day>
             rank: if several { union_rank } else { chosen.rank },
             value: match last.source() {
                 source @ Source::Builtin(_) => numbers::canonical(chosen.value, source.scale()).expect("a ranked value is canonical"),
-                Source::Field(_) => chosen.value,
+                Source::Field(_) | Source::Formula(_) => chosen.value,
             },
             sleeves,
         });
@@ -134,6 +134,7 @@ fn reported(source: &Source, stored: Option<f64>) -> Option<f64> {
     match source {
         Source::Builtin(_) => stored.and_then(|v| numbers::canonical(v, source.scale())),
         Source::Field(_) => None,
+        Source::Formula(_) => stored,
     }
 }
 
@@ -199,6 +200,6 @@ fn execute(steps: &[Step], day: &DayValues<'_>, scope: &[usize]) -> Result<Vec<C
 fn field(source: &Source) -> crate::names::Field {
     match source {
         Source::Field(field) => *field,
-        Source::Builtin(_) => panic!("an is filter reads a text field"),
+        Source::Builtin(_) | Source::Formula(_) => panic!("an is filter reads a text field"),
     }
 }

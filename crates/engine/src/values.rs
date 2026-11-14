@@ -42,6 +42,7 @@ impl<'d> DayValues<'d> {
             Source::Field(Field::MarketCap) => Some(candidate.market_cap),
             Source::Field(Field::EnterpriseValue) => Some(candidate.enterprise_value),
             Source::Field(Field::Sector | Field::Exchange) => None,
+            Source::Formula(_) => return Err(Error::new("this program does not evaluate formulas yet", source.label())),
         })
     }
 

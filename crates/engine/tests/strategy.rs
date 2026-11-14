@@ -27,9 +27,9 @@ fn steps(strategy: &Strategy) -> Vec<(Source, String)> {
         .steps
         .iter()
         .map(|step| match step {
-            Step::Filter { source, test: Test::Number(compare, threshold) } => (*source, format!("{compare:?} {:?}", threshold.stored)),
-            Step::Filter { source, test } => (*source, format!("{test:?}")),
-            Step::Rank { source, order, from, to } => (*source, format!("{order:?} {from}-{to}")),
+            Step::Filter { source, test: Test::Number(compare, threshold) } => (source.clone(), format!("{compare:?} {:?}", threshold.stored)),
+            Step::Filter { source, test } => (source.clone(), format!("{test:?}")),
+            Step::Rank { source, order, from, to } => (source.clone(), format!("{order:?} {from}-{to}")),
         })
         .collect()
 }
@@ -56,7 +56,7 @@ fn hong_kong_floors_read_the_dollar_fields_and_the_linked_yield() {
         [
             (Source::Field(Field::MarketCap), "AtLeast 100000000.0".to_string()),
             (Source::Field(Field::EnterpriseValue), "AtLeast 50000000.0".to_string()),
-            (yield_lane, "AtLeast 0.0".to_string()),
+            (yield_lane.clone(), "AtLeast 0.0".to_string()),
             (yield_lane, "Highest 1-50".to_string()),
             // The built-in market cap is stored in $ million.
             (builtin("filter:market_cap"), "AtLeast 100.0".to_string()),
@@ -73,13 +73,123 @@ fn a_linked_name_reads_its_stored_lane_in_display_units() {
 }
 
 #[test]
-fn a_step_only_name_reads_its_lane_and_an_input_needs_a_formula() {
-    let (_, strategy) = read("pe.json", &one_sleeve(r#"{"rank": "P/E 5-year average", "order": "lowest", "from": 1, "to": 5}"#));
-    assert_eq!(steps(&strategy.unwrap()), [(builtin("filter:pe_avg_5y"), "Lowest 1-5".to_string())]);
-    let (path, refused) = read("revenue.json", &one_sleeve(r#"{"rank": "Revenue", "order": "highest", "from": 1, "to": 5}"#));
-    let error = refused.unwrap_err();
-    assert_eq!(error.place, format!("{}: sleeves[1].steps[1]", path.display()));
-    assert_eq!(error.message, r#""Revenue" is read with a formula, and this program does not read formulas yet"#);
+fn a_step_only_name_reads_its_lane_and_an_input_reads_its_formula() {
+    let (_, strategy) = read(
+        "names.json",
+        &one_sleeve(
+            r#"{"rank": "P/E 5-year average", "order": "lowest", "from": 1, "to": 5},
+               {"filter": "revenue", "op": ">", "value": "100"},
+               {"filter": "Price/sales", "op": "<", "value": "3"},
+               {"filter": "[Price/sales]", "op": "<", "value": "3"}"#,
+        ),
+    );
+    let strategy = strategy.unwrap();
+    let found = steps(&strategy);
+    assert_eq!(found[0], (builtin("filter:pe_avg_5y"), "Lowest 1-5".to_string()));
+    // A whole input or measure reads its formula in the list's display; as
+    // other text it shows in its unit's default display (percent here).
+    let shown: Vec<(String, &str, String)> = found[1..]
+        .iter()
+        .map(|(source, stored)| {
+            let Source::Formula(formula) = source else { panic!("a formula") };
+            (formula.text().to_string(), formula.display(), stored.clone())
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("Revenue".to_string(), "usd_million", "Greater 100000000.0".to_string()),
+            ("Price/sales".to_string(), "multiple", "Less 3.0".to_string()),
+            ("Price/sales".to_string(), "percent", "Less 0.03".to_string()),
+        ]
+    );
+    assert!(strategy.canonical().contains(r#"{"filter":"Price/sales","op":"<","value":"3"},{"filter":"(Price/sales)""#));
+}
+
+#[test]
+fn variables_and_formula_steps_print_canonically() {
+    let written = r#"{"variables": {
+        " Debt to EV ": {"formula": "total debt/positive( enterprise value )", "display": "multiple"},
+        "Doubled": {"formula": "[Debt to EV]*2"}},
+      "sleeves": [{"steps": [
+        {"filter": "debt  to EV", "op": "<", "value": "1.5"},
+        {"filter": "revenue-cost of revenue", "op": ">", "value": 100},
+        {"filter": "[ROE]", "op": ">", "value": "15"},
+        {"filter": "ROE", "op": ">", "value": "15"},
+        {"rank": "Doubled", "order": "lowest", "from": 1, "to": 5}]}]}"#;
+    let (_, strategy) = read("variables.json", written);
+    let strategy = strategy.unwrap();
+    let canonical = concat!(
+        r#"{"variables":{"Debt to EV":{"formula":"Total debt / positive(Enterprise value)","display":"multiple"},"#,
+        r#""Doubled":{"formula":"Debt to EV * 2","display":"percent"}},"sleeves":[{"steps":["#,
+        r#"{"filter":"Debt to EV","op":"<","value":"1.5"},{"filter":"Revenue - Cost of revenue","op":">","value":"100"},"#,
+        r#"{"filter":"(ROE)","op":">","value":"15"},{"filter":"ROE","op":">","value":"15"},"#,
+        r#"{"rank":"Doubled","order":"lowest","from":1,"to":5}]}]}"#
+    );
+    assert_eq!(strategy.canonical(), canonical);
+    let stored: Vec<String> = steps(&strategy).into_iter().map(|(_, stored)| stored).collect();
+    assert_eq!(stored, ["Less 1.5", "Greater 100000000.0", "Greater 0.15", "Greater 15.0", "Lowest 1-5"]);
+    let names: Vec<_> = strategy.variables().iter().map(|v| v.name().unwrap()).collect();
+    assert_eq!(names, ["Debt to EV", "Doubled"]);
+    let (_, again) = read("again.json", canonical);
+    let again = again.unwrap();
+    assert_eq!((again.canonical(), again.identity()), (strategy.canonical(), strategy.identity()));
+}
+
+#[test]
+fn the_fictional_strategy_files_read_and_their_canonical_forms_read_again() {
+    let cases = format!("{}/../../fixtures/fictional/cases", env!("CARGO_MANIFEST_DIR"));
+    let mut count = 0;
+    for kind in std::fs::read_dir(cases).unwrap() {
+        for case in std::fs::read_dir(kind.unwrap().path()).unwrap() {
+            let path = case.unwrap().path().join("strategy.json");
+            let strategy = Strategy::read(&path).unwrap_or_else(|e| panic!("{e}"));
+            let (_, again) = read("again.json", strategy.canonical());
+            let again = again.unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            assert_eq!((again.canonical(), again.identity()), (strategy.canonical(), strategy.identity()), "{}", path.display());
+            count += 1;
+        }
+    }
+    assert!(count > 0);
+}
+
+#[test]
+fn formula_faults_name_the_variable_or_step_and_the_characters() {
+    let rank = r#"{"rank": "P/B", "order": "lowest", "from": 1, "to": 5}"#;
+    let with = |variables: &str, steps: &str| format!(r#"{{"variables": {{{variables}}}, "sleeves": [{{"steps": [{steps}]}}]}}"#);
+    let cases = [
+        (
+            with(r#""Debt to EV": {"formula": "Total debt / Enterprse value"}"#, rank),
+            r#"variables."Debt to EV", characters 14–28"#,
+            "“Enterprse value” is not an input or a saved variable. Did you mean “Enterprise value”?",
+        ),
+        (
+            with(r#""A": {"formula": "B * 2"}, "B": {"formula": "Revenue"}"#, rank),
+            r#"variables."A", character 1"#,
+            "“B” is not an input or a saved variable.",
+        ),
+        (
+            with(r#""A": {"formula": "Revenue", "display": "percent"}"#, rank),
+            r#"variables."A".display"#,
+            r#""percent" is not a display of USD: use usd, usd_million"#,
+        ),
+        (with(r#""A": {"formula": "Revenue + 1"}"#, rank), r#"variables."A", characters 1–11"#, ""),
+        (with(r#"" ": {"formula": "Revenue"}"#, rank), r#"variables." ""#, "a variable name is not empty"),
+        (with("", &format!(r#"{{"filter": "Revenue +", "op": ">", "value": "1"}}, {rank}"#)), "sleeves[1].steps[1], character 10", "A value is missing at the end."),
+        (
+            with("", &format!(r#"{rank}, {{"rank": "average(P/E, 3 years)", "order": "lowest", "from": 1, "to": 5}}"#)),
+            "sleeves[1].steps[2], characters 1–21",
+            "",
+        ),
+    ];
+    for (json, place, message) in cases {
+        let (path, refused) = read("formula.json", &json);
+        let error = refused.unwrap_err();
+        assert_eq!(error.place, format!("{}: {place}", path.display()));
+        if !message.is_empty() {
+            assert_eq!(error.message, message);
+        }
+    }
 }
 
 #[test]
@@ -123,8 +233,8 @@ fn refused_files_name_the_place_and_the_cause() {
     let cases = [
         (
             one_sleeve(r#"{"rank": "P/E 4-year average", "order": "highest", "from": 1, "to": 5}"#),
-            "sleeves[1].steps[1]",
-            r#""P/E 4-year average" is not a known name; did you mean "P/E 3-year average", "P/E 5-year average", "P/S 3-year average"?"#,
+            "sleeves[1].steps[1], character 5",
+            "Put +, -, * or / between two values.",
         ),
         (
             one_sleeve(&format!(r#"{{"filter": "Sector", "op": ">", "value": "Technology"}}, {rank}"#)),
