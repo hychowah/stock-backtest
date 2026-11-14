@@ -269,14 +269,21 @@ pub struct Writer {
     tables: Map<String, Value>,
 }
 
+/// Refuses an output folder that is not new or empty, so that no file of an
+/// earlier output can stay beside a new one. A long command checks its
+/// folder this way before it starts, as well as when it writes.
+pub fn new_or_empty(dir: &Path) -> Result<(), &'static str> {
+    if std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some()) || (dir.exists() && !dir.is_dir()) {
+        return Err("the folder must be new or empty");
+    }
+    Ok(())
+}
+
 impl Writer {
     /// Starts an export in `dir`, creating the folder when missing. Fails when
-    /// the folder exists and is not empty, so no table of an earlier export
-    /// can stay beside this one.
+    /// the folder is not [new or empty](new_or_empty).
     pub fn create(dir: &Path, producer: &str, settings: Value) -> Result<Writer, String> {
-        if std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some()) {
-            return Err(format!("the export folder is not empty: {}", dir.display()));
-        }
+        new_or_empty(dir).map_err(|message| format!("{message}: {}", dir.display()))?;
         std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         Ok(Writer { dir: dir.to_path_buf(), producer: producer.to_string(), settings, tables: Map::new() })
     }

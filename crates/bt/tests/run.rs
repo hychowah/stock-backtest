@@ -111,6 +111,28 @@ fn a_run_stops_at_a_holding_without_an_exit_price_and_a_seed_repeats_its_result(
 }
 
 #[test]
+fn a_file_run_in_a_batch_gives_the_result_it_gives_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let rank: Value = serde_json::from_str(RANK).unwrap();
+    let files = [dir.path().join("a.json"), dir.path().join("b.json"), dir.path().join("c.json")];
+    strategy(&files[0], json!([rank]));
+    strategy(&files[1], json!([{"filter": "P/E", "op": "<", "value": "40"}, {"rank": "ROE", "order": "highest", "from": 1, "to": 3}]));
+    strategy(&files[2], json!([{"rank": "Revenue", "order": "lowest", "from": 2, "to": 6}]));
+    let run = |out: &str, files: &[&Path]| {
+        let out = dir.path().join(out);
+        let mut args = vec!["run"];
+        args.extend(files.iter().map(|f| path(f)));
+        args.extend(["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--random", "3"]);
+        args.extend(["--seed", "852", "--out", path(&out), "--home", path(&home)]);
+        let (reply, success) = bt(&args);
+        assert!(success, "{reply}");
+        std::fs::read(out.join("b.sqlite")).unwrap()
+    };
+    assert_eq!(run("batch", &[&files[0], &files[1], &files[2]]), run("alone", &[&files[1]]));
+}
+
+#[test]
 fn export_tables_refuses_two_results_of_one_name_and_a_file_that_is_not_a_result() {
     let dir = tempfile::tempdir().unwrap();
     let home = prepared(dir.path());

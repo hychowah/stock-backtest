@@ -66,7 +66,7 @@ pub(crate) fn value(data: &MarketData, sessions: &[Day], picks: Vec<Pick<'_>>, p
         return Err(Error::new(NO_SPY, ""));
     };
     let returns: Vec<f64> = holdings.iter().map(|h| h.return_value).collect();
-    let portfolio = if returns.is_empty() { 0.0 } else { numbers::sum(&returns) / returns.len() as f64 };
+    let portfolio = numbers::mean_return(&returns);
     let curve = curve(data, sessions, &holdings, period, spy_entry, portfolio);
     Ok(PeriodRun { entry: period.entry, exit: period.exit, portfolio, spy: spy_exit / spy_entry - 1.0, holdings, curve })
 }

@@ -29,5 +29,5 @@ fn a_written_export_equals_itself_and_a_changed_value_differs() {
     assert_eq!(report.tables[0].fields.keys().collect::<Vec<_>>(), ["v"]);
     assert_eq!(report.tables[0].fields["v"].count, 1);
     let error = Writer::create(a.path(), "test", serde_json::json!({})).err().unwrap();
-    assert!(error.contains("not empty"), "{error}");
+    assert!(error.contains("new or empty"), "{error}");
 }

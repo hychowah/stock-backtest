@@ -51,7 +51,7 @@ impl<'d> DayValues<'d> {
             Source::Field(Field::EnterpriseValue) => Some(candidate.enterprise_value),
             Source::Field(Field::Sector | Field::Exchange) => None,
             Source::Formula(ref formula) => evaluation::value(&self.observer, formula, candidate, self.day)
-                .map_err(|e| Error::new(e.message, format!("{}, {}", self.symbol(i), source.label())))?,
+                .map_err(|e| e.within(format!("{}, {}", self.symbol(i), source.label())))?,
         })
     }
 

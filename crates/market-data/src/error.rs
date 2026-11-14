@@ -16,6 +16,20 @@ impl Error {
     pub fn new(message: impl Into<String>, place: impl fmt::Display) -> Error {
         Error { message: message.into(), place: place.to_string() }
     }
+
+    /// The same error with `prefix` in front of its place, as a caller that
+    /// knows the wider place adds it: `PREFIX, PLACE`, or `PREFIX` when the
+    /// place is empty.
+    pub fn within(self, prefix: impl fmt::Display) -> Error {
+        let place = if self.place.is_empty() { prefix.to_string() } else { format!("{prefix}, {}", self.place) };
+        Error { place, ..self }
+    }
+
+    /// The same error with the file it is about in front of its place:
+    /// `FILE: PLACE`.
+    pub fn in_file(self, file: impl fmt::Display) -> Error {
+        Error { place: format!("{file}: {}", self.place), ..self }
+    }
 }
 
 impl fmt::Display for Error {

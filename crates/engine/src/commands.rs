@@ -85,16 +85,14 @@ pub fn run(home: &Home, request: &RunRequest) -> Result<RunReply, Error> {
         }
     }
     let out = &request.out;
-    if std::fs::read_dir(out).is_ok_and(|mut entries| entries.next().is_some()) || (out.exists() && !out.is_dir()) {
-        return Err(Error::new("the result folder must be new or empty", out.display()));
-    }
+    tables::new_or_empty(out).map_err(|message| Error::new(message, out.display()))?;
     let data = MarketData::open(home, request.market)?;
     for (strategy, file) in strategies.iter().zip(&request.files) {
         check_texts(strategy, file, &data)?;
     }
     let plan = Plan::new(&data, &request.schedule)?;
     let runs = crate::run::run(&data, &plan, &strategies)
-        .map_err(|(at, e)| Error::new(e.message, format!("{}: {}", request.files[at].display(), e.place)))?;
+        .map_err(|(at, e)| e.in_file(request.files[at].display()))?;
     std::fs::create_dir_all(out).map_err(|e| Error::new(format!("cannot create the result folder: {e}"), out.display()))?;
     // Each file is written alone, so writing them in parallel changes no byte.
     let paths: Vec<PathBuf> = request.files.iter().map(|file| out.join(format!("{}.sqlite", stem(file)))).collect();
@@ -477,12 +475,13 @@ pub struct ScreenReply {
 
 /// The strategy's picks of the market's latest session, with each step's
 /// value. The file is checked before any market data is read, then its
-/// `is` texts against the market's companies.
+/// `is` texts against the market's companies. An error's place starts with
+/// the file, as `bt run`'s does.
 pub fn screen(home: &Home, request: &ScreenRequest) -> Result<ScreenReply, Error> {
     let strategy = Strategy::read(&request.file)?;
     let data = MarketData::open(home, request.market)?;
     check_texts(&strategy, &request.file, &data)?;
-    let (day, picks) = crate::run::screen(&data, &strategy)?;
+    let (day, picks) = crate::run::screen(&data, &strategy).map_err(|e| e.in_file(request.file.display()))?;
     let manifest = data.manifest();
     Ok(ScreenReply {
         market: request.market,
@@ -791,7 +790,7 @@ fn start_export(request: &ExportResultsRequest) -> Result<(BTreeMap<String, Resu
         }
     }
     let settings = serde_json::json!({ "cases": files.keys().collect::<Vec<_>>() });
-    let writer = tables::Writer::create(&request.out, crate::run::PROGRAM, settings)
+    let writer = tables::Writer::create(&request.out, market_data::PROGRAM, settings)
         .map_err(|message| Error::new(message, request.out.display()))?;
     Ok((files, writer))
 }

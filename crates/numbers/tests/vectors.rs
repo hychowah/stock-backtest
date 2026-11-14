@@ -83,7 +83,7 @@ fn float_sum() {
     for case in &cases {
         let values = floats(&case.values);
         let total = numbers::sum(&values);
-        let mean_return = if values.is_empty() { 0.0 } else { total / values.len() as f64 };
+        let mean_return = numbers::mean_return(&values);
         assert!(same(Some(total), Some(case.sum)), "sum {values:?}: {total:?}");
         assert!(same(Some(mean_return), Some(case.mean_return)), "mean return {values:?}: {mean_return:?}");
     }

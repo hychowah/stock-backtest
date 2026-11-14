@@ -437,8 +437,7 @@ pub(crate) fn explore(file: &ResultFile, selection: &Selection) -> Result<Explor
                         .filter(|h| (selection.ranks.0..=selection.ranks.1).contains(&h.rank))
                         .map(|h| h.return_value)
                         .collect();
-                    let mean = if returns.is_empty() { 0.0 } else { numbers::sum(&returns) / returns.len() as f64 };
-                    (returns.len() as u32, mean)
+                    (returns.len() as u32, numbers::mean_return(&returns))
                 } else {
                     (period.names, period.portfolio)
                 };

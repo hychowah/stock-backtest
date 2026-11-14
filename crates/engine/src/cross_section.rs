@@ -56,9 +56,7 @@ const CHUNK: usize = 64;
 pub fn cross_section(home: &Home, request: &CrossSectionRequest) -> Result<CrossSectionReply, Error> {
     let strategy = Strategy::read(&request.file)?;
     let out = &request.out;
-    if std::fs::read_dir(out).is_ok_and(|mut entries| entries.next().is_some()) || (out.exists() && !out.is_dir()) {
-        return Err(Error::new("the export folder must be new or empty", out.display()));
-    }
+    tables::new_or_empty(out).map_err(|message| Error::new(message, out.display()))?;
     let data = MarketData::open(home, request.market)?;
     crate::commands::check_texts(&strategy, &request.file, &data)?;
     let plan = Plan::new(&data, &request.schedule)?;
@@ -71,7 +69,7 @@ pub fn cross_section(home: &Home, request: &CrossSectionRequest) -> Result<Cross
         "generation": manifest.generation, "as_of": manifest.as_of,
     });
     let fail = |message: String| Error::new(message, out.display());
-    let mut writer = tables::Writer::create(out, crate::run::PROGRAM, settings).map_err(fail)?;
+    let mut writer = tables::Writer::create(out, market_data::PROGRAM, settings).map_err(fail)?;
     let mut table = writer.table("cross_section", &["day", "exit", "symbol"]).map_err(fail)?;
     let columns: Vec<String> = strategy.variables().iter().map(|v| format!("variable:{}", v.name().expect("a named variable"))).collect();
     let companies = data.companies();
@@ -83,7 +81,7 @@ pub fn cross_section(home: &Home, request: &CrossSectionRequest) -> Result<Cross
                 let found = (0..values.candidates().len())
                     .map(|i| variables.iter().map(|v| values.of(v, i)).collect::<Result<Vec<_>, Error>>())
                     .collect::<Result<Vec<_>, Error>>()
-                    .map_err(|e| Error::new(e.message, format!("{file}: {}, {day}, {}", request.market.id(), e.place)))?;
+                    .map_err(|e| e.within(format!("{}, {day}", request.market.id())).in_file(&file))?;
                 Ok((values, found))
             })
             .collect();

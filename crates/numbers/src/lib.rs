@@ -31,6 +31,13 @@ pub fn sum(values: &[f64]) -> f64 {
     total
 }
 
+/// The product's equally weighted return of holdings
+/// (`portfolio_results.mean_return`): `sum(values) / len(values)`, or `0.0`
+/// for no values.
+pub fn mean_return(values: &[f64]) -> f64 {
+    if values.is_empty() { 0.0 } else { sum(values) / values.len() as f64 }
+}
+
 /// `statistics.mean(values)`: the exact sum divided by the count, as a
 /// fraction, rounded once to the nearest float. An exact zero is `0.0`.
 ///

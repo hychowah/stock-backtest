@@ -12,9 +12,6 @@ use rayon::prelude::*;
 use serde::Serialize;
 use std::sync::Arc;
 
-/// This program and its version, as result files and exports record it.
-pub(crate) const PROGRAM: &str = concat!("bt ", env!("CARGO_PKG_VERSION"));
-
 /// One strategy's finished run.
 #[derive(Debug)]
 pub(crate) struct Run {
@@ -163,13 +160,9 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
             for period in &trial.periods {
                 let at = days.partition_point(|(d, _)| *d < period.entry);
                 let exit = days[at].1.binary_search(&period.exit).expect("a planned exit");
-                let found = valued[at][s][exit].as_ref().map_err(|e| {
-                    let mut place = format!("{}, trial {number}, {}", manifest.market.id(), period.entry);
-                    if !e.place.is_empty() {
-                        place = format!("{place}, {}", e.place);
-                    }
-                    (s, Error::new(e.message.clone(), place))
-                })?;
+                let found = valued[at][s][exit]
+                    .as_ref()
+                    .map_err(|e| (s, e.clone().within(format!("{}, trial {number}, {}", manifest.market.id(), period.entry))))?;
                 periods.push(Arc::clone(found));
             }
             let [growth, spy_growth, cagr, spy_cagr] = portfolio::compound(periods.iter().map(|p| (p.portfolio, p.spy)), start, end);
@@ -197,7 +190,7 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
             market: manifest.market,
             generation: manifest.generation,
             as_of: manifest.as_of.clone(),
-            program: PROGRAM.to_string(),
+            program: market_data::PROGRAM.to_string(),
             window: (start, end),
             final_mark: plan.final_mark(),
             trials,
@@ -256,10 +249,7 @@ pub(crate) fn screen(data: &MarketData, strategy: &Strategy) -> Result<(Day, Vec
     let market = data.manifest().market;
     let &day = data.sessions().last().ok_or_else(|| Error::new("the market has no session", market.id()))?;
     let values = DayValues::new(data, day, Screen::Latest);
-    let picks = select(strategy, &values, None).map_err(|e| {
-        let place = format!("{}, latest {day}", market.id());
-        Error::new(e.message, if e.place.is_empty() { place } else { format!("{place}, {}", e.place) })
-    })?;
+    let picks = select(strategy, &values, None).map_err(|e| e.within(format!("{}, latest {day}", market.id())))?;
     let companies = data.companies();
     let picks = picks
         .into_iter()

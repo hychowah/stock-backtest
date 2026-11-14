@@ -36,8 +36,9 @@ use screen::{Columns, DayScreen};
 use series::Series;
 use store::Generation;
 
-/// This program and its version, as manifests and exports record it.
-const PROGRAM: &str = concat!("bt ", env!("CARGO_PKG_VERSION"));
+/// This program and its version, as manifests, result files and exports
+/// record it.
+pub const PROGRAM: &str = concat!("bt ", env!("CARGO_PKG_VERSION"));
 
 /// The first day a screen can have, 1996-01-01 (`rules.FIRST_DAY`).
 pub const FIRST_DAY: Day = Day(9496);

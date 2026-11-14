@@ -251,7 +251,9 @@ folder. It fails any test that touches the checkout's `data/` folder. Tests use
 small synthetic data and need no API key. GitHub Actions runs the fast tier on
 every push. It also builds and tests the Rust crates and the TypeScript project,
 and compares the Python product's prepared data, candidates and result tables
-for the fictional dataset with the expected tables.
+for the fictional dataset with the expected tables. It also converts the
+fictional saved tests into strategy files and runs each one against its
+original saved test.
 
 To run one file, call it directly, for example `python3 tests/test_queue.py` or
 `node tests/check-queue.cjs`. After `python3 website/build.py`, also run
