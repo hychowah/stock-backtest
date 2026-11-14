@@ -151,6 +151,8 @@ exit rules and its limits.
 | `backtest/` | Financial rules, data preparation, selection, the calculation engine and the queue and library |
 | `website/` | Browser interface, page builder and local HTTP server |
 | `scripts/` | Command-line preparation and the development check |
+| `crates/` | The Rust program that will replace the Python product |
+| `web/` | The TypeScript website that will replace the browser interface |
 | `tools/` | Deployment, operations and FMP API probes |
 | `tests/` | Python and Node.js tests and the test runner |
 | `docs/` | Methodology, design notes and the architecture guide ([index](docs/README.md)) |

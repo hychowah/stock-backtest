@@ -58,6 +58,10 @@ data/backtest-queue.lock.live/
 # Per-process development logs and their rotated backups.
 data/logs/
 
+# Rust and TypeScript build output.
+target/
+web/dist/
+
 # Disposable API experiments, response memoization and benchmark caches.
 tmp/
 
