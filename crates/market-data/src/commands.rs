@@ -20,9 +20,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// The first day a screen can have (`rules.FIRST_DAY`).
-const FIRST_DAY: Day = Day(9496);
-
 /// The runtime folder: the paths of its parts. Commands read raw provider
 /// files below [`raw`](Self::raw) and keep prepared data below
 /// [`prepared`](Self::prepared).
@@ -278,7 +275,7 @@ pub struct ExportReply {
 pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error> {
     let data = MarketData::open(home, request.market)?;
     let days = match &request.days {
-        Some(path) => read_days(path, data.sessions())?,
+        Some(path) => read_days(path, &data)?,
         None => Vec::new(),
     };
     let m = data.manifest();
@@ -314,34 +311,18 @@ pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error
 }
 
 /// The days of a days file, ascending and once each.
-fn read_days(path: &Path, sessions: &[Day]) -> Result<Vec<Day>, Error> {
+fn read_days(path: &Path, data: &MarketData) -> Result<Vec<Day>, Error> {
     let text = std::fs::read_to_string(path).map_err(|e| Error::new(format!("cannot read the days file: {e}"), path.display()))?;
     let mut days = Vec::new();
     for (number, line) in text.lines().enumerate().filter(|(_, line)| !line.trim().is_empty()) {
         let place = format!("{}:{}", path.display(), number + 1);
         let day = Day::parse(line.trim()).ok_or_else(|| Error::new(format!("not an ISO day: {line:?}"), &place))?;
-        check_session(day, sessions).map_err(|message| Error::new(message, &place))?;
+        data.check_session(day).map_err(|message| Error::new(message, &place))?;
         days.push(day);
     }
     days.sort();
     days.dedup();
     Ok(days)
-}
-
-/// Whether `day` is a session from 1996-01-01; the error names the sessions
-/// before and after it.
-fn check_session(day: Day, sessions: &[Day]) -> Result<(), String> {
-    let sessions = &sessions[sessions.partition_point(|&d| d < FIRST_DAY)..];
-    let at = sessions.partition_point(|&d| d < day);
-    if sessions.get(at) == Some(&day) {
-        return Ok(());
-    }
-    let name = |d: Option<&Day>| d.map_or("none".to_string(), Day::to_string);
-    Err(format!(
-        "{day} is not a session from {FIRST_DAY}: the session before it is {}, the session after it {}",
-        name(at.checked_sub(1).map(|i| &sessions[i])),
-        name(sessions.get(at))
-    ))
 }
 
 /// `bt data inspect --market M --symbol S --day D`.
@@ -415,7 +396,7 @@ pub fn inspect(home: &Home, request: &InspectRequest) -> Result<InspectReply, Er
         .ids()
         .find(|&c| companies.symbol(c) == request.symbol)
         .ok_or_else(|| Error::new(format!("{} has no company {:?}", request.market.id(), request.symbol), "symbol"))?;
-    check_session(request.day, data.sessions()).map_err(|message| Error::new(message, "day"))?;
+    data.check_session(request.day).map_err(|message| Error::new(message, "day"))?;
     let columns = Columns::open(&data.generation);
     let screen = DayScreen::new(&columns, request.day, Screen::Dated);
     let (fiscal_price, entry_price) = screen.closes(c);

@@ -154,6 +154,12 @@ impl<'a> Companies<'a> {
         self.currency.get(c.index())
     }
 
+    /// The currency of the company's closes: its quote currency, except in
+    /// the US, where prices are read in USD.
+    pub(crate) fn quote(&self, market: Market, c: CompanyId) -> &'a str {
+        if market == Market::Us { "USD" } else { self.currency(c) }
+    }
+
     /// Whether the company has a saved price file within the market's price
     /// scope (US: the reported companies).
     pub(crate) fn priced(&self, c: CompanyId) -> bool {

@@ -132,11 +132,6 @@ impl<'a> Columns<'a> {
             valuation: ValuationColumns::open(generation),
         }
     }
-
-    /// The currency of a company's closes: US prices are read in USD.
-    fn quote(&self, c: CompanyId) -> &'a str {
-        if self.market == Market::Us { "USD" } else { self.companies.currency(c) }
-    }
 }
 
 /// The screen of one day: each company's selected report and tie rank.
@@ -224,7 +219,7 @@ impl<'c, 'a> DayScreen<'c, 'a> {
         if ![cap, ev, ebitda].iter().all(|v| v.is_finite()) {
             return Err(Denial::NonfiniteResult);
         }
-        let quote = columns.quote(c);
+        let quote = columns.companies.quote(columns.market, c);
         let price = convert(&columns.series, entry.1, quote, entry.0).ok_or(Denial::MissingPrice)?;
         let facts = Facts {
             company: c,

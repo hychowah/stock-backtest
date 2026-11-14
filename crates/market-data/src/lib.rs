@@ -10,6 +10,7 @@ pub mod commands;
 mod companies;
 mod day;
 mod error;
+mod holding;
 mod market;
 mod prices;
 mod raw;
@@ -22,17 +23,22 @@ mod valuation;
 pub use companies::{Companies, CompanyId};
 pub use day::Day;
 pub use error::Error;
+pub use holding::{Exit, ExitStatus, MissingExitPrice};
 pub use market::Market;
 pub use screen::{Candidate, Denial, Screen};
 pub use store::{ColumnInfo, Manifest};
 
 use commands::Home;
+use prices::PriceColumns;
 use screen::{Columns, DayScreen};
 use series::Series;
 use store::Generation;
 
 /// This program and its version, as manifests and exports record it.
 const PROGRAM: &str = concat!("bt ", env!("CARGO_PKG_VERSION"));
+
+/// The first day a screen can have, 1996-01-01 (`rules.FIRST_DAY`).
+pub const FIRST_DAY: Day = Day(9496);
 
 /// One market's prepared data: the generation `current` named at open,
 /// memory-mapped. It stays readable until dropped, even after a later
@@ -58,6 +64,25 @@ impl MarketData {
     /// the completed local sessions at the as-of time.
     pub fn sessions(&self) -> &[Day] {
         Series::open(&self.generation).sessions()
+    }
+
+    /// Whether `day` is one of [`sessions`](Self::sessions) from
+    /// [`FIRST_DAY`]: a day that [`candidates`](Self::candidates) accepts.
+    /// The error is the message for the user; it names the sessions just
+    /// before and after `day` ("none" at either end).
+    pub fn check_session(&self, day: Day) -> Result<(), String> {
+        let sessions = self.sessions();
+        let sessions = &sessions[sessions.partition_point(|&d| d < FIRST_DAY)..];
+        let at = sessions.partition_point(|&d| d < day);
+        if sessions.get(at) == Some(&day) {
+            return Ok(());
+        }
+        let name = |d: Option<&Day>| d.map_or("none".to_string(), Day::to_string);
+        Err(format!(
+            "{day} is not a session from {FIRST_DAY}: the session before it is {}, the session after it {}",
+            name(at.checked_sub(1).map(|i| &sessions[i])),
+            name(sessions.get(at))
+        ))
     }
 
     /// The market's companies, in symbol order.
@@ -93,6 +118,28 @@ impl MarketData {
     /// Hong Kong and Tokyo the last close before `day`, at most 7 days earlier.
     pub fn spy(&self, day: Day) -> Option<(Day, f64)> {
         Series::open(&self.generation).spy(day)
+    }
+
+    /// How company `c`, entered at `entry` (the candidate's entry day and
+    /// price in US dollars), exits when held until `exit`: at the last close
+    /// on or before `exit`, at most 10 days earlier; without one, at the
+    /// last earlier close ([`ExitStatus::LastAvailable`]). The close is in US
+    /// dollars at the FX of its own day. No close from the entry day through
+    /// `exit`, or an exit close without FX, is [`MissingExitPrice`]. The entry
+    /// day is before `exit`: a run selects only candidates that enter before it.
+    pub fn exit(&self, c: CompanyId, entry: (Day, f64), exit: Day) -> Result<Exit, MissingExitPrice> {
+        let (series, prices) = (Series::open(&self.generation), PriceColumns::open(&self.generation).company(c));
+        holding::exit(&series, &prices, self.companies().quote(self.manifest().market, c), entry, exit)
+    }
+
+    /// The closes of company `c` that a holding's daily path reads: every
+    /// valid close from `from` (its entry day) through `to` (its exit day),
+    /// both included, in day order, each in US dollars at the FX of its own
+    /// day. Hong Kong and Tokyo closes are those of local sessions only; a
+    /// close without FX is left out, so the path keeps the previous value.
+    pub fn usd_closes(&self, c: CompanyId, from: Day, to: Day) -> Vec<(Day, f64)> {
+        let (series, prices) = (Series::open(&self.generation), PriceColumns::open(&self.generation).company(c));
+        holding::usd_closes(&series, &prices, self.companies().quote(self.manifest().market, c), from, to)
     }
 
     /// The 3-month Treasury rate of `day` as a fraction (the yield / 100):
