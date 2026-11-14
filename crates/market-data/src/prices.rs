@@ -203,6 +203,12 @@ impl<'a> Prices<'a> {
         (first..day.len()).filter(move |&i| close_reason[i] == 0).map(move |i| (day[i], close[i]))
     }
 
+    /// The valid close and volume saved for `day` itself.
+    pub(crate) fn saved(&self, day: Day) -> (Option<f64>, Option<f64>) {
+        let Ok(i) = self.day.binary_search(&day) else { return (None, None) };
+        ((self.close_reason[i] == 0).then(|| self.close[i]), (self.volume_reason[i] == 0).then(|| self.volume[i]))
+    }
+
     /// The valid volumes from `start` through `end`, in day order.
     pub(crate) fn volumes(&self, start: Day, end: Day) -> impl Iterator<Item = f64> + 'a {
         let Prices { day, volume, volume_reason, .. } = *self;

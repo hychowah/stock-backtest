@@ -2,7 +2,6 @@
 //! days are completed local sessions at an as-of time, and when a report
 //! becomes known.
 
-use crate::day::days_in_month;
 use crate::{Day, Error};
 use chrono::{DateTime, Datelike, FixedOffset, TimeDelta, Timelike};
 use serde::{Deserialize, Serialize};
@@ -93,10 +92,7 @@ impl Market {
         if let Some(published) = publication.filter(|&p| p > fiscal) {
             return (published, Basis::PublicationDate);
         }
-        let (year, month, day) = fiscal.ymd();
-        let absolute = year * 12 + month as i32 - 1 + months;
-        let (year, month) = (absolute.div_euclid(12), absolute.rem_euclid(12) as u32 + 1);
-        let known = Day::from_ymd(year, month, day.min(days_in_month(year, month))).expect("a known date in years 1 to 9999");
+        let known = fiscal.add_months(months).expect("a known date in years 1 to 9999");
         (known, Basis::FiscalPlusMonths)
     }
 }

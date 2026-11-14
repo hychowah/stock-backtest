@@ -12,7 +12,7 @@
 use crate::annual::{Annual, LegacyField, LegacyValues};
 use crate::companies::CompanyId;
 use crate::prices::{Direction, Prices};
-use crate::reports::{Report, Reports, convert};
+use crate::reports::{Reports, convert};
 use crate::series::Series;
 use crate::valuation::ValuationColumns;
 use crate::Day;
@@ -88,7 +88,7 @@ pub const BUILTINS: [Builtin; 38] = [
 ];
 
 /// The position of built-in `id` in [`BUILTINS`].
-const fn at(id: &str) -> usize {
+pub(crate) const fn at(id: &str) -> usize {
     let mut i = 0;
     while i < BUILTINS.len() {
         let (a, b) = (BUILTINS[i].id.as_bytes(), id.as_bytes());
@@ -180,8 +180,8 @@ pub(crate) fn values(facts: &Facts<'_, '_>, day: Day, valuation: &Valuation) -> 
     let (ebitda_yield, multiple) = yield_and_multiple(ebitda, ev);
     out[EV_EBITDA_YIELD] = Some(ebitda_yield);
     out[EV_EBITDA_MULTIPLE] = Some(multiple);
-    let history = facts.reports.history(day, series);
-    if let Some(average) = annual_ebitda(&history, fiscal).filter(|&a| a > 0.0) {
+    let ebitda_3y: Option<Vec<f64>> = facts.reports.yearly_ebitda(fiscal, day, series, 3).into_iter().collect();
+    if let Some(average) = ebitda_3y.map(|values| numbers::mean(&values)).filter(|&a| a > 0.0) {
         let multiple = ev / average;
         out[EV_EBITDA_3Y_MULTIPLE] = Some(multiple);
         out[EV_EBITDA_3Y_YIELD] = Some(1.0 / multiple);
@@ -225,17 +225,6 @@ pub(crate) fn values(facts: &Facts<'_, '_>, day: Day, valuation: &Valuation) -> 
         }
     }
     out
-}
-
-/// The mean EBITDA of the 3 calendar years ending at the year of `fiscal`
-/// (`metrics.annual_average`): each year's last report on or before `fiscal`;
-/// `None` when a year has none.
-fn annual_ebitda(history: &[Report], fiscal: Day) -> Option<f64> {
-    let year = fiscal.ymd().0;
-    let ebitda: Option<Vec<f64>> = (0..3)
-        .map(|i| history.iter().rev().filter(|r| r.fiscal <= fiscal).find(|r| r.fiscal.ymd().0 == year - i).map(|r| r.ebitda))
-        .collect();
-    ebitda.map(|values| numbers::mean(&values))
 }
 
 /// The legacy values of calendar year `year`: its last fiscal date on or
@@ -285,6 +274,12 @@ fn financial_values(fiscal: Day, cap: f64, annual: &[(Day, LegacyValues)], out: 
     }
 }
 
+/// Operating income / revenue, when the revenue is positive
+/// (`metrics.operating_margin`).
+pub(crate) fn operating_margin(income: f64, revenue: f64) -> Option<f64> {
+    (revenue > 0.0).then(|| income / revenue)
+}
+
 /// Sales × the mean operating margin of the 3 calendar years ending at
 /// `fiscal` / `ev` × 100 − `ten_year` (`metrics.operating_yield_spread`).
 fn operating_yield_spread(fiscal: Day, ev: f64, annual: &[(Day, LegacyValues)], ten_year: Option<f64>) -> Option<f64> {
@@ -299,8 +294,7 @@ fn operating_yield_spread(fiscal: Day, ev: f64, annual: &[(Day, LegacyValues)], 
     let margins: Option<Vec<f64>> = (year - 2..=year)
         .map(|y| {
             let report = in_year(annual, fiscal, y);
-            let (revenue, income) = (report.get(Revenue)?, report.get(OperatingIncome)?);
-            (revenue > 0.0).then(|| income / revenue)
+            operating_margin(report.get(OperatingIncome)?, report.get(Revenue)?)
         })
         .collect();
     let value = sales * numbers::mean(&margins?) / ev * 100.0 - ten_year;

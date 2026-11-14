@@ -437,6 +437,21 @@ impl<'a> Reports<'a> {
         (0..self.fiscal.len()).filter(|&i| us || self.known[i] < day).filter_map(|i| self.at(i, day, series)).collect()
     }
 
+    /// The EBITDA of each of the `count` calendar years ending at the year
+    /// of `fiscal` (the selected report's), oldest first, read on `day`: the
+    /// last report of that year in [`history`](Self::history) on or before
+    /// `fiscal`, or `None` (`metrics.annual_average`, and the formulas'
+    /// report EBITDA, `columns._report_ebitda`, which also asks that a
+    /// report be known before `day`: every US report on or before the
+    /// selected one is).
+    pub(crate) fn yearly_ebitda(&self, fiscal: Day, day: Day, series: &Series<'_>, count: usize) -> Vec<Option<f64>> {
+        let history = self.history(day, series);
+        let year = fiscal.ymd().0;
+        (year + 1 - count as i32..=year)
+            .map(|y| history.iter().rev().filter(|r| r.fiscal <= fiscal).find(|r| r.fiscal.ymd().0 == y).map(|r| r.ebitda))
+            .collect()
+    }
+
     /// The US legacy pool's report on `day` (`books.pools`, then
     /// `rules.latest_statement`): the last report in fiscal order with a
     /// market cap of at least $100M and an EV of at least $50M that is

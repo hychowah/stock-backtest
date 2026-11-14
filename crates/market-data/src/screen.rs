@@ -37,7 +37,7 @@ use tables::Cell;
 /// How many legacy-pool companies the US tie rank ranks (`rules.BUFFER`).
 const BUFFER: usize = 250;
 /// How many days after a dated screen's day its entry may be.
-const ENTRY_SLACK: i32 = 4;
+pub(crate) const ENTRY_SLACK: i32 = 4;
 
 /// Which screen a day's candidates come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -132,6 +132,38 @@ impl<'a> Columns<'a> {
             valuation: ValuationColumns::open(generation),
         }
     }
+
+    /// Company `c`'s prepared data, as the built-ins read it.
+    pub(crate) fn facts(&self, c: CompanyId) -> Facts<'a, '_> {
+        Facts {
+            company: c,
+            quote: self.companies.quote(self.market, c),
+            prices: self.prices.company(c),
+            reports: self.reports.company(c),
+            annual: self.annual.company(c),
+            series: &self.series,
+            valuation: &self.valuation,
+        }
+    }
+}
+
+/// The entry valuation of `report` on `day` (`books.admit`) and its entry
+/// close: the first valid close on or after `day`, at most `slack` days
+/// later; or the gate that refuses it.
+pub(crate) fn admit(report: &Report, prices: &Prices<'_>, day: Day, slack: i32) -> Result<(Valuation, (Day, f64)), Denial> {
+    let (Some(fiscal_close), Some(entry)) = (fiscal_price(report, prices), prices.price(day, Direction::OnOrAfter, Some(slack))) else {
+        return Err(Denial::MissingPrice);
+    };
+    let cap = rescaled_cap(report, fiscal_close, entry);
+    let ev = cap + (report.enterprise_value - report.market_cap);
+    if ev <= 0.0 || cap <= 0.0 {
+        return Err(Denial::NonpositiveValuation);
+    }
+    let ebitda = report.ebitda_yield * report.enterprise_value;
+    if ![cap, ev, ebitda].iter().all(|v| v.is_finite()) {
+        return Err(Denial::NonfiniteResult);
+    }
+    Ok((Valuation { fiscal: report.fiscal, market_cap: cap, enterprise_value: ev, ebitda }, entry))
 }
 
 /// The screen of one day: each company's selected report and tie rank.
@@ -183,12 +215,11 @@ impl<'c, 'a> DayScreen<'c, 'a> {
     pub(crate) fn closes(&self, c: CompanyId) -> (Option<(Day, f64)>, Option<(Day, f64)>) {
         let Some(report) = self.report(c) else { return (None, None) };
         let prices = self.columns.prices.company(c);
-        (fiscal_price(&report, &prices), self.entry_close(&prices))
+        (fiscal_price(&report, &prices), prices.price(self.day, Direction::OnOrAfter, Some(self.slack())))
     }
 
-    fn entry_close(&self, prices: &Prices<'_>) -> Option<(Day, f64)> {
-        let slack = if self.screen == Screen::Latest { 0 } else { ENTRY_SLACK };
-        prices.price(self.day, Direction::OnOrAfter, Some(slack))
+    fn slack(&self) -> i32 {
+        if self.screen == Screen::Latest { 0 } else { ENTRY_SLACK }
     }
 
     /// The candidates, in company order.
@@ -206,32 +237,11 @@ impl<'c, 'a> DayScreen<'c, 'a> {
         if !columns.companies.priced(c) {
             return Err(Denial::MissingCachedPrices);
         }
-        let prices = columns.prices.company(c);
-        let (Some(fiscal_close), Some(entry)) = (fiscal_price(&report, &prices), self.entry_close(&prices)) else {
-            return Err(Denial::MissingPrice);
-        };
-        let cap = rescaled_cap(&report, fiscal_close, entry);
-        let ev = cap + (report.enterprise_value - report.market_cap);
-        if ev <= 0.0 || cap <= 0.0 {
-            return Err(Denial::NonpositiveValuation);
-        }
-        let ebitda = report.ebitda_yield * report.enterprise_value;
-        if ![cap, ev, ebitda].iter().all(|v| v.is_finite()) {
-            return Err(Denial::NonfiniteResult);
-        }
-        let quote = columns.companies.quote(columns.market, c);
-        let price = convert(&columns.series, entry.1, quote, entry.0).ok_or(Denial::MissingPrice)?;
-        let facts = Facts {
-            company: c,
-            quote,
-            prices,
-            reports: columns.reports.company(c),
-            annual: columns.annual.company(c),
-            series: &columns.series,
-            valuation: &columns.valuation,
-        };
-        let valuation = Valuation { fiscal: report.fiscal, market_cap: cap, enterprise_value: ev, ebitda };
+        let facts = columns.facts(c);
+        let (valuation, entry) = admit(&report, &facts.prices, self.day, self.slack())?;
+        let price = convert(&columns.series, entry.1, facts.quote, entry.0).ok_or(Denial::MissingPrice)?;
         let values = builtins::values(&facts, self.day, &valuation);
+        let Valuation { market_cap: cap, enterprise_value: ev, ebitda, .. } = valuation;
         let (ebitda_yield, ev_ebitda) = builtins::yield_and_multiple(ebitda, ev);
         let spread = ebitda_yield - columns.series.treasury(self.day).unwrap_or(0.0);
         let real = |x: f64| numbers::stored_real(x).expect("a valuation is a number");

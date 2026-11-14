@@ -1,7 +1,8 @@
 //! Annual statements: each company's income statements, balance sheets and
 //! cash-flow statements by fiscal date, with each field's state, the reported
 //! currency and the day the statement became known; and the point-in-time
-//! reading of them that books and the built-ins use.
+//! readings of them: the one books and the built-ins use, and the one
+//! formulas use.
 //!
 //! Reading a company (`financial_inputs.resolve_history`):
 //! - A statement file counts when it is JSON, version 2, names the company and
@@ -52,9 +53,9 @@ struct Statement {
     fields: &'static [(&'static str, &'static str)],
 }
 
-const BALANCE: usize = 0;
-const CASH_FLOW: usize = 1;
-const INCOME: usize = 2;
+pub(crate) const BALANCE: usize = 0;
+pub(crate) const CASH_FLOW: usize = 1;
+pub(crate) const INCOME: usize = 2;
 
 /// The statement kinds, in endpoint name order (the export's order).
 const STATEMENTS: [Statement; 3] = [
@@ -139,13 +140,14 @@ fn width(s: usize, market: Market) -> usize {
 }
 
 /// One field of one statement kind.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Field {
     statement: usize,
     index: usize,
 }
 
-const fn field(statement: usize, name: &str) -> Field {
+/// The field of statement kind `statement` that the provider names `name`.
+pub(crate) const fn field(statement: usize, name: &str) -> Field {
     let fields = STATEMENTS[statement].fields;
     let mut index = 0;
     while index < fields.len() {
@@ -170,6 +172,13 @@ pub(crate) const SHARES: Field = field(INCOME, "weightedAverageShsOut");
 pub(crate) const EBITDA: Field = field(INCOME, "ebitda");
 pub(crate) const TOTAL_DEBT: Field = field(BALANCE, "totalDebt");
 pub(crate) const CASH: Field = field(BALANCE, "cashAndCashEquivalents");
+const DILUTED_SHARES: Field = field(INCOME, "weightedAverageShsOutDil");
+
+/// Whether `field` is one of the two weighted share counts, which are never
+/// converted to USD.
+pub(crate) const fn is_share_count(field: Field) -> bool {
+    field.statement == INCOME && (field.index == SHARES.index || field.index == DILUTED_SHARES.index)
+}
 const DIVIDENDS: Field = field(CASH_FLOW, "commonDividendsPaid");
 
 /// The legacy annual fields that books read (`facts.LEGACY`).
@@ -501,6 +510,33 @@ impl<'a> Annual<'a> {
     /// (`BookFacts.shares`): read as a legacy value is, and never converted.
     pub(crate) fn shares(&self, fiscal: Day, day: Day) -> Option<f64> {
         self.readable(SHARES, fiscal, day).map(|(value, _)| value)
+    }
+
+    /// The fiscal dates of the `count` calendar years ending at the year of
+    /// `anchor` (the selected report's fiscal date), oldest first, that a
+    /// formula on `day` reads (`columns._periods`, the income fiscal spine):
+    /// the anchor itself, and for each earlier year the last income statement
+    /// of that year on or before `anchor` known before `day`; `None` for a
+    /// year without one. (The oracle reads no US metadata and takes the
+    /// fiscal date + 90 days, which is the US known date.) The built-ins
+    /// choose a year's statement among every statement kind instead, from
+    /// those with a legacy value.
+    pub(crate) fn spine(&self, anchor: Day, day: Day, count: usize) -> Vec<Option<Day>> {
+        let income = &self.statements[INCOME];
+        let year = anchor.ymd().0;
+        let earlier = |y: i32| {
+            let found = (0..income.fiscal.len()).rev().find(|&i| income.fiscal[i].ymd().0 == y && income.fiscal[i] <= anchor && income.known[i] < day);
+            found.map(|i| income.fiscal[i])
+        };
+        (year + 1 - count as i32..=year).map(|y| if y == year { Some(anchor) } else { earlier(y) }).collect()
+    }
+
+    /// The value of `field` at `fiscal` as a formula on `day` reads it
+    /// (`fact_view.View.company`): as [`legacy`](Self::legacy) reads a value,
+    /// except that the two weighted share counts are never converted.
+    pub(crate) fn formula_value(&self, field: Field, fiscal: Day, day: Day, series: &Series<'_>) -> Option<f64> {
+        let (value, currency) = self.readable(field, fiscal, day)?;
+        if is_share_count(field) { Some(value) } else { convert(series, value, currency, day) }
     }
 }
 

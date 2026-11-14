@@ -16,3 +16,12 @@ fn an_anniversary_of_feb_29_is_feb_28_in_a_year_without_it() {
     assert_eq!(leap.anniversary(1).to_string(), "2015-02-28");
     assert_eq!(leap.anniversary(4).to_string(), "2012-02-29");
 }
+
+#[test]
+fn adding_months_clamps_to_the_month_end() {
+    let day = |text| Day::parse(text).unwrap();
+    assert_eq!(day("2024-03-31").add_months(-1), Some(day("2024-02-29")));
+    assert_eq!(day("2024-01-15").add_months(-13), Some(day("2022-12-15")));
+    assert_eq!(day("2023-01-31").add_months(1), Some(day("2023-02-28")));
+    assert_eq!(day("2023-01-31").add_months(13), Some(day("2024-02-29")));
+}

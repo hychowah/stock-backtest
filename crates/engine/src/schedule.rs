@@ -113,7 +113,7 @@ impl Plan {
         let final_day = window.1;
         let target = |every: Interval, number: u32| match every {
             Interval::Weeks(count) => Day(start.0 + 7 * (count * number) as i32),
-            Interval::Months(count) => months_after(&schedule.start, count * number),
+            Interval::Months(count) => start.add_months((count * number) as i32).expect("a target at most one interval after the last session"),
         };
         // The nominal blocks [left, right): each target derives from the
         // requested start, never from a rolled one, and the last block is
@@ -201,16 +201,6 @@ impl Plan {
 
 fn day(text: &str, place: &str) -> Result<Day, Error> {
     Day::parse(text).ok_or_else(|| Error::new(format!("not an ISO day: {text:?}"), place))
-}
-
-/// The day `months` months after the ISO day `start`, on the same day of the
-/// month or the month's last day when it is shorter.
-fn months_after(start: &str, months: u32) -> Day {
-    let number = |range: std::ops::Range<usize>| start[range].parse::<i32>().unwrap();
-    let month = number(0..4) * 12 + number(5..7) - 1 + months as i32;
-    let first = |m: i32| Day::parse(&format!("{:04}-{:02}-01", m / 12, m % 12 + 1)).expect("a month of years 1 to 9999");
-    let (this, next) = (first(month), first(month + 1));
-    Day(this.0 + number(8..10).min(next.0 - this.0) - 1)
 }
 
 /// Contiguous periods from increasing entries; the last exits at `final_day`.

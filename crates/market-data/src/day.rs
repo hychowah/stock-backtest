@@ -45,12 +45,23 @@ impl Day {
     }
 
     /// The same month and day `years` earlier (later for a negative count),
-    /// as the oracle's `metrics.anniversary`: Feb 29 becomes Feb 28 in a year
-    /// without it. This is the only copy of that rule.
+    /// as the oracle's `metrics.anniversary`: [`add_months`](Self::add_months)
+    /// by whole years, so Feb 29 becomes Feb 28 in a year without it.
     pub fn anniversary(self, years: i32) -> Day {
-        let (y, m, d) = self.ymd();
-        let year = y - years;
-        Day::from_ymd(year, m, d.min(days_in_month(year, m))).expect("anniversary outside years 1 to 9999")
+        self.add_months(-12 * years).expect("the built-ins look at most 5 years back from a day after 1995")
+    }
+
+    /// The same day `months` calendar months later (earlier for a negative
+    /// count), or the month's last day when that month is shorter; `None`
+    /// outside years 1 to 9999. The oracle steps months this way in formula
+    /// lookbacks (`columns._subtract`), schedule targets
+    /// (`calendar.SessionCalendar._target`) and foreign known dates
+    /// (`market.available`). This is the only copy of that rule.
+    pub fn add_months(self, months: i32) -> Option<Day> {
+        let (year, month, day) = self.ymd();
+        let absolute = year * 12 + month as i32 - 1 + months;
+        let (year, month) = (absolute.div_euclid(12), absolute.rem_euclid(12) as u32 + 1);
+        Day::from_ymd(year, month, day.min(days_in_month(year, month)))
     }
 
     /// The year, month and day.
@@ -77,7 +88,7 @@ impl fmt::Display for Day {
 }
 
 /// The number of days of a month.
-pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
+fn days_in_month(year: i32, month: u32) -> u32 {
     match month {
         2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
         2 => 28,

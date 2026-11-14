@@ -12,6 +12,7 @@ mod day;
 mod error;
 mod holding;
 mod market;
+pub mod parameters;
 mod prices;
 mod raw;
 mod reports;
@@ -25,6 +26,7 @@ pub use day::Day;
 pub use error::Error;
 pub use holding::{Exit, ExitStatus, MissingExitPrice};
 pub use market::Market;
+pub use parameters::{At, Parameter};
 pub use screen::{Candidate, Denial, Screen};
 pub use store::{ColumnInfo, Manifest};
 
@@ -140,6 +142,20 @@ impl MarketData {
     pub fn usd_closes(&self, c: CompanyId, from: Day, to: Day) -> Vec<(Day, f64)> {
         let (series, prices) = (Series::open(&self.generation), PriceColumns::open(&self.generation).company(c));
         holding::usd_closes(&series, &prices, self.companies().quote(self.manifest().market, c), from, to)
+    }
+
+    /// The last `count` values of formula parameter `p` at `at`, oldest
+    /// first, as the oracle's formulas read them; `None` when the oracle has
+    /// no value for any reason or a value is not finite. For a
+    /// [`yearly`](Parameter::yearly) parameter `count` is the number of
+    /// calendar years ending at the year of the report the context's day
+    /// selects; otherwise it is 1. The rules live with their owners: the
+    /// income fiscal spine and the formula reading of statements in
+    /// `annual`, the report EBITDA in `reports`, the session and Treasury
+    /// day in `series`, and the shifted context's valuation in `screen` and
+    /// `builtins`. At [`At::Root`] owner values and EV are the candidate's.
+    pub fn observe(&self, at: At<'_>, p: Parameter, count: usize) -> Option<Vec<f64>> {
+        parameters::observe(&Columns::open(&self.generation), at, p, count)
     }
 
     /// The 3-month Treasury rate of `day` as a fraction (the yield / 100):

@@ -248,8 +248,30 @@ impl<'a> Series<'a> {
     }
 
     fn yield_at(&self, day: Day, values: &[f64], reasons: &[u8]) -> Option<f64> {
-        let end = self.treasury_day.partition_point(|&d| if self.market == Market::Us { d <= day } else { d < day });
-        (0..end).rev().find(|&i| reasons[i] == 0).map(|i| values[i])
+        (0..self.treasury_end(day)).rev().find(|&i| reasons[i] == 0).map(|i| values[i])
+    }
+
+    /// The end of the Treasury days on or before `day` (US) or before it.
+    fn treasury_end(&self, day: Day) -> usize {
+        self.treasury_day.partition_point(|&d| if self.market == Market::Us { d <= day } else { d < day })
+    }
+
+    /// The 3-month and 10-year yields as formulas read them on `day`
+    /// (`fact_view.View.treasury`), each as a fraction: those of the last
+    /// Treasury day found as [`treasury`](Self::treasury) finds it; `None`
+    /// where that day's value is not valid. Unlike the built-ins' readings,
+    /// it never passes over that day to an earlier valid value.
+    pub(crate) fn treasury_rates(&self, day: Day) -> [Option<f64>; 2] {
+        let Some(i) = self.treasury_end(day).checked_sub(1) else { return [None, None] };
+        [(self.month3, self.month3_reason), (self.year10, self.year10_reason)].map(|(values, reasons)| (reasons[i] == 0).then(|| values[i] / 100.0))
+    }
+
+    /// The session whose saved prices formulas read on `day`
+    /// (`fact_view.View.session`): the last session on or before `day`, at
+    /// most 7 days earlier.
+    pub(crate) fn session(&self, day: Day) -> Option<Day> {
+        let i = self.sessions.partition_point(|&d| d <= day).checked_sub(1)?;
+        Some(self.sessions[i]).filter(|s| day.0 - s.0 <= 7)
     }
 
     /// The USD value of one unit of `currency` on `day`, with the fixing's
