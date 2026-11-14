@@ -1,0 +1,21 @@
+{
+ "producer": "python-oracle",
+ "settings": {
+  "as_of": "2023-06-30T07:30:00+00:00",
+  "tests": [
+   "hk-sleeves",
+   "jp-monthly",
+   "us-random"
+  ]
+ },
+ "tables": {
+  "trials": [
+   "test",
+   "trial"
+  ],
+  "statistics": [
+   "test",
+   "statistic"
+  ]
+ }
+}

@@ -1,0 +1,77 @@
+{
+ "mode": "random",
+ "options": {
+  "market": "us",
+  "start": "2021-07-01",
+  "end": "2023-06-28",
+  "months": 6,
+  "trials": 3,
+  "seed": 20210701
+ },
+ "intent": {
+  "format": "strategy-intent",
+  "version": 2,
+  "universe": {
+   "pool": "cached"
+  },
+  "steps": [
+   {
+    "kind": "filter",
+    "source": {
+     "kind": "builtin",
+     "id": "filter:pe_avg_5y"
+    },
+    "op": "lt",
+    "threshold": {
+     "value": "60",
+     "unit": "multiple"
+    }
+   },
+   {
+    "kind": "rank",
+    "source": {
+     "kind": "formula",
+     "variable_id": "local:operating-margin",
+     "revision": "sha256:100294ce9f866b13dcbc85cd4b7303049202384437ea86af7fd9ec4934d0b478"
+    },
+    "direction": "highest",
+    "rank_from": 1,
+    "rank_to": 3
+   }
+  ]
+ },
+ "submitted": [
+  {
+   "variable_id": "local:operating-margin",
+   "revision": "sha256:100294ce9f866b13dcbc85cd4b7303049202384437ea86af7fd9ec4934d0b478",
+   "definition": {
+    "expression": {
+     "left": {
+      "id": "annual.operating_income",
+      "op": "parameter"
+     },
+     "op": "div",
+     "right": {
+      "id": "annual.revenue",
+      "op": "parameter"
+     }
+    },
+    "format": "variable-definition",
+    "output": {
+     "display": "percent",
+     "unit": "scalar"
+    },
+    "parameter_catalog": "financial-parameters/4",
+    "temporal_policy": "market-annual/1",
+    "version": 3
+   }
+  }
+ ],
+ "labels": [
+  {
+   "variable_id": "local:operating-margin",
+   "revision": "sha256:100294ce9f866b13dcbc85cd4b7303049202384437ea86af7fd9ec4934d0b478",
+   "name": "Operating margin"
+  }
+ ]
+}
