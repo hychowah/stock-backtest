@@ -429,11 +429,18 @@ impl<'a> Reports<'a> {
         (0..self.fiscal.len()).rev().filter(|&i| self.selectable(i, day)).find_map(|i| self.at(i, day, series))
     }
 
+    /// The reports the built-ins read on `day` (`books.owner_values`'
+    /// history), in fiscal order: US every report; foreign those known before
+    /// `day` that convert at `day`.
+    pub(crate) fn history(&self, day: Day, series: &Series<'_>) -> Vec<Report> {
+        let us = matches!(self.values, Values::Us { .. });
+        (0..self.fiscal.len()).filter(|&i| us || self.known[i] < day).filter_map(|i| self.at(i, day, series)).collect()
+    }
+
     /// The US legacy pool's report on `day` (`books.pools`, then
     /// `rules.latest_statement`): the last report in fiscal order with a
     /// market cap of at least $100M and an EV of at least $50M that is
     /// selectable on `day`. Hong Kong and Tokyo have no legacy pool: `None`.
-    #[expect(dead_code, reason = "the screen is its first caller")]
     pub(crate) fn legacy_report_at(&self, day: Day) -> Option<Report> {
         let Values::Us { market_cap, enterprise_value, .. } = self.values else { return None };
         (0..self.fiscal.len())
@@ -486,7 +493,6 @@ impl<'a> ReportColumns<'a> {
     }
 
     /// One company's reports.
-    #[expect(dead_code, reason = "the screen is its first caller")]
     pub(crate) fn company(&self, c: CompanyId) -> Reports<'a> {
         let rows = self.offsets[c.index()] as usize..self.offsets[c.index() + 1] as usize;
         let values = match self.currency {

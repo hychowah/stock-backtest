@@ -3,20 +3,25 @@
 //! A handler checks its request once, at the start; an [`Error`] stops it.
 
 use crate::annual::{self, AnnualColumns, AnnualRows};
+use crate::builtins::BUILTINS;
 use crate::companies::{self, Company, CompanyId};
 use crate::prices::{self, PriceColumns, PriceRows};
 use crate::raw::Raw;
 use crate::reports::{self, ReportColumns, ReportRows, Reported};
+use crate::screen::{self, Columns, DayScreen};
 use crate::series::{self, Series};
 use crate::store::{GenerationWriter, Lock};
 use crate::valuation::{self, SumRows, ValuationColumns};
-use crate::{Day, Error, Market, MarketData, PROGRAM};
+use crate::{Day, Denial, Error, Market, MarketData, PROGRAM, Screen};
 use chrono::{DateTime, FixedOffset};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+/// The first day a screen can have (`rules.FIRST_DAY`).
+const FIRST_DAY: Day = Day(9496);
 
 /// The runtime folder: the paths of its parts. Commands read raw provider
 /// files below [`raw`](Self::raw) and keep prepared data below
@@ -247,11 +252,13 @@ pub fn status(home: &Home) -> StatusReply {
     StatusReply { markets }
 }
 
-/// `bt data export --market M --out DIR`.
+/// `bt data export --market M --out DIR [--days FILE]`.
 pub struct ExportRequest {
     pub market: Market,
     /// The export folder: new or empty.
     pub out: PathBuf,
+    /// A file of ISO days, one per line: the days of the dated screens.
+    pub days: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
@@ -263,10 +270,17 @@ pub struct ExportReply {
 /// Writes the market's current generation as keyed tables (`tables` crate
 /// format) into `out`, with the oracle's table and field names: `companies`,
 /// `sessions`, `market_days`, `fx_days` (Hong Kong and Tokyo), `stock_days`,
-/// `reports`, `annual_facts`, `annual_metadata` and `valuation_sums`. Fails
-/// when the market is not prepared or `out` exists and is not empty.
+/// `reports`, `annual_facts`, `annual_metadata` and `valuation_sums`; then
+/// `candidates` and `screens` of the dated screens of the days file and the
+/// latest screen of the last session. Fails when the market is not prepared,
+/// a line of the days file is not a session from 1996-01-01, or `out` exists
+/// and is not empty.
 pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error> {
     let data = MarketData::open(home, request.market)?;
+    let days = match &request.days {
+        Some(path) => read_days(path, data.sessions())?,
+        None => Vec::new(),
+    };
     let m = data.manifest();
     let settings = serde_json::json!({ "market": m.market, "generation": m.generation, "as_of": m.as_of });
     let out = &request.out;
@@ -288,6 +302,153 @@ pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error
     write("annual_facts", annual.export_facts(&companies, &mut writer))?;
     write("annual_metadata", annual.export_metadata(&companies, &mut writer))?;
     write("valuation_sums", ValuationColumns::open(generation).export(&companies, &mut writer))?;
+    // A Hong Kong or Tokyo market without a saved index calendar has no
+    // sessions, and the oracle then no latest book.
+    if let Some(&latest) = data.sessions().last() {
+        let (candidates, screens) = screen::export(&data, &days, latest, &mut writer).map_err(fail)?;
+        tables.insert("candidates".to_string(), candidates);
+        tables.insert("screens".to_string(), screens);
+    }
     writer.finish().map_err(fail)?;
     Ok(ExportReply { tables })
+}
+
+/// The days of a days file, ascending and once each.
+fn read_days(path: &Path, sessions: &[Day]) -> Result<Vec<Day>, Error> {
+    let text = std::fs::read_to_string(path).map_err(|e| Error::new(format!("cannot read the days file: {e}"), path.display()))?;
+    let mut days = Vec::new();
+    for (number, line) in text.lines().enumerate().filter(|(_, line)| !line.trim().is_empty()) {
+        let place = format!("{}:{}", path.display(), number + 1);
+        let day = Day::parse(line.trim()).ok_or_else(|| Error::new(format!("not an ISO day: {line:?}"), &place))?;
+        check_session(day, sessions).map_err(|message| Error::new(message, &place))?;
+        days.push(day);
+    }
+    days.sort();
+    days.dedup();
+    Ok(days)
+}
+
+/// Whether `day` is a session from 1996-01-01; the error names the sessions
+/// before and after it.
+fn check_session(day: Day, sessions: &[Day]) -> Result<(), String> {
+    let sessions = &sessions[sessions.partition_point(|&d| d < FIRST_DAY)..];
+    let at = sessions.partition_point(|&d| d < day);
+    if sessions.get(at) == Some(&day) {
+        return Ok(());
+    }
+    let name = |d: Option<&Day>| d.map_or("none".to_string(), Day::to_string);
+    Err(format!(
+        "{day} is not a session from {FIRST_DAY}: the session before it is {}, the session after it {}",
+        name(at.checked_sub(1).map(|i| &sessions[i])),
+        name(sessions.get(at))
+    ))
+}
+
+/// `bt data inspect --market M --symbol S --day D`.
+pub struct InspectRequest {
+    pub market: Market,
+    pub symbol: String,
+    pub day: Day,
+}
+
+/// One company on one day's dated screen: what its candidate row is made
+/// from, and the row or the gate that refused it.
+#[derive(Debug, Serialize)]
+pub struct InspectReply {
+    pub market: Market,
+    pub symbol: String,
+    pub name: String,
+    pub day: String,
+    /// Always the dated screen.
+    pub screen: Screen,
+    /// The report the day selects; `None` when there is none.
+    pub report: Option<InspectedReport>,
+    /// The selected report's fiscal close and the entry close, each with its
+    /// day, in the quote currency.
+    pub fiscal_price: Option<(String, f64)>,
+    pub entry_price: Option<(String, f64)>,
+    pub candidate: Option<InspectedCandidate>,
+    pub denial: Option<InspectedDenial>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InspectedReport {
+    pub fiscal: String,
+    pub known: String,
+    /// In USD at the day.
+    pub market_cap: f64,
+    pub enterprise_value: f64,
+    /// The report's own EBITDA (US: EV / EV-to-EBITDA as saved).
+    pub ebitda: f64,
+    pub ebitda_yield: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InspectedCandidate {
+    pub rank: Option<u32>,
+    pub entry: String,
+    pub price: f64,
+    pub market_cap: f64,
+    pub enterprise_value: f64,
+    /// The report's yield × the report's EV, as the oracle's sheet holds it.
+    pub ebitda: f64,
+    pub ebitda_yield: f64,
+    pub ev_ebitda: f64,
+    pub spread: f64,
+    /// Each built-in by id; `None` when it has no value.
+    pub values: BTreeMap<&'static str, Option<f64>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InspectedDenial {
+    pub reason: Denial,
+    pub message: &'static str,
+}
+
+/// Explains one company's dated screen of one day. Fails when the market is
+/// not prepared, the symbol is not one of its companies, or the day is not a
+/// session from 1996-01-01.
+pub fn inspect(home: &Home, request: &InspectRequest) -> Result<InspectReply, Error> {
+    let data = MarketData::open(home, request.market)?;
+    let companies = data.companies();
+    let c = companies
+        .ids()
+        .find(|&c| companies.symbol(c) == request.symbol)
+        .ok_or_else(|| Error::new(format!("{} has no company {:?}", request.market.id(), request.symbol), "symbol"))?;
+    check_session(request.day, data.sessions()).map_err(|message| Error::new(message, "day"))?;
+    let columns = Columns::open(&data.generation);
+    let screen = DayScreen::new(&columns, request.day, Screen::Dated);
+    let (fiscal_price, entry_price) = screen.closes(c);
+    let close = |close: Option<(Day, f64)>| close.map(|(day, value)| (day.to_string(), value));
+    let decision = data.evaluate(c, request.day, Screen::Dated);
+    Ok(InspectReply {
+        market: request.market,
+        symbol: request.symbol.clone(),
+        name: companies.name(c).to_string(),
+        day: request.day.to_string(),
+        screen: Screen::Dated,
+        report: screen.report(c).map(|r| InspectedReport {
+            fiscal: r.fiscal.to_string(),
+            known: r.known.to_string(),
+            market_cap: r.market_cap,
+            enterprise_value: r.enterprise_value,
+            ebitda: r.ebitda,
+            ebitda_yield: r.ebitda_yield,
+        }),
+        fiscal_price: close(fiscal_price),
+        entry_price: close(entry_price),
+        candidate: decision.as_ref().ok().map(|row| InspectedCandidate {
+            rank: row.rank,
+            entry: row.entry.to_string(),
+            price: row.price,
+            market_cap: row.market_cap,
+            enterprise_value: row.enterprise_value,
+            ebitda: row.ebitda,
+            ebitda_yield: row.ebitda_yield,
+            ev_ebitda: row.ev_ebitda,
+            spread: row.spread,
+            values: BUILTINS.iter().zip(row.values).map(|(b, v)| (b.id, v)).collect(),
+        }),
+        denial: decision.err().map(|reason| InspectedDenial { reason, message: reason.message() }),
+    })
 }

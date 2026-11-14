@@ -6,8 +6,8 @@
 use chrono::{DateTime, SubsecRound, Utc};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand};
-use market_data::commands::{self, ExportRequest, Home, PrepareRequest};
-use market_data::{Error, Market};
+use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
+use market_data::{Day, Error, Market};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -48,6 +48,21 @@ enum Data {
         /// The export folder: new or empty
         #[arg(long)]
         out: PathBuf,
+        /// A file of ISO days, one per line, whose dated candidates to export
+        #[arg(long)]
+        days: Option<PathBuf>,
+    },
+    /// Explain one company's candidate row or denial on one day
+    Inspect {
+        /// us, hk or jp
+        #[arg(long)]
+        market: String,
+        /// The company's symbol
+        #[arg(long)]
+        symbol: String,
+        /// A session from 1996-01-01, YYYY-MM-DD
+        #[arg(long)]
+        day: String,
     },
 }
 
@@ -72,9 +87,14 @@ fn main() -> ExitCode {
             commands::prepare(&home, &PrepareRequest { as_of })
         })),
         Data::Status => reply(home.map(|home| commands::status(&home))),
-        Data::Export { market, out } => reply(home.and_then(|home| {
+        Data::Export { market, out, days } => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
-            commands::export(&home, &ExportRequest { market, out })
+            commands::export(&home, &ExportRequest { market, out, days })
+        })),
+        Data::Inspect { market, symbol, day } => reply(home.and_then(|home| {
+            let market: Market = market.parse()?;
+            let day = Day::parse(&day).ok_or_else(|| Error::new(format!("not an ISO day: {day:?}"), "day"))?;
+            commands::inspect(&home, &InspectRequest { market, symbol, day })
         })),
     }
 }

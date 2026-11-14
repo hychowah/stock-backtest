@@ -174,7 +174,6 @@ const DIVIDENDS: Field = field(CASH_FLOW, "commonDividendsPaid");
 
 /// The legacy annual fields that books read (`facts.LEGACY`).
 #[derive(Clone, Copy, Debug)]
-#[expect(dead_code, reason = "the built-ins read the fields the valuation fold does not")]
 pub(crate) enum LegacyField {
     Revenue,
     OperatingIncome,
@@ -208,7 +207,7 @@ const LEGACY: [Field; 11] = [
 
 /// The legacy values of one fiscal date at a day: each valid, readable value.
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct LegacyValues([Option<f64>; 11]);
+pub(crate) struct LegacyValues(pub(crate) [Option<f64>; 11]);
 
 impl LegacyValues {
     pub(crate) fn get(&self, field: LegacyField) -> Option<f64> {
@@ -485,7 +484,6 @@ impl<'a> Annual<'a> {
     /// leaving out dates without any (`BookFacts.legacy_annual(symbol,
     /// day)`): what the built-ins read for the selected report and the years
     /// before it.
-    #[expect(dead_code, reason = "the built-ins are its first caller")]
     pub(crate) fn legacy_at(&self, day: Day, series: &Series<'_>) -> Vec<(Day, LegacyValues)> {
         let fiscals: BTreeSet<Day> = [BALANCE, CASH_FLOW, INCOME].iter().flat_map(|&s| self.statements[s].fiscal.iter().copied()).collect();
         fiscals.into_iter().map(|fiscal| (fiscal, self.legacy(fiscal, day, series))).filter(|(_, v)| !v.is_empty()).collect()
@@ -494,7 +492,6 @@ impl<'a> Annual<'a> {
     /// The common dividends paid of fiscal date `fiscal` in USD at `day`,
     /// signed as reported (`BookFacts.dividends`): read as a legacy value is,
     /// and converted at `day` (US: times 1).
-    #[expect(dead_code, reason = "the built-ins are its first caller")]
     pub(crate) fn dividends(&self, fiscal: Day, day: Day, series: &Series<'_>) -> Option<f64> {
         let (value, currency) = self.readable(DIVIDENDS, fiscal, day)?;
         convert(series, value, currency, day)
@@ -502,7 +499,6 @@ impl<'a> Annual<'a> {
 
     /// The annual weighted-average basic shares of fiscal date `fiscal`
     /// (`BookFacts.shares`): read as a legacy value is, and never converted.
-    #[expect(dead_code, reason = "the built-ins are its first caller")]
     pub(crate) fn shares(&self, fiscal: Day, day: Day) -> Option<f64> {
         self.readable(SHARES, fiscal, day).map(|(value, _)| value)
     }

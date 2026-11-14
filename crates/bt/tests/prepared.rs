@@ -1,18 +1,14 @@
 //! `bt data prepare` of the fictional raw cache equals the oracle: each
-//! market's export equals the oracle's tables in
-//! `fixtures/fictional/expected/<market>/`, row for row and bit for bit.
+//! market's export of the days in its `days.txt` equals the oracle's tables
+//! in `fixtures/fictional/expected/<market>/`, row for row and bit for bit;
+//! and `bt data inspect` explains a stale report and a day that is not a
+//! session. One test does both, so the inspect checks reuse the prepared home.
 
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The tables `bt data export` writes, per market. A kind of data adds its
-/// tables here when it is built.
-const TABLES: [(&str, &[&str]); 3] = [
-    ("us", &["companies", "sessions", "market_days", "stock_days", "reports", "annual_facts", "annual_metadata", "valuation_sums"]),
-    ("hk", &["companies", "sessions", "market_days", "fx_days", "stock_days", "reports", "annual_facts", "annual_metadata", "valuation_sums"]),
-    ("jp", &["companies", "sessions", "market_days", "fx_days", "stock_days", "reports", "annual_facts", "annual_metadata", "valuation_sums"]),
-];
+const MARKETS: [&str; 3] = ["us", "hk", "jp"];
 
 /// The as-of time of the expected tables: the Hong Kong session of the last
 /// day has not closed yet.
@@ -22,29 +18,20 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/fictional")
 }
 
-fn bt(home: &Path, args: &[&str]) -> Value {
+/// Runs `bt`; returns its reply and whether it succeeded.
+fn run(home: &Path, args: &[&str]) -> (Value, bool) {
     let output = Command::new(env!("CARGO_BIN_EXE_bt")).args(args).arg("--home").arg(home).output().expect("run bt");
-    let reply: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(output.status.success(), "bt {args:?}: {reply}");
+    (serde_json::from_slice(&output.stdout).unwrap(), output.status.success())
+}
+
+fn bt(home: &Path, args: &[&str]) -> Value {
+    let (reply, success) = run(home, args);
+    assert!(success, "bt {args:?}: {reply}");
     reply
 }
 
-/// A copy of the expected export of `market` that holds only `tables`.
-fn expected(market: &str, tables: &[&str], dir: &Path) -> PathBuf {
-    let source = fixtures().join("expected").join(market);
-    let target = dir.join("expected").join(market);
-    std::fs::create_dir_all(&target).unwrap();
-    let manifest: Value = serde_json::from_str(&std::fs::read_to_string(source.join("manifest.json")).unwrap()).unwrap();
-    let keys: serde_json::Map<String, Value> = tables.iter().map(|&t| (t.to_string(), manifest["tables"][t].clone())).collect();
-    std::fs::write(target.join("manifest.json"), json!({ "tables": keys }).to_string()).unwrap();
-    for table in tables {
-        std::fs::copy(source.join(format!("{table}.jsonl")), target.join(format!("{table}.jsonl"))).unwrap();
-    }
-    target
-}
-
 #[test]
-fn the_fictional_raw_cache_prepares_to_the_oracle_tables() {
+fn the_fictional_raw_cache_prepares_to_the_oracle_tables_and_inspect_explains_its_rows() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path().join("home");
     std::fs::create_dir(&home).unwrap();
@@ -58,10 +45,23 @@ fn the_fictional_raw_cache_prepares_to_the_oracle_tables() {
             assert_eq!(market["prepared"][field], prepared[field], "{} {field}", prepared["market"]);
         }
     }
-    for (market, tables) in TABLES {
-        let actual = dir.path().join("actual").join(market);
-        bt(&home, &["data", "export", "--market", market, "--out", actual.to_str().unwrap()]);
-        let report = tables::compare(&expected(market, tables, dir.path()), &actual).unwrap();
+    for market in MARKETS {
+        let (expected, actual) = (fixtures().join("expected").join(market), dir.path().join("actual").join(market));
+        let days = expected.join("days.txt");
+        bt(&home, &["data", "export", "--market", market, "--out", actual.to_str().unwrap(), "--days", days.to_str().unwrap()]);
+        let report = tables::compare(&expected, &actual).unwrap();
         assert!(report.equal(), "{market}: {:#?}", report.tables.iter().filter(|t| !t.equal()).collect::<Vec<_>>());
     }
+
+    // QST's last report, of 2019-12-31, is older than 800 days after 2022-03-10.
+    let inspect = |day: &str| run(&home, &["data", "inspect", "--market", "us", "--symbol", "QST", "--day", day]);
+    let (current, _) = inspect("2022-03-10");
+    assert_eq!(current["report"]["fiscal"], json!("2019-12-31"));
+    assert!(current["candidate"].is_object(), "{current}");
+    let (stale, _) = inspect("2022-03-11");
+    assert_eq!((&stale["report"], &stale["denial"]["reason"]), (&Value::Null, &json!("NO_ELIGIBLE_REPORT")), "{stale}");
+    let (weekend, success) = inspect("2022-03-12");
+    assert!(!success);
+    let message = weekend["error"]["message"].as_str().unwrap();
+    assert!(message.contains("2022-03-11") && message.contains("2022-03-14"), "{message}");
 }

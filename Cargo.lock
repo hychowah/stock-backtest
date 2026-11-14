@@ -232,6 +232,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "memmap2",
+ "numbers",
  "rayon",
  "serde",
  "serde_json",

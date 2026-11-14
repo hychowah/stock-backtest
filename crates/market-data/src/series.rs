@@ -225,7 +225,6 @@ impl<'a> Series<'a> {
     /// The SPY close a book on `day` uses, with its day: US: the close of
     /// `day` itself; foreign: the last close strictly before `day`, at most 7
     /// days earlier.
-    #[expect(dead_code, reason = "the screen is its first caller")]
     pub(crate) fn spy(&self, day: Day) -> Option<(Day, f64)> {
         let at = if self.market == Market::Us {
             self.spy_day.binary_search(&day).ok()?
@@ -238,10 +237,19 @@ impl<'a> Series<'a> {
     /// The 3-month Treasury rate of `day` as a fraction (the yield / 100): the
     /// last valid yield on or before `day` (US) or strictly before it
     /// (foreign), however old.
-    #[expect(dead_code, reason = "the screen is its first caller")]
     pub(crate) fn treasury(&self, day: Day) -> Option<f64> {
+        self.yield_at(day, self.month3, self.month3_reason).map(|percent| percent / 100.0)
+    }
+
+    /// The 10-year Treasury yield of `day` in percent, found as
+    /// [`treasury`](Self::treasury) finds its rate (`facts.ten_year`).
+    pub(crate) fn ten_year(&self, day: Day) -> Option<f64> {
+        self.yield_at(day, self.year10, self.year10_reason)
+    }
+
+    fn yield_at(&self, day: Day, values: &[f64], reasons: &[u8]) -> Option<f64> {
         let end = self.treasury_day.partition_point(|&d| if self.market == Market::Us { d <= day } else { d < day });
-        (0..end).rev().find(|&i| self.month3_reason[i] == 0).map(|i| self.month3[i] / 100.0)
+        (0..end).rev().find(|&i| reasons[i] == 0).map(|i| values[i])
     }
 
     /// The USD value of one unit of `currency` on `day`, with the fixing's

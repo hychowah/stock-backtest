@@ -168,7 +168,6 @@ pub(crate) enum Direction {
     /// The last close on or before the day.
     OnOrBefore,
     /// The first close on or after the day.
-    #[expect(dead_code, reason = "the screen is its first user")]
     OnOrAfter,
 }
 
@@ -205,7 +204,6 @@ impl<'a> Prices<'a> {
     }
 
     /// The valid volumes from `start` through `end`, in day order.
-    #[expect(dead_code, reason = "the built-ins are its first caller")]
     pub(crate) fn volumes(&self, start: Day, end: Day) -> impl Iterator<Item = f64> + 'a {
         let Prices { day, volume, volume_reason, .. } = *self;
         let range = day.partition_point(|&d| d < start)..day.partition_point(|&d| d <= end);

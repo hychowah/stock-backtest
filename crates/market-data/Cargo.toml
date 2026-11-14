@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 memmap2 = "0.9"
+numbers = { path = "../numbers" }
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }

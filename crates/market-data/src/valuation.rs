@@ -138,7 +138,6 @@ impl<'a> ValuationColumns<'a> {
     /// day in the window, the mean is not positive or 1 / mean is not finite.
     /// `current` holds the current P/E, P/S and P/B, whose ratio to the
     /// average is `relative`.
-    #[expect(dead_code, reason = "the built-ins are its first caller")]
     pub(crate) fn averages(&self, c: CompanyId, day: Day, current: [Option<f64>; 3]) -> [[Option<Average>; 3]; 2] {
         let (now, now_counts) = self.sums(c, day);
         [3, 5].map(|years| {
