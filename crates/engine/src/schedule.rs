@@ -16,6 +16,16 @@ pub struct Schedule {
     pub dates: Dates,
 }
 
+impl Schedule {
+    /// The seed of random dates; `None` for other schedules.
+    pub fn seed(&self) -> Option<u32> {
+        match self.dates {
+            Dates::Random { seed, .. } => Some(seed),
+            _ => None,
+        }
+    }
+}
+
 /// How a schedule chooses its trade dates.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

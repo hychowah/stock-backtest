@@ -5,7 +5,9 @@
 
 use chrono::{DateTime, SubsecRound, Utc};
 use clap::error::ErrorKind;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+use engine::commands::{ExportTablesRequest, RunRequest};
+use engine::{Dates, Interval, Schedule};
 use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
 use market_data::{Day, Error, Market};
 use serde::Serialize;
@@ -28,6 +30,56 @@ enum Command {
     /// Prepared market data
     #[command(subcommand)]
     Data(Data),
+    /// Run strategy files on one schedule; write one result file for each
+    Run(RunArgs),
+    /// Export result files
+    #[command(subcommand)]
+    Export(Export),
+}
+
+#[derive(Args)]
+struct RunArgs {
+    /// Strategy files, run as one batch on the same trade dates
+    #[arg(required = true)]
+    files: Vec<PathBuf>,
+    /// us, hk or jp
+    #[arg(long)]
+    market: String,
+    /// The first day of the window, YYYY-MM-DD
+    #[arg(long)]
+    start: String,
+    /// The last day of the window, YYYY-MM-DD
+    #[arg(long)]
+    end: String,
+    /// Trade every N weeks (Nw) or months (Nm)
+    #[arg(long, required_unless_present = "dates", conflicts_with = "dates")]
+    every: Option<String>,
+    /// Run this many trials, each trading on one random session in every interval
+    // Clap skips `requires` when --dates excludes --every, so this conflict is needed.
+    #[arg(long, requires = "every", conflicts_with = "dates")]
+    random: Option<u32>,
+    /// Trade on these sessions, comma-separated
+    #[arg(long, value_delimiter = ',')]
+    dates: Option<Vec<String>>,
+    /// The seed of the random dates [default: drawn and reported]
+    #[arg(long, requires = "random")]
+    seed: Option<u32>,
+    /// The result folder: new or empty
+    #[arg(long)]
+    out: PathBuf,
+}
+
+#[derive(Subcommand)]
+enum Export {
+    /// Export result files' rows and statistics as keyed tables
+    Tables {
+        /// Result files; each one's stem names its case
+        #[arg(required = true)]
+        results: Vec<PathBuf>,
+        /// The export folder: new or empty
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -76,9 +128,12 @@ fn main() -> ExitCode {
         Some(path) => Ok(Home::new(path)),
         None => own_home(),
     };
-    let Command::Data(command) = cli.command;
-    match command {
-        Data::Prepare { as_of } => reply(home.and_then(|home| {
+    match cli.command {
+        Command::Run(args) => reply(home.and_then(|home| run(&home, args))),
+        Command::Export(Export::Tables { results, out }) => {
+            reply(engine::commands::export_tables(&ExportTablesRequest { results, out }))
+        }
+        Command::Data(Data::Prepare { as_of }) => reply(home.and_then(|home| {
             let as_of = match as_of {
                 Some(text) => DateTime::parse_from_rfc3339(&text)
                     .map_err(|_| Error::new(format!("not an RFC 3339 time: {text:?}"), "as-of"))?,
@@ -86,17 +141,48 @@ fn main() -> ExitCode {
             };
             commands::prepare(&home, &PrepareRequest { as_of })
         })),
-        Data::Status => reply(home.map(|home| commands::status(&home))),
-        Data::Export { market, out, days } => reply(home.and_then(|home| {
+        Command::Data(Data::Status) => reply(home.map(|home| commands::status(&home))),
+        Command::Data(Data::Export { market, out, days }) => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
             commands::export(&home, &ExportRequest { market, out, days })
         })),
-        Data::Inspect { market, symbol, day } => reply(home.and_then(|home| {
+        Command::Data(Data::Inspect { market, symbol, day }) => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
             let day = Day::parse(&day).ok_or_else(|| Error::new(format!("not an ISO day: {day:?}"), "day"))?;
             commands::inspect(&home, &InspectRequest { market, symbol, day })
         })),
     }
+}
+
+/// `bt run`: the schedule from the arguments, with a drawn seed when random
+/// dates have none.
+fn run(home: &Home, args: RunArgs) -> Result<engine::commands::RunReply, Error> {
+    let market: Market = args.market.parse()?;
+    let dates = match (args.every, args.random, args.dates) {
+        (Some(every), None, None) => Dates::Every(interval(&every)?),
+        (Some(every), Some(trials), None) => Dates::Random { every: interval(&every)?, trials, seed: args.seed.unwrap_or_else(draw_seed) },
+        (None, None, Some(dates)) => Dates::Explicit(dates),
+        _ => unreachable!("clap checks that --every or --dates is given, and --random only with --every"),
+    };
+    let schedule = Schedule { start: args.start, end: args.end, dates };
+    engine::commands::run(home, &RunRequest { files: args.files, market, schedule, out: args.out })
+}
+
+/// `Nw` or `Nm`.
+fn interval(text: &str) -> Result<Interval, Error> {
+    let invalid = || Error::new(format!("{text:?} is not an interval: use N weeks (Nw) or N months (Nm), such as 13w or 3m"), "every");
+    let count = |count: &str| count.parse::<u32>().map_err(|_| invalid());
+    match (text.strip_suffix('w'), text.strip_suffix('m')) {
+        (Some(weeks), _) => Ok(Interval::Weeks(count(weeks)?)),
+        (_, Some(months)) => Ok(Interval::Months(count(months)?)),
+        _ => Err(invalid()),
+    }
+}
+
+/// A seed from the process's random hash keys, which the system seeds.
+fn draw_seed() -> u32 {
+    use std::hash::{BuildHasher, RandomState};
+    RandomState::new().hash_one(std::time::SystemTime::now()) as u32
 }
 
 /// The runtime folder holds `bin/bt`, so it is the parent of the folder that
