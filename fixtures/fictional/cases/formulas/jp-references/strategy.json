@@ -1,0 +1,20 @@
+{
+ "variables": {
+  "Cash cover": {"formula": "Cash and equivalents / positive(Current liabilities)"},
+  "Cash cover doubled": {"formula": "Cash cover * 2"},
+  "Margin mean 3y": {"formula": "average(Operating margin, 3 years)"},
+  "Quality": {"formula": "Cash cover doubled + Margin mean 3y"},
+  "Quality adjusted": {"formula": "(Quality - Cash cover / 2) * 3"},
+  "Revenue copy": {"formula": "Revenue"}
+ },
+ "sleeves": [
+  {"name": "Quality", "steps": [
+   {"filter": "Quality adjusted", "op": ">", "value": "300"},
+   {"rank": "Quality", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Size", "steps": [
+   {"filter": "Net income", "op": ">=", "value": "200"},
+   {"rank": "Revenue", "order": "highest", "from": 1, "to": 2}
+  ]}
+ ]
+}

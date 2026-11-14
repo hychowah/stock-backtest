@@ -1,0 +1,31 @@
+{
+ "variables": {
+  "Gross profit value": {"formula": "Gross profit"},
+  "Gross margin value": {"formula": "Gross margin", "display": "percent"},
+  "Operating margin value": {"formula": "Operating margin", "display": "percent"},
+  "Net margin value": {"formula": "Net margin", "display": "percent"},
+  "EBIT value": {"formula": "EBIT"},
+  "EBITDA value": {"formula": "EBITDA"},
+  "Reported free cash flow value": {"formula": "Reported free cash flow"},
+  "Operating cash flow plus CapEx value": {"formula": "Operating cash flow plus CapEx"},
+  "Total debt value": {"formula": "Total debt"},
+  "Net debt value": {"formula": "Net debt"},
+  "Working capital value": {"formula": "Working capital"},
+  "Tangible book equity value": {"formula": "Tangible book equity"},
+  "Market cap value": {"formula": "Market cap"},
+  "Enterprise value value": {"formula": "Enterprise value"},
+  "Basic EPS value": {"formula": "Basic EPS"},
+  "Diluted EPS value": {"formula": "Diluted EPS"},
+  "Price/sales value": {"formula": "Price/sales", "display": "multiple"}
+ },
+ "sleeves": [
+  {"name": "Cheap", "steps": [
+   {"filter": "Price/sales value", "op": "<", "value": "3"},
+   {"rank": "Net margin value", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Cash", "steps": [
+   {"filter": "Working capital value", "op": ">", "value": "450"},
+   {"rank": "Net debt value", "order": "lowest", "from": 1, "to": 3}
+  ]}
+ ]
+}

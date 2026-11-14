@@ -1,0 +1,27 @@
+{
+ "variables": {
+  "Cash plus debt": {"formula": "Cash and equivalents + Total debt"},
+  "Net cash": {"formula": "Cash and equivalents - Total debt"},
+  "Margin doubled": {"formula": "Operating margin * 2"},
+  "Sales per share": {"formula": "Revenue / Basic shares"},
+  "Cash negated": {"formula": "-Cash and equivalents"},
+  "Gap negated": {"formula": "-(Revenue - Operating income)"},
+  "Double sign": {"formula": "Net income - -Operating income"},
+  "Revenue plus": {"formula": "Revenue + 5000000 USD"},
+  "Earnings plus": {"formula": "Basic EPS + 0.25 USD per share"},
+  "Shares plus": {"formula": "Basic shares + 1000 shares"},
+  "Half revenue": {"formula": ".5 * Revenue"},
+  "Nested": {"formula": "(((Revenue - Operating income) * (Cash and equivalents - Total debt)) / (Revenue + Total debt)) + Net income"},
+  "Precedence": {"formula": "Revenue / 4 + Net income * 3 - Cash and equivalents / 2"}
+ },
+ "sleeves": [
+  {"name": "Cash", "steps": [
+   {"filter": "Net cash", "op": ">", "value": "-1100"},
+   {"rank": "Nested", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Sales", "steps": [
+   {"filter": "Sales per share", "op": ">", "value": "0.6"},
+   {"rank": "Precedence", "order": "lowest", "from": 2, "to": 4}
+  ]}
+ ]
+}

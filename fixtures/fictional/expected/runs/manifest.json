@@ -4,9 +4,20 @@
   "as_of": "2023-06-30T07:30:00+00:00",
   "backtest": "272bc8b3e88a50740326481acfd49ad191225a98",
   "cases": [
+   "hk-arithmetic",
+   "hk-built-ins-months",
+   "hk-fields-dates",
+   "hk-measures-second",
    "hk-sleeves",
+   "jp-built-ins-months",
    "jp-monthly",
-   "us-random"
+   "jp-overlap-random",
+   "jp-references",
+   "us-built-ins-months",
+   "us-built-ins-weeks",
+   "us-measures-first",
+   "us-random",
+   "us-time-forms"
   ]
  },
  "tables": {

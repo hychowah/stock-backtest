@@ -1,3 +1,27 @@
+{"case":"hk-arithmetic","trial":1,"sector":"Financial Services","mean":0.2633333333333333,"minimum":0.2,"maximum":0.3333333333333333,"present":5}
+{"case":"hk-arithmetic","trial":1,"sector":"Real Estate","mean":0.3433333333333333,"minimum":0.25,"maximum":0.4,"present":5}
+{"case":"hk-arithmetic","trial":1,"sector":"Utilities","mean":0.3933333333333333,"minimum":0.3333333333333333,"maximum":0.5,"present":5}
+{"case":"hk-arithmetic","trial":"all","sector":"Financial Services","mean":0.2633333333333333,"minimum":0.2633333333333333,"maximum":0.2633333333333333,"leading":0}
+{"case":"hk-arithmetic","trial":"all","sector":"Real Estate","mean":0.3433333333333333,"minimum":0.3433333333333333,"maximum":0.3433333333333333,"leading":0}
+{"case":"hk-arithmetic","trial":"all","sector":"Utilities","mean":0.3933333333333333,"minimum":0.3933333333333333,"maximum":0.3933333333333333,"leading":1}
+{"case":"hk-built-ins-months","trial":1,"sector":"Financial Services","mean":0.225,"minimum":0.2,"maximum":0.25,"present":4}
+{"case":"hk-built-ins-months","trial":1,"sector":"Real Estate","mean":0.45,"minimum":0.4,"maximum":0.5,"present":4}
+{"case":"hk-built-ins-months","trial":1,"sector":"Utilities","mean":0.325,"minimum":0.25,"maximum":0.4,"present":4}
+{"case":"hk-built-ins-months","trial":"all","sector":"Financial Services","mean":0.225,"minimum":0.225,"maximum":0.225,"leading":0}
+{"case":"hk-built-ins-months","trial":"all","sector":"Real Estate","mean":0.45,"minimum":0.45,"maximum":0.45,"leading":1}
+{"case":"hk-built-ins-months","trial":"all","sector":"Utilities","mean":0.325,"minimum":0.325,"maximum":0.325,"leading":0}
+{"case":"hk-fields-dates","trial":1,"sector":"Financial Services","mean":0.11666666666666665,"minimum":0.0,"maximum":0.3333333333333333,"present":2}
+{"case":"hk-fields-dates","trial":1,"sector":"Real Estate","mean":0.5999999999999999,"minimum":0.5,"maximum":0.6666666666666666,"present":5}
+{"case":"hk-fields-dates","trial":1,"sector":"Utilities","mean":0.2833333333333333,"minimum":0.0,"maximum":0.5,"present":4}
+{"case":"hk-fields-dates","trial":"all","sector":"Financial Services","mean":0.11666666666666665,"minimum":0.11666666666666665,"maximum":0.11666666666666665,"leading":0}
+{"case":"hk-fields-dates","trial":"all","sector":"Real Estate","mean":0.5999999999999999,"minimum":0.5999999999999999,"maximum":0.5999999999999999,"leading":1}
+{"case":"hk-fields-dates","trial":"all","sector":"Utilities","mean":0.2833333333333333,"minimum":0.2833333333333333,"maximum":0.2833333333333333,"leading":0}
+{"case":"hk-measures-second","trial":1,"sector":"Financial Services","mean":0.24666666666666665,"minimum":0.2,"maximum":0.3333333333333333,"present":5}
+{"case":"hk-measures-second","trial":1,"sector":"Real Estate","mean":0.3766666666666666,"minimum":0.25,"maximum":0.5,"present":5}
+{"case":"hk-measures-second","trial":1,"sector":"Utilities","mean":0.3766666666666666,"minimum":0.25,"maximum":0.5,"present":5}
+{"case":"hk-measures-second","trial":"all","sector":"Financial Services","mean":0.24666666666666665,"minimum":0.24666666666666665,"maximum":0.24666666666666665,"leading":0}
+{"case":"hk-measures-second","trial":"all","sector":"Real Estate","mean":0.3766666666666666,"minimum":0.3766666666666666,"maximum":0.3766666666666666,"leading":1}
+{"case":"hk-measures-second","trial":"all","sector":"Utilities","mean":0.3766666666666666,"minimum":0.3766666666666666,"maximum":0.3766666666666666,"leading":1}
 {"case":"hk-sleeves","trial":1,"sector":"Financial Services","mean":0.0625,"minimum":0.0,"maximum":0.25,"present":1}
 {"case":"hk-sleeves","trial":1,"sector":"Real Estate","mean":0.5,"minimum":0.5,"maximum":0.5,"present":4}
 {"case":"hk-sleeves","trial":1,"sector":"Utilities","mean":0.4375,"minimum":0.25,"maximum":0.5,"present":4}
@@ -7,10 +31,56 @@
 {"case":"hk-sleeves","trial":"all","sector":"Financial Services","mean":0.0625,"minimum":0.0625,"maximum":0.0625,"leading":0}
 {"case":"hk-sleeves","trial":"all","sector":"Real Estate","mean":0.5625,"minimum":0.5,"maximum":0.625,"leading":2}
 {"case":"hk-sleeves","trial":"all","sector":"Utilities","mean":0.375,"minimum":0.3125,"maximum":0.4375,"leading":0}
+{"case":"jp-built-ins-months","trial":1,"sector":"Consumer Cyclical","mean":0.2625,"minimum":0.0,"maximum":0.4,"present":3}
+{"case":"jp-built-ins-months","trial":1,"sector":"Industrials","mean":0.48750000000000004,"minimum":0.0,"maximum":0.75,"present":3}
+{"case":"jp-built-ins-months","trial":"all","sector":"Consumer Cyclical","mean":0.2625,"minimum":0.2625,"maximum":0.2625,"leading":0}
+{"case":"jp-built-ins-months","trial":"all","sector":"Industrials","mean":0.48750000000000004,"minimum":0.48750000000000004,"maximum":0.48750000000000004,"leading":1}
 {"case":"jp-monthly","trial":1,"sector":"Consumer Cyclical","mean":0.125,"minimum":0.0,"maximum":0.5,"present":6}
 {"case":"jp-monthly","trial":1,"sector":"Industrials","mean":0.8333333333333334,"minimum":0.0,"maximum":1.0,"present":23}
 {"case":"jp-monthly","trial":"all","sector":"Consumer Cyclical","mean":0.125,"minimum":0.125,"maximum":0.125,"leading":0}
 {"case":"jp-monthly","trial":"all","sector":"Industrials","mean":0.8333333333333334,"minimum":0.8333333333333334,"maximum":0.8333333333333334,"leading":1}
+{"case":"jp-overlap-random","trial":1,"sector":"Consumer Cyclical","mean":0.375,"minimum":0.25,"maximum":0.5,"present":4}
+{"case":"jp-overlap-random","trial":1,"sector":"Industrials","mean":0.625,"minimum":0.5,"maximum":0.75,"present":4}
+{"case":"jp-overlap-random","trial":2,"sector":"Consumer Cyclical","mean":0.375,"minimum":0.25,"maximum":0.5,"present":4}
+{"case":"jp-overlap-random","trial":2,"sector":"Industrials","mean":0.625,"minimum":0.5,"maximum":0.75,"present":4}
+{"case":"jp-overlap-random","trial":"all","sector":"Consumer Cyclical","mean":0.375,"minimum":0.375,"maximum":0.375,"leading":0}
+{"case":"jp-overlap-random","trial":"all","sector":"Industrials","mean":0.625,"minimum":0.625,"maximum":0.625,"leading":2}
+{"case":"jp-references","trial":1,"sector":"Consumer Cyclical","mean":0.3333333333333333,"minimum":0.3333333333333333,"maximum":0.3333333333333333,"present":6}
+{"case":"jp-references","trial":1,"sector":"Industrials","mean":0.6666666666666666,"minimum":0.6666666666666666,"maximum":0.6666666666666666,"present":6}
+{"case":"jp-references","trial":"all","sector":"Consumer Cyclical","mean":0.3333333333333333,"minimum":0.3333333333333333,"maximum":0.3333333333333333,"leading":0}
+{"case":"jp-references","trial":"all","sector":"Industrials","mean":0.6666666666666666,"minimum":0.6666666666666666,"maximum":0.6666666666666666,"leading":1}
+{"case":"us-built-ins-months","trial":1,"sector":"Basic Materials","mean":0.07142857142857142,"minimum":0.0,"maximum":0.14285714285714285,"present":2}
+{"case":"us-built-ins-months","trial":1,"sector":"Communication Services","mean":0.11309523809523808,"minimum":0.0,"maximum":0.16666666666666666,"present":3}
+{"case":"us-built-ins-months","trial":1,"sector":"Consumer Defensive","mean":0.11309523809523808,"minimum":0.0,"maximum":0.16666666666666666,"present":3}
+{"case":"us-built-ins-months","trial":1,"sector":"Industrials","mean":0.2976190476190476,"minimum":0.2857142857142857,"maximum":0.3333333333333333,"present":4}
+{"case":"us-built-ins-months","trial":1,"sector":"Technology","mean":0.2976190476190476,"minimum":0.2857142857142857,"maximum":0.3333333333333333,"present":4}
+{"case":"us-built-ins-months","trial":1,"sector":"Unavailable","mean":0.10714285714285714,"minimum":0.0,"maximum":0.14285714285714285,"present":3}
+{"case":"us-built-ins-months","trial":"all","sector":"Basic Materials","mean":0.07142857142857142,"minimum":0.07142857142857142,"maximum":0.07142857142857142,"leading":0}
+{"case":"us-built-ins-months","trial":"all","sector":"Communication Services","mean":0.11309523809523808,"minimum":0.11309523809523808,"maximum":0.11309523809523808,"leading":0}
+{"case":"us-built-ins-months","trial":"all","sector":"Consumer Defensive","mean":0.11309523809523808,"minimum":0.11309523809523808,"maximum":0.11309523809523808,"leading":0}
+{"case":"us-built-ins-months","trial":"all","sector":"Industrials","mean":0.2976190476190476,"minimum":0.2976190476190476,"maximum":0.2976190476190476,"leading":1}
+{"case":"us-built-ins-months","trial":"all","sector":"Technology","mean":0.2976190476190476,"minimum":0.2976190476190476,"maximum":0.2976190476190476,"leading":1}
+{"case":"us-built-ins-months","trial":"all","sector":"Unavailable","mean":0.10714285714285714,"minimum":0.10714285714285714,"maximum":0.10714285714285714,"leading":0}
+{"case":"us-built-ins-weeks","trial":1,"sector":"Communication Services","mean":0.14285714285714282,"minimum":0.14285714285714285,"maximum":0.14285714285714285,"present":7}
+{"case":"us-built-ins-weeks","trial":1,"sector":"Consumer Defensive","mean":0.14285714285714282,"minimum":0.14285714285714285,"maximum":0.14285714285714285,"present":7}
+{"case":"us-built-ins-weeks","trial":1,"sector":"Industrials","mean":0.4285714285714285,"minimum":0.42857142857142855,"maximum":0.42857142857142855,"present":7}
+{"case":"us-built-ins-weeks","trial":1,"sector":"Technology","mean":0.28571428571428564,"minimum":0.2857142857142857,"maximum":0.2857142857142857,"present":7}
+{"case":"us-built-ins-weeks","trial":"all","sector":"Communication Services","mean":0.14285714285714282,"minimum":0.14285714285714282,"maximum":0.14285714285714282,"leading":0}
+{"case":"us-built-ins-weeks","trial":"all","sector":"Consumer Defensive","mean":0.14285714285714282,"minimum":0.14285714285714282,"maximum":0.14285714285714282,"leading":0}
+{"case":"us-built-ins-weeks","trial":"all","sector":"Industrials","mean":0.4285714285714285,"minimum":0.4285714285714285,"maximum":0.4285714285714285,"leading":1}
+{"case":"us-built-ins-weeks","trial":"all","sector":"Technology","mean":0.28571428571428564,"minimum":0.28571428571428564,"maximum":0.28571428571428564,"leading":0}
+{"case":"us-measures-first","trial":1,"sector":"Basic Materials","mean":0.08333333333333333,"minimum":0.0,"maximum":0.16666666666666666,"present":2}
+{"case":"us-measures-first","trial":1,"sector":"Communication Services","mean":0.175,"minimum":0.16666666666666666,"maximum":0.2,"present":4}
+{"case":"us-measures-first","trial":1,"sector":"Consumer Defensive","mean":0.08333333333333333,"minimum":0.0,"maximum":0.16666666666666666,"present":2}
+{"case":"us-measures-first","trial":1,"sector":"Industrials","mean":0.35,"minimum":0.3333333333333333,"maximum":0.4,"present":4}
+{"case":"us-measures-first","trial":1,"sector":"Technology","mean":0.18333333333333335,"minimum":0.0,"maximum":0.4,"present":2}
+{"case":"us-measures-first","trial":1,"sector":"Unavailable","mean":0.125,"minimum":0.0,"maximum":0.16666666666666666,"present":3}
+{"case":"us-measures-first","trial":"all","sector":"Basic Materials","mean":0.08333333333333333,"minimum":0.08333333333333333,"maximum":0.08333333333333333,"leading":0}
+{"case":"us-measures-first","trial":"all","sector":"Communication Services","mean":0.175,"minimum":0.175,"maximum":0.175,"leading":0}
+{"case":"us-measures-first","trial":"all","sector":"Consumer Defensive","mean":0.08333333333333333,"minimum":0.08333333333333333,"maximum":0.08333333333333333,"leading":0}
+{"case":"us-measures-first","trial":"all","sector":"Industrials","mean":0.35,"minimum":0.35,"maximum":0.35,"leading":1}
+{"case":"us-measures-first","trial":"all","sector":"Technology","mean":0.18333333333333335,"minimum":0.18333333333333335,"maximum":0.18333333333333335,"leading":0}
+{"case":"us-measures-first","trial":"all","sector":"Unavailable","mean":0.125,"minimum":0.125,"maximum":0.125,"leading":0}
 {"case":"us-random","trial":1,"sector":"Basic Materials","mean":0.08333333333333333,"minimum":0.0,"maximum":0.3333333333333333,"present":1}
 {"case":"us-random","trial":1,"sector":"Industrials","mean":0.5833333333333333,"minimum":0.3333333333333333,"maximum":0.6666666666666666,"present":4}
 {"case":"us-random","trial":1,"sector":"Technology","mean":0.16666666666666666,"minimum":0.0,"maximum":0.3333333333333333,"present":2}
@@ -27,3 +97,13 @@
 {"case":"us-random","trial":"all","sector":"Industrials","mean":0.5833333333333333,"minimum":0.5833333333333333,"maximum":0.5833333333333333,"leading":3}
 {"case":"us-random","trial":"all","sector":"Technology","mean":0.16666666666666666,"minimum":0.16666666666666666,"maximum":0.16666666666666666,"leading":0}
 {"case":"us-random","trial":"all","sector":"Unavailable","mean":0.16666666666666666,"minimum":0.16666666666666666,"maximum":0.16666666666666666,"leading":0}
+{"case":"us-time-forms","trial":1,"sector":"Basic Materials","mean":0.1,"minimum":0.0,"maximum":0.2,"present":2}
+{"case":"us-time-forms","trial":1,"sector":"Communication Services","mean":0.05,"minimum":0.0,"maximum":0.2,"present":1}
+{"case":"us-time-forms","trial":1,"sector":"Consumer Defensive","mean":0.1,"minimum":0.0,"maximum":0.2,"present":2}
+{"case":"us-time-forms","trial":1,"sector":"Industrials","mean":0.4,"minimum":0.4,"maximum":0.4,"present":4}
+{"case":"us-time-forms","trial":1,"sector":"Technology","mean":0.35,"minimum":0.2,"maximum":0.4,"present":4}
+{"case":"us-time-forms","trial":"all","sector":"Basic Materials","mean":0.1,"minimum":0.1,"maximum":0.1,"leading":0}
+{"case":"us-time-forms","trial":"all","sector":"Communication Services","mean":0.05,"minimum":0.05,"maximum":0.05,"leading":0}
+{"case":"us-time-forms","trial":"all","sector":"Consumer Defensive","mean":0.1,"minimum":0.1,"maximum":0.1,"leading":0}
+{"case":"us-time-forms","trial":"all","sector":"Industrials","mean":0.4,"minimum":0.4,"maximum":0.4,"leading":1}
+{"case":"us-time-forms","trial":"all","sector":"Technology","mean":0.35,"minimum":0.35,"maximum":0.35,"leading":0}

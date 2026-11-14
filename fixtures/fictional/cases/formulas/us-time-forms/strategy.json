@@ -1,0 +1,27 @@
+{
+ "variables": {
+  "Revenue mean 3y": {"formula": "average(Revenue, 3 years)"},
+  "Revenue low 3y": {"formula": "min(Revenue, 3 years)"},
+  "Revenue high 5y": {"formula": "max(Revenue, 5 years)"},
+  "Revenue growth 3y": {"formula": "growth(Revenue, 3 years)"},
+  "Income cagr 2y": {"formula": "cagr(Net income, 2 years)"},
+  "Margin mean 1y": {"formula": "average(Operating margin, 1 year)"},
+  "Revenue year ago": {"formula": "ago(Revenue, 12 months)"},
+  "Price 6m ago": {"formula": "ago(Share price, 6 months)"},
+  "Volume 1m ago": {"formula": "ago(Trading volume, 1 month)"},
+  "Price June 2021": {"formula": "at(Share price, 2021-06-30)"},
+  "Revenue 2020": {"formula": "at(Revenue, 2020-12-31)"},
+  "Price change 1y": {"formula": "Share price / ago(Share price, 12 months) - 1"},
+  "Debt to equity": {"formula": "Total debt / positive(Shareholders equity)"}
+ },
+ "sleeves": [
+  {"name": "Growth", "steps": [
+   {"filter": "Revenue growth 3y", "op": ">", "value": "10"},
+   {"rank": "Price change 1y", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Steady", "steps": [
+   {"filter": "Margin mean 1y", "op": ">", "value": "19"},
+   {"rank": "Revenue mean 3y", "order": "lowest", "from": 1, "to": 3}
+  ]}
+ ]
+}

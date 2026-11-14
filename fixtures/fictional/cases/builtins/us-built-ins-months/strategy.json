@@ -1,0 +1,40 @@
+{
+ "sleeves": [
+  {"name": "EV/EBITDA", "steps": [
+   {"filter": "EV/EBITDA", "op": "<", "value": "18"},
+   {"rank": "EV/EBITDA", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "EBITDA yield", "steps": [
+   {"filter": "EBITDA yield", "op": ">=", "value": "5.5"},
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "EV/3-year average EBITDA", "steps": [
+   {"filter": "EV/3-year average EBITDA", "op": "<=", "value": "19"},
+   {"rank": "EV/3-year average EBITDA", "order": "lowest", "from": 1, "to": 4}
+  ]},
+  {"name": "3-year average EBITDA yield", "steps": [
+   {"filter": "3-year average EBITDA yield", "op": ">", "value": "5.3"},
+   {"rank": "3-year average EBITDA yield", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "P/B", "steps": [
+   {"filter": "P/B", "op": "<", "value": "5.2"},
+   {"rank": "P/B", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "P/E", "steps": [
+   {"filter": "P/E", "op": "<", "value": "28"},
+   {"rank": "P/E", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "P/S", "steps": [
+   {"filter": "P/S", "op": ">", "value": "2.9"},
+   {"rank": "P/S", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "P/E 3-year average", "steps": [
+   {"filter": "P/E 3-year average", "op": "<=", "value": "23"},
+   {"rank": "P/E 3-year average", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "P/E 5-year average", "steps": [
+   {"filter": "P/E 5-year average", "op": "<", "value": "18.5"},
+   {"rank": "P/E 5-year average", "order": "lowest", "from": 1, "to": 3}
+  ]}
+ ]
+}

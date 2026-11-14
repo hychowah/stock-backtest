@@ -1,0 +1,40 @@
+{
+ "sleeves": [
+  {"name": "P/B vs 5-year average", "steps": [
+   {"filter": "P/B vs 5-year average", "op": ">", "value": "1.22"},
+   {"rank": "P/B vs 5-year average", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "Free cash flow", "steps": [
+   {"filter": "Free cash flow", "op": ">=", "value": "188"},
+   {"rank": "Free cash flow", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "FCF yield", "steps": [
+   {"filter": "FCF yield", "op": "<", "value": "8.9"},
+   {"rank": "FCF yield", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "Price/FCF", "steps": [
+   {"filter": "Price/FCF", "op": "<=", "value": "11"},
+   {"rank": "Price/FCF", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "Dividend yield", "steps": [
+   {"filter": "Dividend yield", "op": ">", "value": "2.5"},
+   {"rank": "Dividend yield", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "Net margin", "steps": [
+   {"filter": "Net margin", "op": ">=", "value": "9.4"},
+   {"rank": "Net margin", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "Operating yield spread", "steps": [
+   {"filter": "Operating yield spread", "op": "<", "value": "9.3"},
+   {"rank": "Operating yield spread", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "PEG", "steps": [
+   {"filter": "PEG", "op": ">", "value": "2.45"},
+   {"rank": "PEG", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "ROE", "steps": [
+   {"filter": "ROE", "op": "<=", "value": "14.4"},
+   {"rank": "ROE", "order": "lowest", "from": 1, "to": 2}
+  ]}
+ ]
+}

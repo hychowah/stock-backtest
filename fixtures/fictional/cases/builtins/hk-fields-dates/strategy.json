@@ -1,0 +1,18 @@
+{
+ "sleeves": [
+  {"name": "Land", "steps": [
+   {"filter": "Sector", "op": "is", "value": "Real Estate"},
+   {"rank": "Enterprise value in dollars", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "Large", "steps": [
+   {"filter": "Exchange", "op": "is not", "value": "NASDAQ"},
+   {"filter": "Market cap in dollars", "op": ">=", "value": "13000000000"},
+   {"rank": "Market cap in dollars", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "Yield", "steps": [
+   {"filter": "Sector", "op": "is not", "value": "Financial Services"},
+   {"filter": "Enterprise value in dollars", "op": "<", "value": "13600000000"},
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 2}
+  ]}
+ ]
+}

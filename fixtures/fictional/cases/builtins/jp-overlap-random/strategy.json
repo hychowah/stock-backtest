@@ -1,0 +1,14 @@
+{
+ "sleeves": [
+  {"name": "Core", "steps": [
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Satellite", "steps": [
+   {"rank": "EBITDA yield", "order": "highest", "from": 2, "to": 4}
+  ]},
+  {"name": "Quality", "steps": [
+   {"filter": "ROE", "op": ">", "value": "10"},
+   {"rank": "Net margin", "order": "highest", "from": 2, "to": 3}
+  ]}
+ ]
+}

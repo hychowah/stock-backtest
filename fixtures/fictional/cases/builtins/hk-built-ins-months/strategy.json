@@ -1,0 +1,40 @@
+{
+ "sleeves": [
+  {"name": "P/S 3-year average", "steps": [
+   {"filter": "P/S 3-year average", "op": "<", "value": "6.4"},
+   {"rank": "P/S 3-year average", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/S 5-year average", "steps": [
+   {"filter": "P/S 5-year average", "op": ">", "value": "5.2"},
+   {"rank": "P/S 5-year average", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/B 3-year average", "steps": [
+   {"filter": "P/B 3-year average", "op": "<=", "value": "10.6"},
+   {"rank": "P/B 3-year average", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/B 5-year average", "steps": [
+   {"filter": "P/B 5-year average", "op": ">=", "value": "8.6"},
+   {"rank": "P/B 5-year average", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/E vs 3-year average", "steps": [
+   {"filter": "P/E vs 3-year average", "op": "<", "value": "1.37"},
+   {"rank": "P/E vs 3-year average", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/E vs 5-year average", "steps": [
+   {"filter": "P/E vs 5-year average", "op": ">", "value": "1.64"},
+   {"rank": "P/E vs 5-year average", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/S vs 3-year average", "steps": [
+   {"filter": "P/S vs 3-year average", "op": "<=", "value": "1.35"},
+   {"rank": "P/S vs 3-year average", "order": "lowest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/S vs 5-year average", "steps": [
+   {"filter": "P/S vs 5-year average", "op": ">=", "value": "1.65"},
+   {"rank": "P/S vs 5-year average", "order": "highest", "from": 1, "to": 2}
+  ]},
+  {"name": "P/B vs 3-year average", "steps": [
+   {"filter": "P/B vs 3-year average", "op": "<", "value": "1.35"},
+   {"rank": "P/B vs 3-year average", "order": "lowest", "from": 1, "to": 2}
+  ]}
+ ]
+}

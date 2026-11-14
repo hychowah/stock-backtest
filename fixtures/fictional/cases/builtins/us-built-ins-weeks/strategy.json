@@ -1,0 +1,40 @@
+{
+ "sleeves": [
+  {"name": "Current ratio", "steps": [
+   {"filter": "Current ratio", "op": ">=", "value": "1.6666666666666667"},
+   {"rank": "Current ratio", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Interest coverage", "steps": [
+   {"filter": "Interest coverage", "op": ">", "value": "17"},
+   {"rank": "Interest coverage", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Debt/equity", "steps": [
+   {"filter": "Debt/equity", "op": "<=", "value": "0.5"},
+   {"rank": "Debt/equity", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "One year return", "steps": [
+   {"filter": "One year return", "op": ">", "value": "23"},
+   {"rank": "One year return", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Three year return", "steps": [
+   {"filter": "Three year return", "op": "<", "value": "100"},
+   {"rank": "Three year return", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "Turnover rate 1-week average", "steps": [
+   {"filter": "Turnover rate 1-week average", "op": ">=", "value": "0.21"},
+   {"rank": "Turnover rate 1-week average", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Market cap", "steps": [
+   {"filter": "Market cap", "op": "<", "value": "8000"},
+   {"rank": "Market cap", "order": "lowest", "from": 1, "to": 3}
+  ]},
+  {"name": "Enterprise value", "steps": [
+   {"filter": "Enterprise value", "op": ">", "value": "9000"},
+   {"rank": "Enterprise value", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Listed", "steps": [
+   {"filter": "Exchange", "op": "is", "value": "NASDAQ"},
+   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 3}
+  ]}
+ ]
+}

@@ -420,6 +420,8 @@ def formula_value_rows(cases):
             for day in sorted({period['entry'] for _, _, period, _ in stored(case['reader'])}):
                 book = book_store.find(db, day, 'cached', market=case['market'])
                 rows, admission = scalar_execution._scope(db, checked, book, day, latest=False, market=case['market'])
+                if not rows:
+                    continue
                 roots, decisions = zip(*map(admission, range(len(rows))))
                 values = formulas.evaluate(list(roots), view, lambda: None, decisions=list(decisions), outputs=outputs)
                 for row, found in zip(rows, values):

@@ -1,0 +1,30 @@
+{
+ "variables": {
+  "Debt/assets value": {"formula": "Debt/assets", "display": "multiple"},
+  "P/E value": {"formula": "P/E", "display": "multiple"},
+  "P/B value": {"formula": "P/B", "display": "multiple"},
+  "FCF yield value": {"formula": "FCF yield", "display": "percent"},
+  "Price/FCF value": {"formula": "Price/FCF", "display": "multiple"},
+  "PEG value": {"formula": "PEG", "display": "multiple"},
+  "ROE value": {"formula": "ROE", "display": "percent"},
+  "Current ratio value": {"formula": "Current ratio", "display": "multiple"},
+  "Interest coverage value": {"formula": "Interest coverage", "display": "multiple"},
+  "Debt/equity value": {"formula": "Debt/equity", "display": "multiple"},
+  "One year return value": {"formula": "One year return", "display": "percent"},
+  "Three year return value": {"formula": "Three year return", "display": "percent"},
+  "EV/EBITDA value": {"formula": "EV/EBITDA", "display": "multiple"},
+  "EV/3-year average EBITDA value": {"formula": "EV/3-year average EBITDA", "display": "multiple"},
+  "EBITDA yield value": {"formula": "EBITDA yield", "display": "percent"},
+  "Operating yield spread value": {"formula": "Operating yield spread", "display": "percent"}
+ },
+ "sleeves": [
+  {"name": "Returns", "steps": [
+   {"filter": "P/E value", "op": "<", "value": "40"},
+   {"rank": "ROE value", "order": "highest", "from": 1, "to": 3}
+  ]},
+  {"name": "Safe", "steps": [
+   {"filter": "Debt/equity value", "op": "<=", "value": "1.4"},
+   {"rank": "Interest coverage value", "order": "highest", "from": 1, "to": 3}
+  ]}
+ ]
+}
