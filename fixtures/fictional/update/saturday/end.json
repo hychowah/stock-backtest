@@ -1,0 +1,22 @@
+{
+ "outcome": "partial",
+ "failed": [
+  "px/QAB.json",
+  "px/QSP.json"
+ ],
+ "memory": {
+  "last_report_check": "2023-07-08",
+  "last_full_sweep": "2023-07-08",
+  "pending": {
+   "us": [
+    "QNX",
+    "QZZ"
+   ],
+   "hk": [
+    "0107.HK"
+   ]
+  },
+  "last_success": "2023-07-06T23:07:41.512903+00:00"
+ },
+ "deleted": []
+}

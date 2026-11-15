@@ -1,0 +1,36 @@
+{
+ "as_of": "2023-07-09T23:00:00+00:00",
+ "after": "saturday",
+ "record": {
+  "outcome": "partial",
+  "last_success": "2023-07-06T23:07:41.512903+00:00",
+  "last_report_check": "2023-07-08",
+  "last_full_sweep": "2023-07-08",
+  "pending_symbols": [
+   "QNX",
+   "QZZ"
+  ],
+  "pending_markets": {
+   "hk": [
+    "0107.HK"
+   ],
+   "jp": [
+    "7101.T"
+   ]
+  }
+ },
+ "memory": {
+  "last_report_check": "2023-07-08",
+  "last_full_sweep": "2023-07-08",
+  "pending": {
+   "us": [
+    "QNX",
+    "QZZ"
+   ],
+   "hk": [
+    "0107.HK"
+   ]
+  },
+  "last_success": "2023-07-06T23:07:41.512903+00:00"
+ }
+}

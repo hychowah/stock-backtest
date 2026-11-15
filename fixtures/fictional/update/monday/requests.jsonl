@@ -1,0 +1,55 @@
+{"endpoint": "company-screener", "params": {"exchange": "AMEX", "isActivelyTrading": "true", "isEtf": "false", "isFund": "false", "limit": "1000", "page": "0"}}
+{"endpoint": "company-screener", "params": {"exchange": "HKSE", "isActivelyTrading": "false", "isEtf": "false", "isFund": "false", "limit": "1000", "page": "0"}}
+{"endpoint": "company-screener", "params": {"exchange": "HKSE", "isActivelyTrading": "true", "isEtf": "false", "isFund": "false", "limit": "1000", "page": "0"}}
+{"endpoint": "company-screener", "params": {"exchange": "NASDAQ", "isActivelyTrading": "true", "isEtf": "false", "isFund": "false", "limit": "1000", "page": "0"}}
+{"endpoint": "company-screener", "params": {"exchange": "NYSE", "isActivelyTrading": "true", "isEtf": "false", "isFund": "false", "limit": "1000", "page": "0"}}
+{"endpoint": "delisted-companies", "params": {"limit": "100", "page": "0"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "1995-01-01", "symbol": "QAB", "to": "2004-12-31"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "1995-01-01", "symbol": "QMN", "to": "2004-12-31"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2005-01-01", "symbol": "QAB", "to": "2014-12-31"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2005-01-01", "symbol": "QMN", "to": "2014-12-31"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2015-01-01", "symbol": "QAB", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2015-01-01", "symbol": "QMN", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2020-06-23", "symbol": "QZZ", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2022-08-05", "symbol": "QDL", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-23", "symbol": "QAB", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-23", "symbol": "QPX", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-23", "symbol": "QSP", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0101.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0102.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0103.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0104.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0105.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0106.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "0108.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "4101.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "80101.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QAA", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QAC", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QAD", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QCF", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QFS", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QNR", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QNW", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "QST", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "SPY", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-06-30", "symbol": "SPY", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-07-02", "symbol": "0107.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/dividend-adjusted", "params": {"from": "2023-07-02", "symbol": "QNX", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0101.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0102.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0103.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0104.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0105.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0106.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "0108.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "4101.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "80101.HK", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "USDCNY", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "USDHKD", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-06-30", "symbol": "^HSI", "to": "2023-07-09"}}
+{"endpoint": "historical-price-eod/full", "params": {"from": "2023-07-02", "symbol": "0107.HK", "to": "2023-07-09"}}
+{"endpoint": "treasury-rates", "params": {"from": "2023-06-30", "to": "2023-06-30"}}
+{"endpoint": "treasury-rates", "params": {"from": "2023-06-30", "to": "2023-06-30"}}
+{"endpoint": "treasury-rates", "params": {"from": "2023-07-01", "to": "2023-07-09"}}
+{"endpoint": "treasury-rates", "params": {"from": "2023-07-01", "to": "2023-07-09"}}

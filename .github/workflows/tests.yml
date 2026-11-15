@@ -56,6 +56,10 @@ jobs:
           diff -r fixtures/fictional/saved/expected "$RUNNER_TEMP/converted"
           python3 proof/convert_proof.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 \
             --out "$RUNNER_TEMP/convert-proof" $inputs
+      - name: Run the oracle's data update on the fictional update cases and compare with the frozen cases
+        run: |
+          python3 proof/update.py cases --out "$RUNNER_TEMP/update"
+          diff -r fixtures/fictional/update "$RUNNER_TEMP/update"
 
       - name: Run the browser checks of the website against the built bt
         # `cargo test` has built target/debug/bt, which the checks start.

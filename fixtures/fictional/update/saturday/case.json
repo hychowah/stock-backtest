@@ -1,0 +1,34 @@
+{
+ "as_of": "2023-07-07T23:00:00+00:00",
+ "after": null,
+ "record": {
+  "outcome": "complete",
+  "last_success": "2023-07-06T23:07:41.512903+00:00",
+  "last_report_check": "2023-07-01",
+  "last_full_sweep": "2023-03-25",
+  "pending_symbols": [
+   "QAC"
+  ],
+  "pending_markets": {
+   "hk": [
+    "0103.HK"
+   ],
+   "jp": [
+    "7101.T"
+   ]
+  }
+ },
+ "memory": {
+  "last_report_check": "2023-07-01",
+  "last_full_sweep": "2023-03-25",
+  "pending": {
+   "us": [
+    "QAC"
+   ],
+   "hk": [
+    "0103.HK"
+   ]
+  },
+  "last_success": "2023-07-06T23:07:41.512903+00:00"
+ }
+}
