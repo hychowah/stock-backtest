@@ -90,9 +90,12 @@ pub fn price_targets(universe: &Universe, pending: &[String], saved: impl Fn(&st
 /// accepts (`books.statements`): a row with a fiscal date, a positive
 /// `marketCap`, `enterpriseValue` and `evToEBITDA`, and `reportedCurrency`
 /// USD in any case, or none. A company that gains one in an update becomes
-/// pending and a price target in the same update. Preparation's reader holds
-/// the same rule (`accepted` in `market-data`'s `reports.rs`): a change to
-/// one is made to both.
+/// pending and a price target in the same update. Preparation's reader
+/// (`accepted` in `market-data`'s `reports.rs`) holds the same rule on the
+/// forms the raw cache holds: the two read text numbers, a lower-case
+/// currency and a null currency differently, and none of the real cache's
+/// 166,286 key-metrics rows has those forms. A change to one is made to
+/// both.
 pub fn reported(rows: &[PyJson]) -> bool {
     rows.iter().any(|row| {
         let positive = |key| PyJson::number(row.get(key)).is_some_and(|v| v > 0.0);

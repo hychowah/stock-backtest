@@ -11,13 +11,14 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Condvar, Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The provider's address when `BT_PROVIDER` is not set.
 const ADDRESS: &str = "https://financialmodelingprep.com";
 
-/// The most requests in flight at once.
+/// The most requests in flight at once: the update runs this many workers,
+/// each with one request at a time. The client itself does not count them.
 pub const IN_FLIGHT: usize = 32;
 
 const STARTS_PER_SECOND: u32 = 45;
@@ -186,8 +187,6 @@ pub struct Provider<'a> {
     key: Mutex<Option<String>>,
     stop: &'a AtomicBool,
     gate: Mutex<Gate>,
-    in_flight: Mutex<usize>,
-    slot_freed: Condvar,
 }
 
 /// When the next attempt may start: one start per `interval`, none before
@@ -232,17 +231,17 @@ impl<'a> Provider<'a> {
                 last: None,
                 paused_until: None,
             }),
-            in_flight: Mutex::new(0),
-            slot_freed: Condvar::new(),
         }
     }
 
-    /// The data provider, FMP's `/stable/` API at `address`, with the account's
-    /// measured limits: at most IN_FLIGHT (32) requests at once; at most 45 starts
-    /// a second over all attempts; gzip. No reply, 429, 500, 502, 503 or 504 is
-    /// tried three times in all; the wait (Retry-After up to an hour, else 2 s,
-    /// then 4 s) pauses every worker, and each retried 429 halves the start rate
-    /// for the rest of the update, down to one start every 2 s. 15 s socket
+    /// The data provider, FMP's `/stable/` API at `address`, with the
+    /// account's measured limits: at most 45 starts a second over all
+    /// attempts; gzip. The requests at once are as many as the threads that
+    /// call it, IN_FLIGHT (32) for the update. No reply, 429, 500, 502, 503
+    /// or 504 is tried three times in all; the wait (Retry-After up to an
+    /// hour, else 2 s, then 4 s) pauses every worker, and each retried 429
+    /// halves the start rate for the rest of the update, down to one start
+    /// every 2 s. 15 s socket
     /// timeout, 30 s per attempt. The key is read from `key_file` at the first
     /// request. No error, log line or panic holds the key, a URL or a body: a
     /// Failure names `endpoint symbol from..to` and a status.
@@ -252,7 +251,6 @@ impl<'a> Provider<'a> {
     pub fn get(&self, endpoint: &Endpoint) -> Result<Vec<u8>, Failure> {
         let failure = |reason| Failure { endpoint: endpoint.clone(), reason };
         let url = self.url(endpoint).ok_or_else(|| failure(Reason::NoKey))?;
-        let _slot = self.slot().ok_or_else(|| failure(Reason::Stopped))?;
         let mut reason = Reason::NoReply;
         for attempt in 1..=ATTEMPTS {
             self.start().ok_or_else(|| failure(Reason::Stopped))?;
@@ -301,19 +299,6 @@ impl<'a> Provider<'a> {
         url.push_str("apikey=");
         encode(key.as_deref().unwrap(), &mut url);
         Some(url)
-    }
-
-    /// Waits for one of the IN_FLIGHT places; None when stopped.
-    fn slot(&self) -> Option<Slot<'_, 'a>> {
-        let mut in_flight = self.in_flight.lock().unwrap();
-        while *in_flight == IN_FLIGHT {
-            if self.stopped() {
-                return None;
-            }
-            in_flight = self.slot_freed.wait_timeout(in_flight, STOP_CHECK).unwrap().0;
-        }
-        *in_flight += 1;
-        Some(Slot(self))
     }
 
     /// Waits for the start rate and any pause; None when stopped.
@@ -373,16 +358,6 @@ impl<'a> Provider<'a> {
             Ok(body) => Reply::Body(body),
             Err(_) => Reply::Failed,
         }
-    }
-}
-
-/// One of the IN_FLIGHT places, given back when dropped.
-struct Slot<'p, 'a>(&'p Provider<'a>);
-
-impl Drop for Slot<'_, '_> {
-    fn drop(&mut self) {
-        *self.0.in_flight.lock().unwrap() -= 1;
-        self.0.slot_freed.notify_one();
     }
 }
 

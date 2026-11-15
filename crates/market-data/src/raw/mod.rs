@@ -9,9 +9,10 @@
 //!
 //! # Errors of the typed files
 //!
-//! - [`ItemError`]: `load` of a history or statements file, `admit`,
+//! - [`ItemError`]: `load` of a statements file, and `admit`,
 //!   `changes_closes`, `check_whole` and `apply` of a reply. The file stays
-//!   as it was and the item counts as failed.
+//!   as it was and the item counts as failed. A history that `load` refuses
+//!   is asked whole instead, from [`History::missing`], and replaced.
 //! - [`Error`]: `save`, [`replace`], [`Universe::load`] and
 //!   [`KeyMetrics::load`]. It ends the update's downloads.
 //!
@@ -321,10 +322,10 @@ pub(crate) fn state_cells(value: f64, reason: u8) -> (Cell<'static>, Cell<'stati
 /// `facts.observe`, the one value rule of a day: each day's state of each
 /// field, by day, from rows whose `date` reads ([`parse_day`]). Equal
 /// admissible values agree (the first is kept, so `0.0` and `-0.0` agree on
-/// the first); different ones are [`Reason::Conflicting`]. `adjClose` and `close` must be positive
-/// and, when `currency` is given, the row's `currency` and `reportedCurrency`
-/// must be absent, null or equal to it; `volume` must not be negative; other
-/// fields take any finite value.
+/// the first); different ones are [`Reason::Conflicting`]. `adjClose` and
+/// `close` must be positive and, when `currency` is given, the row's
+/// `currency` and `reportedCurrency` must be absent, null or equal to it;
+/// `volume` must not be negative; other fields take any finite value.
 pub(crate) fn observe(rows: &[Value], fields: &[&str], currency: Option<&str>) -> BTreeMap<Day, Vec<State>> {
     let mut grouped: BTreeMap<Day, Vec<&Map<String, Value>>> = BTreeMap::new();
     for row in rows {

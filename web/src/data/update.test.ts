@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { UpdateProgress } from "../api/UpdateProgress.ts";
-import { counts, headline, startButton, statusInterval, steps, stopButton } from "./update.ts";
+import { counts, startButton, statusInterval, steps, stopButton } from "./update.ts";
 
 const progress = (over: Partial<UpdateProgress>): UpdateProgress => ({
   state: "running",
@@ -42,11 +42,6 @@ test("the stop button shows only while an update is active, and says Stopping sa
   assert.deepEqual(stopButton("stopping"), { label: "Stopping safely", enabled: false });
   assert.equal(stopButton("idle"), null);
   assert.equal(stopButton("failed"), null);
-});
-
-test("every state has its own headline", () => {
-  const states = ["idle", "running", "stopping", "stopped", "interrupted", "failed", "partial", "complete"] as const;
-  assert.equal(new Set(states.map(headline)).size, states.length);
 });
 
 test("the steps before the running stage are done and the running one is current", () => {

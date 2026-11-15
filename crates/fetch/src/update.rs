@@ -59,9 +59,10 @@ const WATCH_EVERY: Duration = Duration::from_millis(100);
 /// continues with its report check: its journal's items are not asked again.
 /// A failed item keeps its file, is named in the record and makes the update
 /// partial; a saved history that cannot be read is asked whole and replaced
-/// (a statements file that cannot be read fails its item); a refused key (401), a missing key file, a company list that
-/// cannot be read or a failed write ends the downloads, and the saved data is
-/// still prepared, but the update is failed. A stop ends after the requests
+/// (a statements file that cannot be read fails its item); a refused key
+/// (401), a missing key file, a company list that cannot be read or a failed
+/// write ends the downloads, and the saved data is still prepared, but the
+/// update is failed. A stop ends after the requests
 /// in flight, keeps what is saved and skips preparation; a stop during
 /// preparation lets preparation finish.
 ///
@@ -311,8 +312,9 @@ fn series(file: &HistoryFile, from: NaiveDate, to: NaiveDate) -> Endpoint {
     }
 }
 
-/// Runs `fetch` on the items on IN_FLIGHT worker threads and gives each
-/// result to `write` on this thread, in the order they come. Workers take no
+/// Runs `fetch` on the items on IN_FLIGHT worker threads, each with one
+/// request at a time, which is the update's limit of requests at once; gives
+/// each result to `write` on this thread, in the order they come. Workers take no
 /// item once `halt` is set. A write error sets it, and later results are
 /// dropped.
 fn parallel<T: Sync, R: Send>(

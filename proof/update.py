@@ -124,9 +124,12 @@ A case's start raw is the fictional raw without `markets/jp`; then, when
 case's own `before/` files. The oracle of `monday` also starts with the
 ledger that `saturday` left, as on a real night. The ledger is not in the
 fixture, so `monday` replays only after `saturday` has run, as `cases` does.
-With it, the old updater asks only the last 7 days of an empty history (QNX,
-0107.HK), the rule the new updater keeps without a ledger (without it, the
-old updater asks such a history from 1995 again), and 0107.HK leaves pending
+With it, the old updater asks an empty history (QNX, 0107.HK) from the day
+after the ledger's last checked day or from 7 days back, whichever is
+earlier: here the last 7 days. The new updater reaches the same start
+without a ledger, from the earlier of the last 7 days and the day after the
+last price day of the last complete update (without its ledger, the old
+updater asks such a history from 1995 again). And 0107.HK leaves pending
 on `monday`: the old completeness test of a statement file needs the
 ledger's receipt for it.
 

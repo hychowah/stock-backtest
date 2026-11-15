@@ -2,8 +2,9 @@
 //! update needs) and `progress` (this update), replaced whole. The update
 //! holds `update.lock` from start to end, so a record that says running or
 //! stopping while the lock is free belongs to an update that crashed:
-//! `status` reads it as interrupted. `request_stop` writes `update.stop`, which the running update
-//! reads between requests.
+//! `status` reads it as interrupted. `request_stop` writes `update.stop`,
+//! which the running update checks about ten times a second, whether or not
+//! a request ends.
 //!
 //! All four files are in `data/`: `update.json` ([`UpdateRecord`]),
 //! `update.lock` ([`UpdateLock`]), `update.stop` ([`request_stop`],
@@ -82,7 +83,8 @@ pub enum UpdateState {
     /// The record says running or stopping but nothing holds the lock.
     /// Only read, never written.
     Interrupted,
-    /// Downloads ended on an error, or the record is unreadable.
+    /// Downloads ended on an error, preparation failed, or the record is
+    /// unreadable.
     Failed,
     /// Finished with failed items.
     Partial,
@@ -278,8 +280,9 @@ pub struct Journal {
 impl Journal {
     /// Opens the journal of the update whose last price day is `end`. With
     /// `resume`, a journal of the same day keeps its items (an unfinished
-    /// last line, cut by a crash, is removed); otherwise a new, empty journal replaces it.
-    /// A journal that cannot be read counts as empty: it only saves requests.
+    /// last line, cut by a crash, is removed); otherwise a new, empty
+    /// journal replaces it. A journal that cannot be read counts as empty:
+    /// it only saves requests.
     pub fn open(home: &Home, end: Day, resume: bool) -> Result<Journal, Error> {
         let path = path(home, "update.done");
         let fail = |e: io::Error| Error::new(format!("cannot open the update journal: {e}"), path.display());
