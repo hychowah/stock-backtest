@@ -35,7 +35,7 @@ pub mod strategy;
 mod values;
 pub mod views;
 
-pub use formula::Formula;
+pub use formula::{Fault, Formula, Picture, Suggestion};
 pub use market_data::Error;
 pub use schedule::{Period, Plan, Schedule, Trial};
 pub use selection::{Pick, select};

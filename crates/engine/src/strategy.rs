@@ -573,7 +573,7 @@ impl Reader {
             }
             let fields = self.object(raw, &place, &["formula"], &["display"])?;
             let text = self.string(fields["formula"], &format!("{place}.formula"), "the formula text")?;
-            let formula = Formula::read(&text, &variables).or_else(|fault| self.fail(&format!("{place}, {}", fault.place()), fault.message))?;
+            let formula = Formula::read(&text, &variables).or_else(|fault| self.fail(&format!("{place}, {}", fault.place()), fault.sentence()))?;
             let formula = match fields.get("display") {
                 Some(raw) => {
                     let place = format!("{place}.display");
@@ -660,7 +660,7 @@ impl Reader {
         }
         match Formula::read(text, variables) {
             Ok(formula) => Ok(Source::Formula(Arc::new(formula))),
-            Err(fault) => self.fail(&format!("{place}, {}", fault.place()), fault.message),
+            Err(fault) => self.fail(&format!("{place}, {}", fault.place()), fault.sentence()),
         }
     }
 

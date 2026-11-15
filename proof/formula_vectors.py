@@ -10,7 +10,9 @@ earlier variables it is read with (all of a library's variables, or with
 "before" those above one variable), an optional display, and the editor's
 outcome in catalog /4 (variable_authoring.validate): the canonical text
 (formula_text.to_text), the stored tree with its unit and display, or the
-error code with the characters [start, end) of a reader error.
+error code with the characters [start, end) of a reader error. An accepted
+text also has the editor's picture (formula_text.picture, as the editor draws
+it) and a refused text the suggestions of its error: up to three {text, label}.
 """
 import hashlib
 import json
@@ -80,7 +82,8 @@ def outcome(store, text, display=None):
         checked = store.check(text, display)
     except formula_text.TextError as error:
         first = error.errors[0]
-        return dict(error={key: first[key] for key in ('code', 'start', 'end') if key in first})
+        return dict(error=dict({key: first[key] for key in ('code', 'start', 'end') if key in first},
+                               suggestions=first['suggestions']))
     program = checked['capture']['program']['bundle']['definitions']
     expanded = {(item['variable_id'], item['revision']): item['definition'] for item in program}
     names = {(item['variable_id'], item['revision']): item['name'] for item in checked['capture']['presentation']}
@@ -98,7 +101,7 @@ def outcome(store, text, display=None):
     canonical = formula_text.to_text(authored, checked['capture']['presentation'])
     output = expanded[root]['output']
     return dict(result=dict(text=canonical, tree=dump(expanded[root]['expression']), unit=output['unit'],
-                            display=output['display']))
+                            display=output['display'], picture=checked['picture']))
 
 
 def chain(prefix, count, first, step):
@@ -211,11 +214,25 @@ def cases():
     add('Revenue + 1 + ago(Revenue, 200 months)')
     add('Revenue * Revenue + 1')
     add('(Revenue + 1) * (Basic shares + 1 USD)')
+    # Misspelt names and functions: the editor's suggestions.
+    for text in ('Revenu * 2', 'Reveneue', 'Revnue', 'Rvenue / 2', 'Reevnue', 'Revneue', 'REVENU', 'Cost of revnue',
+                 'Cost of reveneu', 'Grss profit', 'Gross proffit', 'Gross marign', 'Gross margn + 1', 'Net incom', 'Net incme / 2',
+                 'Operating incme', 'Free cash flw', 'Total debt / Enterprise vlue', 'Entreprise value', 'Market cp',
+                 'Market capp', 'Shareholders equty', 'Total asets', 'Total liabilties', 'Diluted shres', 'Basic EPS5',
+                 'Share pirce', 'Share prcie / 2', 'Dividend yeild', 'P/Ee', 'Price/sale', 'EBITDA yeild', 'Operating margn',
+                 '3-year average EBITDA yeld', 'Treasury 10 year yeld', 'Net PP&', 'Cash and equivalent', 'Xyzzy', 'Zq',
+                 '[Revenu]]', 'revenu', 'ReVeNuE foo',
+                 'averge(Revenue, 3 years)', 'avrage(Revenue, 3 years)', 'AVERAGE2(Revenue, 3 years)', 'minn(Revenue, 3 years)',
+                 'mx(Revenue, 3 years)', 'growt(Revenue, 3 years)', 'cagrr(Revenue, 3 years)', 'cagt(Revenue, 3 years)',
+                 'agoo(Revenue, 3 months)', 'ag(Revenue, 3 months)', 'att(Revenue, 2024-12-31)', 'a(Revenue, 2024-12-31)',
+                 'postive(Total assets)', 'Revenue / positve(Total assets)', 'foo(Revenue)', 'Revenue * wxyz(2)'):
+        add(text)
     # Library variables.
     for text in ('Debt to EV', 'debt  to ev + Doubled', '[Doubled] / 2', 'Doubled(', 'Margin * 100', 'Debt to EV + Margin',
                  'Cash and equivalents ratio * 2', 'Cash and equivalents * 2', 'Cash and equivalents rat',
                  '[3m change] + 1', '3m change', 'ago(3m change, 1 month)', '[a]]b] * 2', 'a]b', 'Sales per share * Diluted shares',
-                 'average(Debt to EV, 3 years)', 'Unknown variable', 'Debt to EV + Revenue', 'Doubled + Doubled * Doubled'):
+                 'average(Debt to EV, 3 years)', 'Unknown variable', 'Debt to EV + Revenue', 'Doubled + Doubled * Doubled',
+                 'Debt to E', 'Dobled * 2', 'Marign', 'Sales per shre', '3m chnage', 'Cash and equivalents ratoi'):
         add(text, 'file')
     add('Level8', 'chain')
     add('Level7 + 1 USD', 'chain')
@@ -250,7 +267,9 @@ def main():
         found = outcome(store, text, display)
         if 'result' in found:
             again = outcome(store, found['result']['text'], found['result']['display'])
-            assert again == found, (text, found, again)
+            # The picture keeps a number as typed, so only the rest must read back the same.
+            again['result'].pop('picture')
+            assert again['result'] == {key: value for key, value in found['result'].items() if key != 'picture'}, (text, found, again)
         case = dict(text=text)
         if library_name:
             case['library'] = library_name

@@ -1,8 +1,8 @@
 //! Formula text against the oracle: the vectors in fixtures/formulas/,
 //! written by proof/formula_vectors.py from the Python product's formula
 //! editor. Each case must give the same canonical text, tree, unit and
-//! display, or the same error code (and the same characters for an error of
-//! the text).
+//! display and picture, or the same error code, suggestions (and the same
+//! characters for an error of the text).
 
 use engine::formula::{Formula, Node, Op, Stat};
 use serde::Deserialize;
@@ -33,6 +33,7 @@ struct Expected {
     tree: Value,
     unit: String,
     display: String,
+    picture: Value,
 }
 
 #[derive(Deserialize, Debug)]
@@ -40,13 +41,14 @@ struct Refusal {
     code: String,
     start: Option<usize>,
     end: Option<usize>,
+    suggestions: Value,
 }
 
 /// The tree as the vectors write it.
 fn dump(node: &Node) -> Value {
     match node {
         Node::Parameter(p) => json!({"op": "parameter", "id": p.id}),
-        Node::Constant { value, unit } => json!({"op": "constant", "value": value, "unit": unit.id()}),
+        Node::Constant { value, unit, .. } => json!({"op": "constant", "value": value, "unit": unit.id()}),
         Node::Neg(arg) => json!({"op": "neg", "arg": dump(arg)}),
         Node::Binary { op, left, right } => {
             let op = match op {
@@ -111,15 +113,24 @@ fn formula_text_reads_and_prints_as_the_oracle_does() {
         };
         let found = read(&case.text, case.display.as_deref(), &earlier);
         let same = match (&found, &case.result, &case.error) {
-            (Ok(f), Some(e), None) => f.text() == e.text && dump(f.tree()) == e.tree && f.unit().id() == e.unit && f.display() == e.display,
+            (Ok(f), Some(e), None) => {
+                f.text() == e.text
+                    && dump(f.tree()) == e.tree
+                    && f.unit().id() == e.unit
+                    && f.display() == e.display
+                    && serde_json::to_value(f.picture()).unwrap() == e.picture
+            }
             (Err(fault), None, Some(e)) => {
-                fault.code == e.code && e.start.is_none_or(|s| s == fault.start) && e.end.is_none_or(|end| end == fault.end)
+                fault.code == e.code
+                    && e.start.is_none_or(|s| s == fault.start)
+                    && e.end.is_none_or(|end| end == fault.end)
+                    && serde_json::to_value(&fault.suggestions).unwrap() == e.suggestions
             }
             _ => false,
         };
         if !same {
             let found = match &found {
-                Ok(f) => format!("{} {} {} {}", f.text(), dump(f.tree()), f.unit().id(), f.display()),
+                Ok(f) => format!("{} {} {} {} {}", f.text(), dump(f.tree()), f.unit().id(), f.display(), json!(f.picture())),
                 Err(fault) => format!("{fault:?}"),
             };
             failures.push(format!("{:?}: expected {:?} {:?}, found {found}", case.text, case.result, case.error));

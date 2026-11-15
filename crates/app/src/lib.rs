@@ -3,7 +3,7 @@
 //! variable library.
 //!
 //! Built so far: the database, `bt serve` with the router, the error
-//! replies, the origin rule, the static files and `GET /api/runs`. The
+//! replies, the origin rule, the static files, `GET /api/runs` and `POST /api/formula`. The
 //! worker, the other run and queue routes, `bt save` and the library are
 //! not built yet: the sections below describe what they will do.
 //!
@@ -75,6 +75,7 @@
 //! the same home is refused. At start, with the lock held, every running run
 //! goes back to waiting: this one rule covers both a crash and a shutdown.
 
+mod formula;
 pub mod http;
 mod store;
 

@@ -134,35 +134,63 @@ pub fn key(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
-/// Up to three of `known` that look like `text`, closest first: those whose
-/// matching forms differ in at most a third of their characters.
-pub fn suggestions<'a>(text: &str, known: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
-    let wanted: Vec<char> = key(text).chars().collect();
-    let mut close: Vec<(usize, &str)> = known
+/// Up to three of `known` that look like `word`, as Python's
+/// `difflib.get_close_matches` picks them: the best matches with a ratio of
+/// 0.6 or more, a higher ratio first, and of equal ratios the later matching
+/// form. `word` is compared as given; each name by its matching form. The
+/// rule must be Python's, because the suggestions must equal the ones the
+/// Python product's editor gives. Python's rule that sets aside very common
+/// characters in a word of 200 characters or more is left out on purpose: no
+/// real name is that long.
+pub fn suggestions<'a>(word: &str, known: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
+    let word: Vec<char> = word.chars().collect();
+    let mut close: Vec<(f64, String, &str)> = known
         .into_iter()
         .filter_map(|name| {
-            let other: Vec<char> = key(name).chars().collect();
-            let distance = edit_distance(&wanted, &other);
-            (distance * 3 <= wanted.len().max(other.len())).then_some((distance, name))
+            let form = key(name);
+            let chars: Vec<char> = form.chars().collect();
+            let ratio = 2.0 * matching(&chars, &word) as f64 / (chars.len() + word.len()) as f64;
+            (ratio >= 0.6).then_some((ratio, form, name))
         })
         .collect();
-    close.sort_by_key(|&(distance, _)| distance);
-    close.into_iter().take(3).map(|(_, name)| name).collect()
+    close.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    close.into_iter().take(3).map(|(_, _, name)| name).collect()
 }
 
-/// The Levenshtein distance.
-fn edit_distance(a: &[char], b: &[char]) -> usize {
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, x) in a.iter().enumerate() {
-        let mut diagonal = row[0];
-        row[0] = i + 1;
-        for (j, y) in b.iter().enumerate() {
-            let above = row[j + 1];
-            row[j + 1] = (diagonal + usize::from(x != y)).min(above + 1).min(row[j] + 1);
-            diagonal = above;
+/// The characters `difflib.SequenceMatcher` matches between `a` and `b`
+/// (without junk): the longest common block, then the same on each side of
+/// it, the earliest block of a length winning.
+fn matching(a: &[char], b: &[char]) -> usize {
+    let mut total = 0;
+    let mut pending = vec![(0, a.len(), 0, b.len())];
+    while let Some((alo, ahi, blo, bhi)) = pending.pop() {
+        // The block's start in each, and its length.
+        let (mut best_i, mut best_j, mut best) = (alo, blo, 0);
+        // `run[j + 1]`: the length of the block that ends at `a[i]` and `b[j]`.
+        let mut run = vec![0; b.len() + 1];
+        for i in alo..ahi {
+            let mut next = vec![0; b.len() + 1];
+            for j in blo..bhi {
+                if a[i] == b[j] {
+                    next[j + 1] = run[j] + 1;
+                    if next[j + 1] > best {
+                        (best_i, best_j, best) = (i + 1 - next[j + 1], j + 1 - next[j + 1], next[j + 1]);
+                    }
+                }
+            }
+            run = next;
+        }
+        if best > 0 {
+            total += best;
+            if alo < best_i && blo < best_j {
+                pending.push((alo, best_i, blo, best_j));
+            }
+            if best_i + best < ahi && best_j + best < bhi {
+                pending.push((best_i + best, ahi, best_j + best, bhi));
+            }
         }
     }
-    row[b.len()]
+    total
 }
 
 const fn input(name: &'static str, parameter: &'static str, display: &'static str) -> Name {

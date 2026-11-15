@@ -7,14 +7,17 @@
 //! parts of a formula or on the variables and measures it uses. A caller
 //! gets the checked tree ([`Node`]), its unit and display, and its canonical
 //! text: the tree printed as the product's `to_text` prints it, which reads
-//! back to the same tree. A refusal is a [`Fault`] with the product's error
-//! code and the characters at fault.
+//! back to the same tree, and its [`Picture`], the layout the editor draws.
+//! A refusal is a [`Fault`] with the product's error code, the characters at
+//! fault and the names it suggests instead.
 
 use crate::names::{self, Kind, NAMES};
 use crate::strategy::{MAX_LITERAL, expand};
 use market_data::Day;
 use market_data::parameters::{PARAMETERS, Parameter};
+use serde::Serialize;
 use std::sync::{Arc, LazyLock, OnceLock};
+use ts_rs::TS;
 
 /// A checked formula.
 #[derive(Debug)]
@@ -35,8 +38,9 @@ pub struct Formula {
 pub enum Node {
     /// The value of a parameter at the context.
     Parameter(Parameter),
-    /// A decimal constant: its text expanded without an exponent.
-    Constant { value: String, unit: Unit },
+    /// A decimal constant: its text expanded without an exponent, and as
+    /// typed.
+    Constant { value: String, literal: String, unit: Unit },
     Neg(Box<Node>),
     Binary { op: Op, left: Box<Node>, right: Box<Node> },
     /// A statistic of the `count` latest yearly values of an `annual.`
@@ -116,6 +120,16 @@ impl Unit {
         UNITS.into_iter().find(|u| u.id() == id).expect("a known unit")
     }
 
+    /// The word a number of this unit is followed by, if it has one.
+    fn word(self) -> Option<&'static str> {
+        match self {
+            Unit::Scalar => None,
+            Unit::Usd => Some("USD"),
+            Unit::UsdPerShare => Some("USD per share"),
+            Unit::Share => Some("shares"),
+        }
+    }
+
     /// The displays a threshold of this unit can be written in.
     pub fn displays(self) -> &'static [&'static str] {
         match self {
@@ -147,9 +161,11 @@ impl Unit {
     }
 }
 
-/// A formula reading that failed: the oracle's error code, a message, and
-/// the characters `[start, end)` of the fault, counted from 0.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A formula reading that failed: the oracle's error code, a message, the
+/// characters `[start, end)` of the fault, counted from 0, and up to three
+/// replacements for them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
 pub struct Fault {
     /// SYNTAX, UNKNOWN_NAME, STEP_ONLY and BAD_ARGUMENT come from the text;
     /// UNSUPPORTED_OPERATION, INVALID_SHAPE, INVALID_DATE, INVALID_LITERAL,
@@ -159,9 +175,32 @@ pub struct Fault {
     pub message: String,
     pub start: usize,
     pub end: usize,
+    pub suggestions: Vec<Suggestion>,
+}
+
+/// A replacement for the characters at fault: the names or functions that
+/// look like them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct Suggestion {
+    /// Replaces the characters at fault: a name as it is typed, or a function
+    /// word and `(`.
+    pub text: String,
+    /// The button's text: the name or the function word.
+    pub label: String,
 }
 
 impl Fault {
+    /// The message and its "Did you mean" sentence, for a caller with no
+    /// buttons.
+    pub fn sentence(&self) -> String {
+        if self.suggestions.is_empty() {
+            return self.message.clone();
+        }
+        let texts: Vec<String> = self.suggestions.iter().map(|s| format!("“{}”", s.text)).collect();
+        format!("{} Did you mean {}?", self.message, texts.join(", "))
+    }
+
     /// `characters 12–15`, counted from 1, or `character 4`.
     pub fn place(&self) -> String {
         if self.end > self.start + 1 {
@@ -204,6 +243,11 @@ impl Formula {
 
     pub fn tree(&self) -> &Node {
         &self.tree
+    }
+
+    /// The layout the editor draws to show how the text was read.
+    pub fn picture(&self) -> Picture {
+        picture(&self.tree, false)
     }
 
     pub fn unit(&self) -> Unit {
@@ -376,7 +420,7 @@ fn term_name(id: &str) -> &'static str {
 }
 
 fn fault(code: &'static str, start: usize, end: usize, message: impl Into<String>) -> Fault {
-    Fault { code, message: message.into(), start, end }
+    Fault { code, message: message.into(), start, end, suggestions: Vec::new() }
 }
 
 /// The unit with these exponents of US dollars and shares, if any.
@@ -462,7 +506,7 @@ impl Part {
     /// keeps only its counts, so that no tree is too deep to drop.
     fn bounded(mut self) -> Part {
         if self.depth > MAX_DEPTH {
-            self.node = Node::Constant { value: String::new(), unit: Unit::Scalar };
+            self.node = Node::Constant { value: String::new(), literal: String::new(), unit: Unit::Scalar };
         }
         self
     }
@@ -716,7 +760,7 @@ impl Reader {
             self.note(fault("INVALID_LITERAL", start, end, format!("{literal} is not a number this program can hold.")));
             literal.to_string()
         });
-        Part::leaf(Node::Constant { value, unit }, start, end, unit)
+        Part::leaf(Node::Constant { value, literal: literal.to_string(), unit }, start, end, unit)
     }
 
     fn close(&mut self, opening: usize) -> Result<(), Fault> {
@@ -752,8 +796,8 @@ impl Reader {
             Some(known) => self.term(known, start, end),
             None => {
                 let usable = self.known().filter(|k| !matches!(k.term, Term::StepOnly)).map(|k| k.label.as_str());
-                let hint = hint(name, usable, "");
-                Err(fault("UNKNOWN_NAME", start, end, format!("“{name}” is not a known name or a variable of this file.{hint}")))
+                let message = format!("“{name}” is not a known name or a variable of this file.");
+                Err(Fault { suggestions: suggest(&key, usable, ""), ..fault("UNKNOWN_NAME", start, end, message) })
             }
         }
     }
@@ -774,8 +818,9 @@ impl Reader {
         let opening = self.at;
         let stat = STATS.iter().find(|s| s.1 == function).map(|&(stat, _, spread)| (stat, spread));
         if stat.is_none() && !OTHER_FUNCTIONS.iter().any(|f| f.0 == function) {
-            let hint = hint(&function, STATS.iter().map(|s| s.1).chain(OTHER_FUNCTIONS.iter().map(|f| f.0)), "(");
-            return Err(fault("UNKNOWN_NAME", start, opening, format!("There is no function called “{word}”.{hint}")));
+            let words = STATS.iter().map(|s| s.1).chain(OTHER_FUNCTIONS.iter().map(|f| f.0));
+            let message = format!("There is no function called “{word}”.");
+            return Err(Fault { suggestions: suggest(&function, words, "("), ..fault("UNKNOWN_NAME", start, opening, message) });
         }
         self.at += 1;
         if function == "positive" {
@@ -1015,10 +1060,11 @@ impl Reader {
     }
 }
 
-/// `; did you mean …?` with up to three of `known` that look like `text`.
-fn hint<'a>(text: &str, known: impl IntoIterator<Item = &'a str>, suffix: &str) -> String {
-    let close: Vec<String> = names::suggestions(text, known).iter().map(|n| format!("“{}{suffix}”", spelling(n))).collect();
-    if close.is_empty() { String::new() } else { format!(" Did you mean {}?", close.join(", ")) }
+/// Up to three of `known` that look like `word`, each to be typed as its
+/// spelling and `suffix`.
+fn suggest<'a>(word: &str, known: impl IntoIterator<Item = &'a str>, suffix: &str) -> Vec<Suggestion> {
+    let close = names::suggestions(word, known);
+    close.into_iter().map(|name| Suggestion { text: format!("{}{suffix}", spelling(name)), label: name.to_string() }).collect()
 }
 
 // Printing (`formula_text._write`).
@@ -1031,23 +1077,37 @@ fn precedence(node: &Node) -> u8 {
     }
 }
 
+/// A negated constant or operation is printed in parentheses: `-(5)`.
+fn negated_in_parens(arg: &Node) -> bool {
+    matches!(arg, Node::Binary { .. } | Node::Constant { .. })
+}
+
+/// The function word of a statistic, and the years of its `values` yearly
+/// values.
+fn yearly(stat: Stat, values: u32) -> (&'static str, u32) {
+    let &(_, word, spread) = STATS.iter().find(|s| s.0 == stat).expect("a statistic");
+    (word, values - u32::from(spread))
+}
+
+/// `1 month`, `3 months`.
+fn counted(n: u32, word: &str) -> String {
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
+}
+
 fn write(node: &Node, out: &mut String) {
-    let count = |n: u32, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
     match node {
         Node::Parameter(p) => out.push_str(&spelling(term_name(p.id))),
         Node::Measure(m) => out.push_str(&spelling(m.name())),
         Node::Variable(f) => out.push_str(&spelling(f.name().expect("a variable has a name"))),
-        Node::Constant { value, unit } => {
+        Node::Constant { value, unit, .. } => {
             out.push_str(&editable(value));
-            out.push_str(match unit {
-                Unit::Scalar => "",
-                Unit::Usd => " USD",
-                Unit::UsdPerShare => " USD per share",
-                Unit::Share => " shares",
-            });
+            if let Some(word) = unit.word() {
+                out.push(' ');
+                out.push_str(word);
+            }
         }
         Node::Neg(arg) => {
-            let grouped = matches!(**arg, Node::Binary { .. } | Node::Constant { .. });
+            let grouped = negated_in_parens(arg);
             out.push_str(if grouped { "-(" } else { "-" });
             write(arg, out);
             if grouped {
@@ -1055,14 +1115,13 @@ fn write(node: &Node, out: &mut String) {
             }
         }
         Node::Annual { stat, count: values, parameter } => {
-            let &(_, word, spread) = STATS.iter().find(|s| s.0 == *stat).expect("a statistic");
-            let years = values - u32::from(spread);
-            out.push_str(&format!("{word}({}, {})", spelling(term_name(parameter.id)), count(years, "year")));
+            let (word, years) = yearly(*stat, *values);
+            out.push_str(&format!("{word}({}, {})", spelling(term_name(parameter.id)), counted(years, "year")));
         }
         Node::Lookback { months, arg } => {
             out.push_str("ago(");
             write(arg, out);
-            out.push_str(&format!(", {})", count(*months, "month")));
+            out.push_str(&format!(", {})", counted(*months, "month")));
         }
         Node::At { date, arg } => {
             out.push_str("at(");
@@ -1115,4 +1174,113 @@ fn editable(value: &str) -> String {
     let (first, rest) = significant.split_at(1);
     let rest = if rest.is_empty() { String::new() } else { format!(".{rest}") };
     format!("{sign}{first}{rest}e{exponent}")
+}
+
+/// How the editor draws a formula (the product's `formula_text.picture`): a
+/// fraction over a line, a function with its hint, each name as the list
+/// spells it, a number as it was typed. Brackets are not kept; `parens` is
+/// set where the tree needs them.
+#[derive(Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct Picture {
+    #[serde(flatten)]
+    pub shape: Shape,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub parens: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(untagged)]
+pub enum Shape {
+    Name {
+        name: String,
+    },
+    /// A number, with its unit word when it has one (`USD`, `USD per share`,
+    /// `shares`, and for a function's argument `years` or `months`).
+    Number {
+        number: String,
+        unit: Option<&'static str>,
+    },
+    Neg {
+        #[ts(type = "\"neg\"")]
+        op: &'static str,
+        arg: Box<Picture>,
+    },
+    Call {
+        #[serde(rename = "fn")]
+        function: &'static str,
+        args: Vec<Picture>,
+        hint: String,
+    },
+    Fraction {
+        #[ts(type = "\"/\"")]
+        op: &'static str,
+        top: Box<Picture>,
+        bottom: Box<Picture>,
+        /// The bottom must be above zero.
+        positive: bool,
+    },
+    Infix {
+        #[ts(type = "\"+\" | \"-\" | \"*\"")]
+        op: &'static str,
+        left: Box<Picture>,
+        right: Box<Picture>,
+    },
+}
+
+fn picture(node: &Node, parens: bool) -> Picture {
+    let plain = |shape| Picture { shape, parens: false };
+    let name = |name: &str| Shape::Name { name: name.to_string() };
+    let argument = |count: u32, one: &'static str, many: &'static str| {
+        plain(Shape::Number { number: count.to_string(), unit: Some(if count == 1 { one } else { many }) })
+    };
+    let shape = match node {
+        Node::Parameter(p) => name(term_name(p.id)),
+        Node::Measure(m) => name(m.name()),
+        Node::Variable(f) => name(f.name().expect("a variable has a name")),
+        Node::Constant { literal, unit, .. } => {
+            Shape::Number { number: literal.clone(), unit: unit.word() }
+        }
+        Node::Neg(arg) => Shape::Neg { op: "neg", arg: Box::new(picture(arg, negated_in_parens(arg))) },
+        Node::Annual { stat, count: values, parameter } => {
+            let (word, years) = yearly(*stat, *values);
+            let (lead, span) = match stat {
+                Stat::Mean => ("average of", counted(years, "yearly value")),
+                Stat::Min => ("lowest of", counted(years, "yearly value")),
+                Stat::Max => ("highest of", counted(years, "yearly value")),
+                Stat::Growth => ("change across", format!("{} ({})", counted(years, "year"), counted(*values, "yearly value"))),
+                Stat::Cagr => ("yearly growth rate across", format!("{} ({})", counted(years, "year"), counted(*values, "yearly value"))),
+            };
+            let args = vec![plain(name(term_name(parameter.id))), argument(years, "year", "years")];
+            Shape::Call { function: word, args, hint: format!("{lead} {span}") }
+        }
+        Node::Lookback { months, arg } => Shape::Call {
+            function: "ago",
+            args: vec![picture(arg, false), argument(*months, "month", "months")],
+            hint: format!("value {} earlier", counted(*months, "month")),
+        },
+        Node::At { date, arg } => Shape::Call {
+            function: "at",
+            args: vec![picture(arg, false), plain(Shape::Number { number: date.to_string(), unit: None })],
+            hint: format!("value on {date}"),
+        },
+        Node::Binary { op: op @ (Op::Div | Op::PositiveDiv), left, right } => {
+            Shape::Fraction { op: "/", top: Box::new(picture(left, false)), bottom: Box::new(picture(right, false)), positive: *op == Op::PositiveDiv }
+        }
+        Node::Binary { op, left, right } => {
+            let own = precedence(node);
+            let symbol = match op {
+                Op::Add => "+",
+                Op::Sub => "-",
+                _ => "*",
+            };
+            Shape::Infix {
+                op: symbol,
+                left: Box::new(picture(left, precedence(left) < own)),
+                right: Box::new(picture(right, precedence(right) <= own)),
+            }
+        }
+    };
+    Picture { shape, parens }
 }

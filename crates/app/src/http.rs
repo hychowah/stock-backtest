@@ -6,6 +6,7 @@
 //! | Route | Request | Reply |
 //! |---|---|---|
 //! | `GET /api/runs` | | [`RunsReply`]: the pause and every run without its strategy |
+//! | `POST /api/formula` | `FormulaRequest` | `FormulaReply`: `checked`, or a `fault` |
 //!
 //! Every reply is JSON. A refused request gets `{"error": {"message",
 //! "place"}}` with 400 for wrong input, 403 for a change from another
@@ -125,6 +126,7 @@ fn router(app: App) -> Router {
         .route("/api/runs", get(runs))
         // Each route module adds its routes here, with one line:
         // `.merge(crate::MODULE::routes())`, where `routes() -> Router<App>`.
+        .merge(crate::formula::routes())
         .fallback_service(web)
         .layer(middleware::from_fn(same_origin))
         .with_state(app)
