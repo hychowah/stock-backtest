@@ -118,6 +118,14 @@ fn a_journal_continues_only_the_same_last_day() {
     journal.record("px/A.json").unwrap();
     let journal = Journal::open(&home, day("2026-11-14"), true).unwrap();
     assert!(!journal.contains("px/A.json"));
+    // A journal that cannot be read blocks no update.
+    std::fs::write(&path, b"\xff\xfe").unwrap();
+    assert!(!Journal::open(&home, day("2026-11-15"), false).unwrap().contains("px/A.json"));
+    std::fs::write(&path, b"2026-11-15\npx/A.json\n\xff\n").unwrap();
+    let mut journal = Journal::open(&home, day("2026-11-15"), true).unwrap();
+    assert!(!journal.contains("px/A.json"));
+    journal.record("px/B.json").unwrap();
+    assert!(Journal::open(&home, day("2026-11-15"), true).unwrap().contains("px/B.json"));
 }
 
 #[test]

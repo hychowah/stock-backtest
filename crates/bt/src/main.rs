@@ -1,22 +1,24 @@
 //! `bt`: turns arguments into a request, calls its handler and prints the
 //! reply as JSON. An error, including a wrong argument, prints
-//! `{"error": {"message", "place"}}` and exits with status 1. Help and
-//! version print as text.
+//! `{"error": {"message", "place"}}` and exits with status 1; so does a
+//! failed data update, after its record. Help and version print as text.
 
-use chrono::{DateTime, SubsecRound, Utc};
+use chrono::{DateTime, FixedOffset, SubsecRound, Utc};
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use engine::commands::{CheckReply, RunReply, RunRequest, ScreenRequest, Target};
 use engine::cross_section::CrossSectionRequest;
 use engine::views::{Selection, range};
 use engine::{Schedule, Strategy};
+use fetch::update::{UpdateRequest, update};
 use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
+use market_data::updates::UpdateState;
 use market_data::{Day, Error, Market};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Stock screener and backtest.
 #[derive(Parser)]
@@ -151,6 +153,12 @@ enum Data {
         #[arg(long)]
         as_of: Option<String>,
     },
+    /// Download new provider data into raw/ for the US and Hong Kong, then prepare every market
+    Update {
+        /// The as-of time, RFC 3339 [default: now]
+        #[arg(long)]
+        as_of: Option<String>,
+    },
     /// Show each market's raw data and prepared generation
     Status,
     /// Export a market's prepared data as keyed tables
@@ -226,13 +234,19 @@ fn main() -> ExitCode {
         },
         Command::Save { result, name } => reply(root.and_then(|root| app::save(&root, &result, &name))),
         Command::Data(Data::Prepare { as_of }) => reply(home.and_then(|home| {
-            let as_of = match as_of {
-                Some(text) => DateTime::parse_from_rfc3339(&text)
-                    .map_err(|_| Error::new(format!("not an RFC 3339 time: {text:?}"), "as-of"))?,
-                None => Utc::now().trunc_subsecs(0).fixed_offset(),
-            };
-            commands::prepare(&home, &PrepareRequest { as_of })
+            commands::prepare(&home, &PrepareRequest { as_of: as_of_time(as_of)? })
         })),
+        Command::Data(Data::Update { as_of }) => {
+            let updated = home.and_then(|home| {
+                let request = UpdateRequest { as_of: as_of_time(as_of)? };
+                catch_stop()?;
+                update(&home, &request, &STOP)
+            });
+            // A failed update still prints its record, with its error.
+            let failed = updated.as_ref().is_ok_and(|reply| reply.progress.state == UpdateState::Failed);
+            let code = reply(updated);
+            if failed { ExitCode::from(1) } else { code }
+        }
         Command::Data(Data::Status) => reply(home.map(|home| commands::status(&home))),
         Command::Data(Data::Export { market, out, days }) => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
@@ -244,6 +258,28 @@ fn main() -> ExitCode {
             commands::inspect(&home, &InspectRequest { market, symbol, day })
         })),
     }
+}
+
+/// `--as-of`, or the current time.
+fn as_of_time(text: Option<String>) -> Result<DateTime<FixedOffset>, Error> {
+    match text {
+        Some(text) => DateTime::parse_from_rfc3339(&text).map_err(|_| Error::new(format!("not an RFC 3339 time: {text:?}"), "as-of")),
+        None => Ok(Utc::now().trunc_subsecs(0).fixed_offset()),
+    }
+}
+
+/// Set by Ctrl+C (SIGINT) or SIGTERM: the update stops as the stop file
+/// stops it.
+static STOP: AtomicBool = AtomicBool::new(false);
+
+fn catch_stop() -> Result<(), Error> {
+    for signal in [libc::SIGINT, libc::SIGTERM] {
+        // SAFETY: the action only stores to an atomic, which is safe in a
+        // signal handler.
+        unsafe { signal_hook_registry::register(signal, || STOP.store(true, Ordering::Relaxed)) }
+            .map_err(|e| Error::new(format!("cannot catch signals: {e}"), "update"))?;
+    }
+    Ok(())
 }
 
 /// `bt run`: every strategy file is read before any data, and each result

@@ -7,7 +7,10 @@
 //! a reply, and `body` is the exact decoded text. The lines of one request
 //! (one endpoint with one set of parameters) are served in file order, and
 //! the last one repeats. A request that is not in the store gets a 404 with
-//! an empty body.
+//! an empty body and is also kept apart ([`FakeProvider::unknown`]), so a
+//! test can assert that every request had a stored reply. A line may also
+//! hold `delay`, seconds to wait before replying, which keeps a request in
+//! flight.
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -48,6 +51,7 @@ struct Reply {
     status: u16,
     retry_after: Option<String>,
     body: String,
+    delay: Duration,
 }
 
 type Request = (String, BTreeMap<String, String>);
@@ -56,6 +60,7 @@ struct Store {
     replies: HashMap<Request, Vec<Reply>>,
     served: HashMap<Request, usize>,
     log: Vec<Arrival>,
+    unknown: Vec<Arrival>,
 }
 
 pub struct FakeProvider {
@@ -76,11 +81,12 @@ impl FakeProvider {
                 status: line["status"].as_u64().unwrap() as u16,
                 retry_after: line.get("retry_after").map(text),
                 body: line["body"].as_str().unwrap().to_string(),
+                delay: Duration::from_secs_f64(line.get("delay").map_or(0.0, |d| d.as_f64().unwrap())),
             });
         }
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
-        let store = Arc::new(Mutex::new(Store { replies, served: HashMap::new(), log: Vec::new() }));
+        let store = Arc::new(Mutex::new(Store { replies, served: HashMap::new(), log: Vec::new(), unknown: Vec::new() }));
         let started = Instant::now();
         let shared = store.clone();
         std::thread::spawn(move || {
@@ -100,6 +106,11 @@ impl FakeProvider {
     /// The requests so far, in order of arrival.
     pub fn requests(&self) -> Vec<Arrival> {
         self.store.lock().unwrap().log.clone()
+    }
+
+    /// The requests that had no stored reply (each got a 404).
+    pub fn unknown(&self) -> Vec<Arrival> {
+        self.store.lock().unwrap().unknown.clone()
     }
 }
 
@@ -150,15 +161,21 @@ fn serve(stream: TcpStream, store: &Mutex<Store>, encoding: Encoding, started: I
         let reply = {
             let mut store = store.lock().unwrap();
             let at = started.elapsed();
-            store.log.push(Arrival { endpoint: endpoint.clone(), params: params.clone(), key, accepts_gzip, user_agent, at });
+            let arrival = Arrival { endpoint: endpoint.clone(), params: params.clone(), key, accepts_gzip, user_agent, at };
+            store.log.push(arrival.clone());
             let request = (endpoint, params);
             let index = *store.served.entry(request.clone()).and_modify(|n| *n += 1).or_insert(0);
-            store.replies.get(&request).map(|replies| {
+            let reply = store.replies.get(&request).map(|replies| {
                 let reply = &replies[index.min(replies.len() - 1)];
-                (reply.status, reply.retry_after.clone(), reply.body.clone())
-            })
+                (reply.status, reply.retry_after.clone(), reply.body.clone(), reply.delay)
+            });
+            if reply.is_none() {
+                store.unknown.push(arrival);
+            }
+            reply
         };
-        let (status, retry_after, body) = reply.unwrap_or((404, None, String::new()));
+        let (status, retry_after, body, delay) = reply.unwrap_or((404, None, String::new(), Duration::ZERO));
+        std::thread::sleep(delay);
         if status == 0 {
             return;
         }

@@ -279,15 +279,12 @@ impl Journal {
     /// Opens the journal of the update whose last price day is `end`. With
     /// `resume`, a journal of the same day keeps its items (an unfinished
     /// last line, cut by a crash, is removed); otherwise a new, empty journal replaces it.
+    /// A journal that cannot be read counts as empty: it only saves requests.
     pub fn open(home: &Home, end: Day, resume: bool) -> Result<Journal, Error> {
         let path = path(home, "update.done");
         let fail = |e: io::Error| Error::new(format!("cannot open the update journal: {e}"), path.display());
         let mut items = HashSet::new();
-        let text = match fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
-            Err(e) => return Err(fail(e)),
-        };
+        let text = if resume { fs::read_to_string(&path).unwrap_or_default() } else { String::new() };
         let complete = text.rfind('\n').map_or("", |i| &text[..i]);
         let mut lines = complete.lines();
         if resume && lines.next() == Some(end.to_string().as_str()) {

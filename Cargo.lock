@@ -168,9 +168,11 @@ dependencies = [
  "engine",
  "fetch",
  "flate2",
+ "libc",
  "market-data",
  "serde",
  "serde_json",
+ "signal-hook-registry",
  "tables",
  "tempfile",
  "ureq",
@@ -377,6 +379,8 @@ name = "fetch"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "market-data",
+ "serde",
  "ureq",
 ]
 

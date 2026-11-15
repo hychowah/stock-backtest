@@ -108,6 +108,13 @@ impl History {
         Ok(history)
     }
 
+    /// A history as if its file were missing, for a saved file that
+    /// [`load`](Self::load) refuses: asked whole, its reply replaces the file.
+    pub fn missing(raw: &Raw, file: &HistoryFile) -> History {
+        let stock = matches!(file, HistoryFile::Prices(_));
+        History { path: file.path(raw), field: file.field(), stock, saved: None, loaded: BTreeMap::new(), rows: BTreeMap::new() }
+    }
+
     /// The row's day when the row is usable.
     fn usable(&self, row: &PyJson) -> Option<Day> {
         let day = PyJson::day(row.get("date"))?;

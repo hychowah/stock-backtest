@@ -6,7 +6,7 @@ Every command prints one JSON document, pretty-printed over several lines (the e
 
 ## What bt needs
 
-A run needs a home: a folder that holds the raw provider files (`raw/`) and the prepared data (`data/prepared/`). Every command accepts `--home HOME_DIR`. Without it, `bt` uses the folder above the folder that holds the `bt` program. Preparing the data is not the subject of this page: a run on a home with no prepared data stops with "... is not prepared: run `bt data prepare`".
+A run needs a home: a folder that holds the raw provider files (`raw/`) and the prepared data (`data/prepared/`). Every command accepts `--home HOME_DIR`. Without it, `bt` uses the folder above the folder that holds the `bt` program. `bt data update` (see [Updating the data](#updating-the-data)) downloads new data into `raw/` and prepares it. A run on a home with no prepared data stops with "... is not prepared: run `bt data prepare`".
 
 ```bash
 bt data status --home HOME_DIR
@@ -276,6 +276,30 @@ variants/pe-40.json  median 0.228  worst 0.172  best 0.351  SPY 0.350  beat  3  
 ```
 
 The folder `loop-best` then holds the tables of `variants/pe-30.json`. Before each new run, remove `loop-out` and `loop-best` or choose other folder names, because `--out` must be new or empty. Change the values in the `for` line, or the strategy, to run other variants. Twenty variants are twenty files in one `bt run`.
+
+## Updating the data
+
+```bash
+bt data update --home HOME_DIR [--as-of TIME]
+```
+
+`bt data update` downloads new data from the data provider into `raw/` for the US and Hong Kong, then prepares every market as `bt data prepare` does. It changes the files of `raw/` and its own files in `data/`: `update.json` (the record that `bt data status` shows as `update`), `update.lock`, `update.stop` and `update.done`. It does not change Tokyo's raw files.
+
+It needs the account's key in `~/.grok/secrets/fmp_api_key`, and a home whose `raw/` already holds the US or Hong Kong company list. It does not start from an empty `raw/`. It asks for:
+- the company lists, and prices through the last day whose 22:00 UTC has passed;
+- the companies' reports when the Hong Kong date is a Saturday that was not checked yet, or the last check is more than 7 days old. Every company of the lists, delisted ones included, when the last such full check is more than 90 days old. A home without `data/update.json` has no check yet, so its first update checks all reports.
+
+`--as-of TIME` (RFC 3339) replaces the current time: it sets the last price day, the Hong Kong date of the report check and the as-of time of the prepared data.
+
+One update runs on a home at a time: a second one stops with "an update is already running". Ctrl+C, SIGTERM or the file `data/update.stop` stops an update: the requests in flight end, the saved files stay, and the data is not prepared. To continue, run the command again before the last price day changes (at 22:00 UTC): it does not ask again for the files that the stopped update saved. After that time, the command starts a new update. A stop while the data is prepared lets preparation finish.
+
+A saved price, rate or calendar file that cannot be read is asked again whole and replaced. A saved statements file that cannot be read fails its item, because the earlier report variants that it holds cannot be asked again.
+
+The reply is the update's record, with `prepared`, the markets that preparation published (as `bt data prepare` prints them). `state` is:
+- `complete`: every item was updated, and the data is prepared.
+- `partial`: some items failed. `failed` counts them and `failures` names the first 20, each with its `message` and its file (`place`). A failed item keeps its saved file, and the next update asks for it again; after a failed report item, a later update checks the reports again. The data is prepared.
+- `stopped`: a stop ended the update before preparation.
+- `failed`: the downloads ended early because the provider refused the key (status 401), the key file cannot be read, a company list cannot be asked, comes back empty or cannot be read, or a file cannot be written; the saved data is then still prepared. Or preparation failed. `error` says what happened, and the command ends with status 1.
 
 ## Serving the website
 

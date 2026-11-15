@@ -9,9 +9,11 @@ chrono = { version = "0.4", default-features = false, features = ["std", "now"] 
 clap = { version = "4", features = ["derive"] }
 engine = { path = "../engine" }
 fetch = { path = "../fetch" }
+libc = "0.2"
 market-data = { path = "../market-data" }
 serde = "1"
 serde_json = { version = "1", features = ["float_roundtrip"] }
+signal-hook-registry = "1"
 tables = { path = "../tables" }
 
 [dev-dependencies]
