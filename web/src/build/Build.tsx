@@ -13,7 +13,7 @@ import { Latest, type Screen } from "./Latest.tsx";
 import { changeDraft, placeDefaultStart, update, useBuildState } from "./state.ts";
 import { Steps } from "./Steps.tsx";
 
-export { editHeld, heldEditOpen, tune } from "./state.ts";
+export { editHeld, heldEditOpen, OPEN_EDIT, tune } from "./state.ts";
 
 /** A refusal in words: its place, then the server's message. */
 const refusal = (failure: ApiFailure) => (failure.place ? placeInWords(failure.place) + ": " : "") + failure.message;

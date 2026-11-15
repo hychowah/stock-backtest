@@ -72,7 +72,8 @@ export function heldEditOpen(): boolean {
   return state.held !== null;
 }
 
-const OPEN_EDIT = "Save or cancel the queued edit before replacing the strategy settings.";
+/** Why a load is refused while a held edit is open. */
+export const OPEN_EDIT = "Save or cancel the queued edit before replacing the strategy settings.";
 
 /** Shows Build strategy with the refusal of a load while an edit is open. */
 function refuseLoad(): void {

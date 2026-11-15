@@ -8,7 +8,8 @@ import { useRead } from "../read.ts";
 import { go } from "../route.ts";
 import { choiceWords, failureNote, inMarket, inProgress, kindWords, marketButtons, marketCounts, queuePlaces, rowState, savedRuns, stateWords, windowWords } from "../runs.ts";
 import { useMarket } from "./market.ts";
-import { type Note, type Perform, useActions } from "./note.ts";
+import { editRun, tuneRun } from "./load.ts";
+import { type Note, type Perform, type SetNote, useActions } from "./note.ts";
 import { RunDetails } from "./RunDetails.tsx";
 
 /** The queue panel: the runs that are not complete, with the controls of the
@@ -19,7 +20,7 @@ import { RunDetails } from "./RunDetails.tsx";
  *  server's refusal. */
 export function QueuePanel() {
   const runs = useRuns();
-  const { note, busy, perform } = useActions();
+  const { note, setNote, busy, perform } = useActions();
   const list = runs.value?.runs ?? [];
   const places = queuePlaces(list);
   const [chosen] = useMarket();
@@ -59,7 +60,8 @@ export function QueuePanel() {
           with the same random date set. If the server stopped without warning, the test it was running is held until you select <strong>Release hold</strong> or delete it.
         </p>
         <p class="hint">
-          Select the name of a saved backtest to open its result. <strong>Details</strong> in a row shows the settings of that test and its other actions. Tick saved backtests, then select <strong>Compare</strong>,{" "}
+          Select the name of a saved backtest to open its result. <strong>Details</strong> in a row shows the settings of that test and its other actions; <strong>Tune</strong> copies the
+          settings to Build strategy. Tick saved backtests, then select <strong>Compare</strong>,{" "}
           <strong>Lock ticked</strong> or <strong>Delete ticked</strong>; the box in the heading ticks every row shown. A locked test cannot be deleted until you unlock it. Details and the comparison read stored results and run no test.
         </p>
         <p class="hint">
@@ -77,7 +79,7 @@ export function QueuePanel() {
       </div>
       <ol id="queue-list" aria-label="Tests in progress">
         {rows.length ? (
-          rows.map((run) => <QueueRow key={run.id} run={run} place={places.get(run.id)} now={now} busy={busy} perform={perform} />)
+          rows.map((run) => <QueueRow key={run.id} run={run} place={places.get(run.id)} now={now} busy={busy} perform={perform} setNote={setNote} />)
         ) : (
           <li class="run-empty">No {chosen && choiceWords(chosen) + " "}test is waiting or running. Select Add to queue in Build strategy.</li>
         )}
@@ -115,7 +117,7 @@ function MarketSwitch({ list }: { list: RunRow[] }) {
 /** One run of the queue panel: one line, and its other actions and settings
  *  in Details. A running run shows the time since it started; a failed run the
  *  server's message and place. */
-function QueueRow({ run, place, now, busy, perform }: { run: RunRow; place: { place: number; last: boolean } | undefined; now: number; busy: boolean; perform: Perform }) {
+function QueueRow({ run, place, now, busy, perform, setNote }: { run: RunRow; place: { place: number; last: boolean } | undefined; now: number; busy: boolean; perform: Perform; setNote: SetNote }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // A pending Delete ends when the run changes state.
@@ -144,11 +146,13 @@ function QueueRow({ run, place, now, busy, perform }: { run: RunRow; place: { pl
       <details class="run-menu" onToggle={(event) => setOpen(event.currentTarget.open)}>
         <summary aria-label={`Details of ${run.name}`}>Details</summary>
         <div class="run-actions">
+          {queued && button("Edit settings", () => editRun(run.id, perform, setNote))}
           {queued && place && button("Move up", () => move(place.place - 1), place.place === 1)}
           {queued && place && button("Move down", () => move(place.place + 1), place.last)}
           {run.state === "held" && button("Release hold", () => perform(() => client.release(run.id), "Hold released. The test waits in its place."))}
           {run.state === "running" && button("Stop test", () => perform(() => client.stop(run.id), "Stop requested. The next test starts after cleanup."))}
           {(run.state === "waiting" || run.state === "running" || run.state === "failed") && button("Open result", () => go({ view: "review", id: run.id }))}
+          {button("Tune", () => tuneRun(run.id, perform, setNote))}
           {run.state !== "running" &&
             (confirming ? (
               <>

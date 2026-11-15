@@ -8,7 +8,8 @@ import { go } from "../route.ts";
 import { FIRST_SORTING, type SortKey, type Sorting, choiceWords, inMarket, kindWords, resorted, savedAt, savedCagr, savedRuns, sortSaved, windowWords } from "../runs.ts";
 import { Compare, readDescribed } from "./Compare.tsx";
 import { useMarket } from "./market.ts";
-import { type Perform, useActions } from "./note.ts";
+import { type Perform, type SetNote, useActions } from "./note.ts";
+import { tuneRun } from "./load.ts";
 import { StatusLine } from "./QueuePanel.tsx";
 import { RunDetails } from "./RunDetails.tsx";
 
@@ -165,7 +166,7 @@ export function SavedPanel() {
 
 /** One saved run: one line, and its settings and other actions in Details. The
  *  name opens the result. */
-function SavedRow({ run, ticked, onTick, busy, perform, setNote }: { run: RunRow; ticked: boolean; onTick: (on: boolean) => void; busy: boolean; perform: Perform; setNote: ReturnType<typeof useActions>["setNote"] }) {
+function SavedRow({ run, ticked, onTick, busy, perform, setNote }: { run: RunRow; ticked: boolean; onTick: (on: boolean) => void; busy: boolean; perform: Perform; setNote: SetNote }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -240,6 +241,7 @@ function SavedRow({ run, ticked, onTick, busy, perform, setNote }: { run: RunRow
             </>
           ) : (
             <>
+              {button("Tune", () => tuneRun(run.id, perform, setNote))}
               {button("Rename", () => {
                 setRenaming(run.name);
                 setConfirming(false);

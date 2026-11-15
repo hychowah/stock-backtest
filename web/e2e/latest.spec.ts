@@ -33,6 +33,9 @@ test("the latest picks and a pick's step trail equal the reply of POST /api/scre
   await expect(page.locator("#latest-date")).toHaveText(reply.day);
   await expect(page.locator("header .pill")).toHaveText(reply.day);
   await expect(page.locator("#latest-count")).toHaveText(String(reply.picks.length));
+  expect(reply.median_market_cap).toBeDefined();
+  await expect(page.locator("#latest-median-cap")).toHaveText(format(reply.median_market_cap, "usd_million"));
+  await expect(page.locator("#latest-median-yield")).toHaveText(format(reply.median_ebitda_yield, "percent"));
   await expect(page.locator("#results-state")).toHaveText("");
   for (const [i, pick] of reply.picks.entries()) {
     // A closed Details shows only its summary.
@@ -42,11 +45,14 @@ test("the latest picks and a pick's step trail equal the reply of POST /api/scre
       pick.name,
       pick.exchange,
       pick.sector || "Unknown",
+      format(pick.price, "number"),
       format(pick.market_cap, "usd_million"),
       format(pick.enterprise_value, "usd_million"),
       format(pick.ebitda_yield, "percent"),
       format(pick.ev_ebitda, "multiple"),
       pick.fiscal,
+      pick.known,
+      pick.price_date,
       "Details",
     ]);
   }

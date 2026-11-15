@@ -333,3 +333,15 @@ test("Compare shows the settings that differ first, then the same ones, with the
   await page.locator("#saved-clear").click();
   await expect(page.locator("#saved-bar")).toBeHidden();
 });
+
+test("Tune in a saved row copies the run's settings to Build strategy", async ({ page, home }) => {
+  await addCase(home, "builtins/hk-sleeves", "Two sleeves in Hong Kong");
+  await finished(home);
+  await page.goto("/#/runs");
+  const row = await details(savedRow(page, "Two sleeves in Hong Kong"));
+  await row.getByRole("button", { name: "Tune", exact: true }).click();
+  await expect(page).toHaveURL(/#\/build$/);
+  await expect(page.locator("#stock-market")).toHaveValue("hk");
+  await expect(page.locator("#sleeve-tabs button")).toHaveText(["Value", "Income"]);
+  await expect(page.locator("#mode-backtest")).toHaveAttribute("aria-pressed", "true");
+});

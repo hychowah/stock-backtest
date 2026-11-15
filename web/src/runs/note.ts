@@ -31,3 +31,6 @@ export function useActions() {
 
 /** The `perform` of useActions, for the rows that send changes. */
 export type Perform = ReturnType<typeof useActions>["perform"];
+
+/** The `setNote` of useActions, for a row that says why it sent nothing. */
+export type SetNote = ReturnType<typeof useActions>["setNote"];

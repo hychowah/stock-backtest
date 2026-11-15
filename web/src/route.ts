@@ -32,7 +32,12 @@ export function hrefOf(route: Route): string {
   return `#/${route.view}`;
 }
 
-/** Shows a route: sets the address, which the shell follows. */
+/** Shows a route: sets the address, which the shell follows. When the
+ *  address is already the route's, a `hashchange` event is sent all the same,
+ *  so the shell does what it does for any other visit: it closes the queue
+ *  tray and scrolls to the top. */
 export function go(route: Route): void {
-  location.hash = hrefOf(route);
+  const hash = hrefOf(route);
+  if (location.hash === hash) dispatchEvent(new HashChangeEvent("hashchange"));
+  else location.hash = hash;
 }

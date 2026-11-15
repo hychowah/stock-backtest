@@ -1,5 +1,4 @@
 import type { Locator, Page } from "@playwright/test";
-import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,23 +25,11 @@ function canonical(strategy: StrategyFile): StrategyFile {
   }
 }
 
-/** The site's script with Build strategy's tune, editHeld and heldEditOpen on
- *  `globalThis`,
- *  which the other workspaces call; it stands in for main.js. */
-let exposed: Promise<string> | undefined;
-async function withLoaders(page: Page): Promise<void> {
-  exposed ??= build({
-    stdin: { contents: 'import "./src/main.tsx"; import { editHeld, heldEditOpen, tune } from "./src/build/Build.tsx"; Object.assign(globalThis, { editHeld, heldEditOpen, tune });', resolveDir: web, loader: "ts" },
-    bundle: true,
-    format: "esm",
-    jsx: "automatic",
-    jsxImportSource: "preact",
-    outdir: join(tmpdir(), "unused"),
-    write: false,
-    logLevel: "warning",
-  }).then((result) => result.outputFiles.find((file) => file.path.endsWith(".js"))!.text);
-  const body = await exposed;
-  await page.route("**/main.js", (route) => route.fulfill({ body, contentType: "text/javascript" }));
+/** A row of the queue panel by the run's name, with its Details open. */
+async function queueRow(page: Page, name: string): Promise<Locator> {
+  const row = page.locator("#queue-list > li").filter({ has: page.locator(".run-name", { hasText: name }) });
+  if (!(await row.locator("details").evaluate((details) => (details as HTMLDetailsElement).open))) await row.locator("summary").click();
+  return row;
 }
 
 /** The values of the fields a locator finds, in page order. */
@@ -224,75 +211,77 @@ test("a reload keeps the draft, and Reset strategy brings back the default steps
   await expect(page.locator("#mode-latest")).toHaveAttribute("aria-pressed", "true");
 });
 
-test("a held run's settings are edited and saved, or the edit is cancelled, and the live draft stays", async ({ page, home }) => {
-  await withLoaders(page);
+test("Edit settings of a waiting run saves through Save changes or ends with Cancel edit, and the live draft stays", async ({ page, home }) => {
   const strategy = { sleeves: [{ steps: [{ filter: "P/E", op: "<", value: "30" }, { rank: "ROE", order: "highest", from: 1, to: 5 }] }] } satisfies StrategyFile;
-  const added = await home.api<RunRow>("POST", "/api/runs", {
-    name: "Held test",
-    market: "us",
-    schedule: { start: "2021-07-01", end: "2023-06-28", every: "6m" },
-    strategy,
-  } satisfies AddRun);
-  const hold = async () => {
-    await home.api("POST", `/api/runs/${added.id}/hold`);
-    return home.api<RunRow>("GET", `/api/runs/${added.id}`);
-  };
-  type Loaders = { editHeld: (run: RunRow) => void; tune: (run: RunRow) => void; heldEditOpen: () => boolean };
-  const open = () => page.evaluate(() => (globalThis as unknown as Loaders).heldEditOpen());
+  const schedule = { start: "2021-07-01", end: "2023-06-28", every: "6m" };
+  const added = await home.api<RunRow>("POST", "/api/runs", { name: "Held test", market: "us", schedule, strategy } satisfies AddRun);
+  const other = await home.api<RunRow>("POST", "/api/runs", { name: "Other test", market: "us", schedule, strategy } satisfies AddRun);
+  const state = async (id: number) => (await home.api<RunRow>("GET", `/api/runs/${id}`)).state;
+  const sources = page.locator("#strategy-steps [role=combobox]");
 
-  await page.goto("/#/runs");
-  await page.evaluate((run) => (globalThis as unknown as { editHeld: (run: RunRow) => void }).editHeld(run), await hold());
+  // Edit settings from the queue tray on Build strategy closes the tray.
+  await page.goto("/#/build");
+  await page.click("#workspace-queue-open");
+  await expect(page.locator("#workspace-queue-tray")).toBeVisible();
+  await (await queueRow(page, "Held test")).getByRole("button", { name: "Edit settings" }).click();
+  await expect(page.locator("#queue-add")).toHaveText("Save changes");
+  await expect(page.locator("#workspace-queue-tray")).toBeHidden();
   await expect(page).toHaveURL(/#\/build$/);
+  expect(await state(added.id)).toBe("held");
   await expect(page.locator("#queue-add")).toHaveText("Save changes");
   await expect(page.locator("#queue-cancel-edit")).toBeVisible();
   await expect(page.locator("#queue-edit-note")).toContainText("Editing “Held test”.");
   await expect(page.locator("#queue-name")).toHaveValue("Held test");
-  await expect.poll(() => values(page.locator("#strategy-steps [role=combobox]"))).toEqual(["P/E", "ROE"]);
+  await expect.poll(() => values(sources)).toEqual(["P/E", "ROE"]);
   await expect(page.locator("#date-testing")).toHaveValue("single");
   await expect(page.locator("#rebalance-months")).toHaveValue("6");
-  expect(await open()).toBe(true);
 
-  // While the edit is open, another edit and Tune are refused, and the edit stays.
-  for (const load of ["editHeld", "tune"] as const) {
-    await page.evaluate(([run, load]) => (globalThis as unknown as Loaders)[load](run), [added, load] as const);
-    await expect(page.locator("#queue-add-status")).toHaveText("Save or cancel the queued edit before replacing the strategy settings.");
-    await expect.poll(() => values(page.locator("#strategy-steps [role=combobox]"))).toEqual(["P/E", "ROE"]);
+  // While the edit is open, Edit settings and Tune of another run are refused:
+  // nothing is held, the page stays, and the edit stays. The tray draws its
+  // panel anew each time it opens, so each refusal is its own.
+  for (const action of ["Edit settings", "Tune"]) {
+    await page.click("#workspace-queue-open");
+    await expect(page.locator("#queue-status")).not.toHaveText(/Save or cancel/);
+    await (await queueRow(page, "Other test")).getByRole("button", { name: action }).click();
+    await expect(page.locator("#queue-status")).toHaveText("Save or cancel the queued edit before replacing the strategy settings.");
+    await expect(page.locator("#workspace-queue-tray")).toBeVisible();
+    await expect(page).toHaveURL(/#\/build$/);
+    await page.click("#workspace-queue-close");
   }
+  expect(await state(other.id)).toBe("waiting");
+  await expect.poll(() => values(sources)).toEqual(["P/E", "ROE"]);
 
   await page.fill("#step-rank_to-2", "7");
   await page.selectOption("#rebalance-months", "3");
   await page.click("#queue-add");
   await expect(page.locator("#queue-add-status")).toHaveText("Queued test updated. It can run with the new settings.");
   await expect(page.locator("#queue-add")).toHaveText("Add to queue");
-  expect(await open()).toBe(false);
   // The live draft, the default, is shown again.
-  await expect.poll(() => values(page.locator("#strategy-steps [role=combobox]"))).toEqual(["Market cap", "Enterprise value", "EBITDA yield"]);
-  await expect.poll(async () => (await home.api<RunRow>("GET", `/api/runs/${added.id}`)).state).toBe("waiting");
+  await expect.poll(() => values(sources)).toEqual(["Market cap", "Enterprise value", "EBITDA yield"]);
   const saved = await home.api<RunRow>("GET", `/api/runs/${added.id}`);
+  expect(saved.state).toBe("waiting");
   expect(saved.name).toBe("Held test");
-  expect(saved.schedule).toEqual({ start: "2021-07-01", end: "2023-06-28", every: "3m" });
+  expect(saved.schedule).toEqual({ ...schedule, every: "3m" });
   expect(saved.strategy).toEqual(canonical({ sleeves: [{ steps: [strategy.sleeves[0]!.steps[0]!, { rank: "ROE", order: "highest", from: 1, to: 7 }] }] }));
 
-  await page.evaluate((run) => (globalThis as unknown as { editHeld: (run: RunRow) => void }).editHeld(run), await hold());
+  await page.goto("/#/runs");
+  await (await queueRow(page, "Held test")).getByRole("button", { name: "Edit settings" }).click();
   await page.fill("#step-rank_to-2", "9");
   // A refused save keeps the edit open.
   await page.fill("#step-value-1", "");
   await page.click("#queue-add");
   await expect(page.locator("#queue-add-status")).toContainText(/^Sleeve 1, step 1: /);
   await expect(page.locator("#queue-add")).toHaveText("Save changes");
-  // Cancel edit ends the edit even when the release is refused.
-  await home.api("POST", `/api/runs/${added.id}/release`);
+  // Cancel edit releases the run and keeps its settings.
   await page.click("#queue-cancel-edit");
   await expect(page.locator("#queue-add-status")).toHaveText("Edit cancelled. Its previous settings are kept.");
   await expect(page.locator("#queue-cancel-edit")).toBeHidden();
-  const kept = await home.api<RunRow>("GET", `/api/runs/${added.id}`);
-  expect(kept.state).toBe("waiting");
-  expect(kept.strategy).toEqual(saved.strategy);
-  await home.api("DELETE", `/api/runs/${added.id}`);
+  await expect.poll(() => state(added.id)).toBe("waiting");
+  expect((await home.api<RunRow>("GET", `/api/runs/${added.id}`)).strategy).toEqual(saved.strategy);
+  for (const run of [added, other]) await home.api("DELETE", `/api/runs/${run.id}`);
 });
 
-test("Tune puts a run's settings into the live draft without its name", async ({ page, home }) => {
-  await withLoaders(page);
+test("Tune puts a run's settings into the live draft without its name, and adding it again stores the same settings", async ({ page, home }) => {
   const strategy: StrategyFile = {
     sleeves: [
       { name: "Land", steps: [{ filter: "Sector", op: "is", value: "Industrials" }, { rank: "EBITDA yield", order: "highest", from: 1, to: 2 }] },
@@ -301,8 +290,9 @@ test("Tune puts a run's settings into the live draft without its name", async ({
   };
   const added = await home.api<RunRow>("POST", "/api/runs", { name: "To tune", market: "hk", schedule: { start: "2021-07-01", end: "2023-06-28", every: "2w", trials: 3, seed: 5 }, strategy } satisfies AddRun);
   await page.goto("/#/runs");
-  await page.evaluate((run) => (globalThis as unknown as { tune: (run: RunRow) => void }).tune(run), await home.api<RunRow>("GET", `/api/runs/${added.id}`));
+  await (await queueRow(page, "To tune")).getByRole("button", { name: "Tune" }).click();
   await expect(page).toHaveURL(/#\/build$/);
+  await expect(page.locator("#queue-add-status")).toHaveText("Settings copied to the strategy controls. Change them and add a new test.");
   await expect(page.locator("#mode-backtest")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#stock-market")).toHaveValue("hk");
   await expect(page.locator("#sleeve-tabs button")).toHaveText(["Land", "Large"]);
@@ -313,7 +303,6 @@ test("Tune puts a run's settings into the live draft without its name", async ({
   await expect(page.locator("#repeat-random")).toBeChecked();
   await expect(page.locator("#random-seed")).toHaveValue("5");
 
-  // Adding it again stores the same canonical form.
   await page.fill("#queue-name", "Tuned");
   await page.click("#queue-add");
   await expect(page.locator("#queue-add-status")).toHaveText("Test added to the queue. You can change the settings and add another.");
