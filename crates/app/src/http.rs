@@ -5,35 +5,46 @@
 //!
 //! | Route | Request | Reply |
 //! |---|---|---|
-//! | `GET /api/runs` | | [`RunsReply`](crate::RunsReply): the pause and every run without its strategy |
-//! | `POST /api/runs` | [`AddRun`](crate::AddRun) | the new waiting run |
-//! | `GET /api/runs/{id}` | | the [`RunRow`](crate::RunRow) with its canonical strategy |
-//! | `PATCH /api/runs/{id}` | [`EditRun`](crate::EditRun): name, locked, and a waiting or held run's settings | the run |
-//! | `DELETE /api/runs/{id}` | | `{}`; 409 when locked; a running run is stopped |
+//! | `GET /api/runs` | | [`RunsReply`](crate::RunsReply): the pause and every run, without its strategy |
+//! | `POST /api/runs` | [`AddRun`](crate::AddRun) | the new waiting [`RunRow`](crate::RunRow) |
+//! | `GET /api/runs/{id}` | | the run |
+//! | `PATCH /api/runs/{id}` | [`EditRun`](crate::EditRun): the name, the lock, and a waiting or held run's settings | the run |
+//! | `DELETE /api/runs/{id}` | | [`Deleted`](crate::Deleted); 409 when locked; a running run is stopped |
 //! | `POST /api/runs/{id}/hold`, `release`, `stop` | | the run |
 //! | `POST /api/runs/{id}/move` | [`MoveRun`](crate::MoveRun) | the run |
 //! | `PUT /api/queue` | [`Queue`](crate::Queue) | the same |
-//! | `GET /api/variables` | | [`Variable`](crate::Variable)s in dependency order |
+//! | `GET /api/variables` | | the library's [`Variable`](crate::Variable)s, in dependency order |
 //! | `POST /api/variables` | [`NewVariable`](crate::NewVariable) | the new entry |
 //! | `PUT /api/variables/{id}` | [`NewVariable`](crate::NewVariable) | the entry |
-//! | `DELETE /api/variables/{id}` | | `{}`; 409 when another entry uses it |
-//! | `POST /api/formula` | `FormulaRequest` | `FormulaReply`: `checked`, or a `fault` |
+//! | `DELETE /api/variables/{id}` | | [`Deleted`](crate::Deleted); 409 when another entry uses it |
+//! | `POST /api/formula` | [`FormulaRequest`](crate::formula::FormulaRequest) | [`FormulaReply`](crate::formula::FormulaReply): `checked`, or a `fault`, always with 200 |
 //! | `GET /api/runs/{id}/trials` | | [`TrialsReply`](crate::results::TrialsReply): the statistics and each trial |
 //! | `GET /api/runs/{id}/periods?trial` | | one trial's `PeriodRow`s |
 //! | `GET /api/runs/{id}/holdings?trial[&period]` | | [`HoldingsReply`](crate::results::HoldingsReply): the holdings with their source values, and their steps |
-//! | `GET /api/runs/{id}/curve[?trial]` | | [`CurveReply`](crate::results::CurveReply): the band, or one trial's growth |
+//! | `GET /api/runs/{id}/curve[?trial]` | | [`CurveReply`](crate::results::CurveReply): `band` over the trials, or one trial's `growth` |
 //! | `GET /api/runs/{id}/sectors` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares and the spread |
-//! | `GET /api/runs/{id}/contributions?trial` | | one trial's `ContributionRow`s |
-//! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` |
-//! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` |
-//! | `POST /api/screen` | [`ScreenBody`](crate::reference::ScreenBody) | `ScreenReply`, as `bt screen` |
-//! | `GET /api/data/status` | | `StatusReply`, as `bt data status` |
+//! | `GET /api/runs/{id}/contributions?trial` | | one trial's `Attribution`s: each period's top holdings and totals |
+//! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` prints it |
+//! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` prints it |
+//! | `POST /api/screen` | [`ScreenBody`](crate::reference::ScreenBody) | `ScreenReply`, as `bt screen` prints it |
+//! | `GET /api/data/status` | | `StatusReply`, as `bt data status` prints it |
+//!
+//! A reply of one run is a `RunRow` with the run's canonical strategy file
+//! and the description of its steps: what each reads, and the unit and
+//! display of its values. A strategy in a request is a strategy file's
+//! JSON, read as `bt` reads the file; an error in it has a place that starts
+//! with `strategy`. The result routes read the result file of a complete
+//! run: `trial` is a count from 1 (or `all` for `explore`), and `periods`
+//! and `ranks` are `A-B`.
 //!
 //! Every reply under `/api/` is JSON. A refused request gets `{"error":
 //! {"message", "place"}}` with 400 for wrong input (an id that is not a
-//! number included), 403 for a change from another origin, 404 for an
-//! unknown id or path, 405 for a method a route does not have, 409 for a change the run's state does not
-//! allow (or that lost a race with the worker) and 500 for a failed read or
+//! number, a missing or malformed query value, a trial or period the result
+//! does not have, a strategy or schedule that does not fit the market's
+//! data), 403 for a change from another origin, 404 for an unknown id,
+//! market or path, 405 for a method a route does not have, 409 for a change
+//! the run's state does not allow (or that lost a race with the worker, or a
+//! result asked of a run that is not complete) and 500 for a failed read or
 //! write of the home's files.
 //!
 //! The origin rule, as today's website has it: a request other than GET
@@ -65,39 +76,39 @@ use tower_http::services::ServeDir;
 
 /// What every route handler receives as its state.
 #[derive(Clone, Debug)]
-pub struct App {
+pub(crate) struct App {
     /// The home's prepared data and raw cache, for the engine.
-    pub home: Home,
+    pub(crate) home: Home,
     /// `data/app.sqlite` and the result files of the runs.
-    pub store: Store,
+    pub(crate) store: Store,
     pub(crate) worker: Worker,
 }
 
 /// A refused request: its status and the error the reply carries.
 #[derive(Debug)]
-pub struct Failure {
-    pub status: StatusCode,
-    pub error: Error,
+pub(crate) struct Failure {
+    pub(crate) status: StatusCode,
+    pub(crate) error: Error,
 }
 
 impl Failure {
     /// 400: the request is wrong.
-    pub fn input(error: Error) -> Failure {
+    pub(crate) fn input(error: Error) -> Failure {
         Failure { status: StatusCode::BAD_REQUEST, error }
     }
 
     /// 404: no run or entry has that id.
-    pub fn unknown(error: Error) -> Failure {
+    pub(crate) fn unknown(error: Error) -> Failure {
         Failure { status: StatusCode::NOT_FOUND, error }
     }
 
     /// 409: the state does not allow the change.
-    pub fn conflict(error: Error) -> Failure {
+    pub(crate) fn conflict(error: Error) -> Failure {
         Failure { status: StatusCode::CONFLICT, error }
     }
 
     /// 500: a file of the home could not be read or written.
-    pub fn io(error: Error) -> Failure {
+    pub(crate) fn io(error: Error) -> Failure {
         Failure { status: StatusCode::INTERNAL_SERVER_ERROR, error }
     }
 }
@@ -124,7 +135,7 @@ impl IntoResponse for Failure {
 
 /// A JSON request body; a body that is not the expected JSON gets 400 with
 /// serde's message and the place `request`.
-pub struct Body<T>(pub T);
+pub(crate) struct Body<T>(pub(crate) T);
 
 impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for Body<T> {
     type Rejection = Failure;
@@ -136,7 +147,7 @@ impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for Body<T> {
 }
 
 /// The `{id}` of a route's path; one that is not a number gets 400.
-pub struct Id(pub i64);
+pub(crate) struct Id(pub(crate) i64);
 
 impl<S: Send + Sync> FromRequestParts<S> for Id {
     type Rejection = Failure;
@@ -150,7 +161,7 @@ impl<S: Send + Sync> FromRequestParts<S> for Id {
 }
 
 /// Runs `work` on a blocking thread. A panic in it becomes a 500 reply.
-pub async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, Failure> + Send + 'static) -> Result<T, Failure> {
+pub(crate) async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, Failure> + Send + 'static) -> Result<T, Failure> {
     tokio::task::spawn_blocking(work)
         .await
         .unwrap_or_else(|_| Err(Failure::io(Error::new("the request stopped on an internal error", "server"))))
@@ -162,8 +173,6 @@ fn router(app: App) -> Router {
     Router::new()
         .merge(crate::runs::routes())
         .merge(crate::library::routes())
-        // Each route module adds its routes here, with one line:
-        // `.merge(crate::MODULE::routes())`, where `routes() -> Router<App>`.
         .merge(crate::formula::routes())
         .merge(crate::results::routes())
         .merge(crate::reference::routes())

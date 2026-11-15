@@ -17,8 +17,7 @@ use crate::store::missing;
 use axum::extract::State;
 use axum::routing::{get, put};
 use axum::{Json, Router};
-use engine::formula::{Formula, Node};
-use engine::{Strategy, names};
+use engine::{Formula, Strategy, names};
 use market_data::Error;
 use rusqlite::Transaction;
 use serde::{Deserialize, Serialize};
@@ -144,25 +143,71 @@ fn change<T>(app: &App, work: impl FnOnce(&Transaction<'_>, &Library) -> Result<
     Ok(done)
 }
 
-/// The stored library, which always reads: in id order, each time the first
-/// entry whose formula reads with the entries placed before it.
+/// The stored library, which always reads.
 fn stored(tx: &Transaction<'_>) -> Result<Library, Failure> {
-    let mut rows = tx
-        .prepare("SELECT id, name, formula, display, favourite FROM variables ORDER BY id")?
+    let rows = tx
+        .prepare("SELECT id, name, formula, display, favourite FROM variables")?
         .query_map([], |row| {
             Ok(Row { id: row.get(0)?, name: row.get(1)?, formula: row.get(2)?, display: Some(row.get(3)?), favourite: row.get(4)? })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut library = Library { rows: Vec::new(), formulas: Vec::new() };
+    let unread = || Failure::io(Error::new("the stored variable library does not read", "data/app.sqlite"));
+    let rows = order(rows).map_err(|_| unread())?;
+    let formulas = Strategy::read_variables(&variables(&rows)).map_err(|_| unread())?;
+    Ok(Library { rows, formulas })
+}
+
+/// Why the rows cannot be put in dependency order.
+enum Unordered {
+    /// Each row left names a variable that is not placed: the rows left.
+    Waiting(Vec<Row>),
+    /// A row's formula has a fault of its own once the names it reads are
+    /// placed, such as units that no longer fit: that fault, placed as the
+    /// variables reader places it.
+    Fault(Error),
+}
+
+/// The rows in dependency order: in id order, each time the first row whose
+/// formula reads with the rows placed before it.
+fn order(mut rows: Vec<Row>) -> Result<Vec<Row>, Unordered> {
+    rows.sort_by_key(|row| row.id);
+    let (mut placed, mut formulas) = (Vec::new(), Vec::new());
     while !rows.is_empty() {
-        let next = rows.iter().enumerate().find_map(|(i, row)| Formula::read(&row.formula, &library.formulas).ok().map(|f| (i, f)));
-        let (i, formula) = next.ok_or_else(|| Failure::io(Error::new("the stored variable library does not read", "data/app.sqlite")))?;
-        let row = rows.remove(i);
-        let formula = formula.shown_in(row.display.as_deref().expect("a stored display")).expect("a stored display suits its unit");
-        library.formulas.push(Arc::new(formula.named(&row.name)));
-        library.rows.push(row);
+        let mut own = None;
+        let next = rows.iter().position(|row| match Formula::read(&row.formula, &formulas) {
+            Ok(formula) => {
+                formulas.push(Arc::new(formula.named(&row.name)));
+                true
+            }
+            Err(fault) => {
+                if fault.code != "UNKNOWN_NAME" && own.is_none() {
+                    own = Some(Error::new(fault.sentence(), format!("variables.{:?}, {}", row.name, fault.place())));
+                }
+                false
+            }
+        });
+        match (next, own) {
+            (Some(i), _) => placed.push(rows.remove(i)),
+            (None, Some(fault)) => return Err(Unordered::Fault(fault)),
+            (None, None) => return Err(Unordered::Waiting(rows)),
+        }
     }
-    Ok(library)
+    Ok(placed)
+}
+
+/// The rows as the `variables` object of a strategy file, in their order.
+fn variables(rows: &[Row]) -> String {
+    let entries: Vec<String> = rows
+        .iter()
+        .map(|row| {
+            let mut fields = serde_json::json!({ "formula": row.formula });
+            if let Some(display) = &row.display {
+                fields["display"] = display.as_str().into();
+            }
+            format!("{}:{fields}", serde_json::to_string(&row.name).expect("a name serializes"))
+        })
+        .collect();
+    format!("{{{}}}", entries.join(","))
 }
 
 impl Library {
@@ -174,40 +219,24 @@ impl Library {
         if let Some(other) = self.rows.iter().find(|r| r.id != changed.id && names::key(&r.name) == names::key(&changed.name)) {
             return Err(Failure::conflict(Error::new(format!("the variable {:?} has this name", other.name), "name")));
         }
-        let formula = Formula::read(&changed.formula, &self.formulas)
+        Formula::read(&changed.formula, &self.formulas)
             .map_err(|fault| Failure::input(Error::new(fault.message.clone(), format!("formula, {}", fault.place()))))?;
-        // Each entry with the keys of the names it reads.
-        let reads = |formula: &Formula| {
-            let mut named = Vec::new();
-            names_in(formula.tree(), &mut named);
-            named.iter().map(|name| names::key(name)).collect::<Vec<_>>()
-        };
-        let mut rows: Vec<(Row, Vec<String>)> = self.rows.iter().zip(&self.formulas).filter(|(r, _)| r.id != changed.id).map(|(r, f)| (r.clone(), reads(f))).collect();
-        let changed_name = changed.name.clone();
-        rows.push((changed, reads(&formula)));
-        rows.sort_by_key(|(row, _)| row.id);
-        let mut placed: Vec<Row> = Vec::new();
-        while !rows.is_empty() {
-            let ready = |(_, keys): &(Row, Vec<String>)| keys.iter().all(|k| placed.iter().any(|p| names::key(&p.name) == *k));
-            let Some(i) = rows.iter().position(ready) else {
-                let names: Vec<&str> = rows.iter().map(|(r, _)| r.name.as_str()).collect();
-                let message = format!("these variables name each other in a cycle: {}", names.join(", "));
-                return Err(Failure::conflict(Error::new(message, "formula")));
-            };
-            placed.push(rows.remove(i).0);
-        }
-        let mut text = String::from("{");
-        for (n, row) in placed.iter().enumerate() {
-            let mut fields = serde_json::json!({ "formula": row.formula });
-            if let Some(display) = &row.display {
-                fields["display"] = display.as_str().into();
+        let id = changed.id;
+        let rows = self.rows.iter().filter(|r| r.id != id).cloned().chain([changed]).collect();
+        let rows = order(rows).map_err(|unordered| match unordered {
+            Unordered::Fault(error) => Failure::input(error),
+            Unordered::Waiting(left) => {
+                let names: Vec<&str> = left.iter().map(|r| r.name.as_str()).collect();
+                let message = format!(
+                    "these variables name each other in a cycle, or name a variable that no longer exists: {}",
+                    names.join(", ")
+                );
+                Failure::conflict(Error::new(message, "formula"))
             }
-            text += &format!("{}{}:{fields}", if n == 0 { "" } else { "," }, serde_json::to_string(&row.name).expect("a name serializes"));
-        }
-        text += "}";
-        let formulas = Strategy::read_variables(&text).map_err(Failure::input)?;
-        let at = placed.iter().position(|r| r.name == changed_name).expect("the changed entry");
-        Ok((Library { rows: placed, formulas }, at))
+        })?;
+        let formulas = Strategy::read_variables(&variables(&rows)).map_err(Failure::input)?;
+        let at = rows.iter().position(|r| r.id == id).expect("the changed entry");
+        Ok((Library { rows, formulas }, at))
     }
 
     fn find(&self, id: i64) -> Result<&Row, Failure> {
@@ -225,9 +254,8 @@ impl Library {
 
     fn entry(&self, at: usize) -> Variable {
         let (row, formula) = (&self.rows[at], &self.formulas[at]);
-        let mut named = Vec::new();
-        names_in(formula.tree(), &mut named);
-        let uses = self.rows.iter().map(|r| r.name.clone()).filter(|name| named.contains(name)).collect();
+        let named = formula.uses();
+        let uses = self.rows.iter().map(|r| r.name.clone()).filter(|name| named.contains(&name.as_str())).collect();
         Variable {
             id: row.id,
             name: row.name.clone(),
@@ -240,22 +268,5 @@ impl Library {
 
     fn entries(&self) -> Vec<Variable> {
         (0..self.rows.len()).map(|at| self.entry(at)).collect()
-    }
-}
-
-/// The names of the variables a formula's tree reads, directly or through
-/// others.
-fn names_in(node: &Node, out: &mut Vec<String>) {
-    match node {
-        Node::Variable(formula) => {
-            out.extend(formula.name().map(str::to_string));
-            names_in(formula.tree(), out);
-        }
-        Node::Neg(arg) | Node::Lookback { arg, .. } | Node::At { arg, .. } => names_in(arg, out),
-        Node::Binary { left, right, .. } => {
-            names_in(left, out);
-            names_in(right, out);
-        }
-        Node::Parameter(_) | Node::Constant { .. } | Node::Annual { .. } | Node::Measure(_) => {}
     }
 }

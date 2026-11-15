@@ -1,25 +1,16 @@
 //! The routes that read the home's prepared data, with the replies of the
 //! `bt` commands of the same names.
-//!
-//! | Route | Request | Reply |
-//! |---|---|---|
-//! | `GET /api/catalog/{market}` | | [`CatalogReply`] (`bt catalog`) |
-//! | `POST /api/screen` | [`ScreenBody`] | [`ScreenReply`] (`bt screen`) |
-//! | `GET /api/data/status` | | [`StatusReply`] (`bt data status`) |
-//!
-//! An unknown market in the path gets 404. A strategy that does not read,
-//! or that does not fit the market's data, gets 400 with the place in the
-//! strategy after `strategy: `.
 
 use crate::http::{App, Body, Failure, blocking};
 use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use engine::Strategy;
+use engine::{Strategy, StrategyFile};
 use engine::commands::{CatalogReply, CatalogRequest, ScreenReply, ScreenRequest};
 use market_data::Market;
 use market_data::commands::StatusReply;
 use serde::Deserialize;
+use serde_json::value::RawValue;
 use ts_rs::TS;
 
 pub(crate) fn routes() -> Router<App> {
@@ -29,11 +20,14 @@ pub(crate) fn routes() -> Router<App> {
         .route("/api/data/status", get(status))
 }
 
-/// The latest picks of a strategy, given as the text of a strategy file.
+/// The latest picks of a strategy in a market.
 #[derive(Debug, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
 #[ts(export)]
 pub struct ScreenBody {
-    pub strategy: String,
+    /// A strategy file's JSON, which is read as `bt` reads the file.
+    #[ts(as = "StrategyFile<'static>")]
+    pub strategy: Box<RawValue>,
     pub market: Market,
 }
 
@@ -45,7 +39,7 @@ async fn catalog(State(app): State<App>, Path(market): Path<String>) -> Result<J
 async fn screen(State(app): State<App>, Body(body): Body<ScreenBody>) -> Result<Json<ScreenReply>, Failure> {
     blocking(move || {
         let name = "strategy".to_string();
-        let strategy = Strategy::parse(&body.strategy).map_err(|e| e.in_file(&name))?;
+        let strategy = Strategy::parse(body.strategy.get()).map_err(|e| e.in_file(&name))?;
         Ok(engine::commands::screen(&app.home, &ScreenRequest { name, strategy, market: body.market })?)
     })
     .await

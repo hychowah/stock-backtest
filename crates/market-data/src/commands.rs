@@ -196,11 +196,11 @@ fn raw_present(home: &Home, market: Market) -> bool {
     dir.join("universe.json").is_file()
 }
 
-/// `bt data status`.
+/// What prepared data each market has (`bt data status`).
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct StatusReply {
-    /// One entry per market, in [`Market::ALL`] order.
+    /// One entry per market: `us`, `hk`, then `jp`.
     pub markets: Vec<MarketStatus>,
 }
 

@@ -2,10 +2,9 @@
 import type { Day } from "./Day.ts";
 
 /**
- * One trial over the selected periods and ranks (`_reduce`). A period's
- * return is the mean of its holdings' returns within the ranks (Python's
- * `sum`), or its stored return when the ranks are the strategy's; SPY keeps
- * its stored return. The periods compound over the window: from the
+ * One trial over the selected periods and ranks. A period's return is the
+ * mean of its holdings' returns within the ranks, or its stored return when
+ * the ranks are the strategy's; SPY keeps its stored return. The periods compound over the window: from the
  * trial's start when it starts at period 1, else from the entry of its
  * first period, to the exit of its last.
  */

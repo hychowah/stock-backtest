@@ -6,4 +6,4 @@
  * step trail as a field `source:<source>`. Its TypeScript type is written
  * here because those field names depend on the strategy.
  */
-export type JoinedHolding = import("./HoldingRow.ts").HoldingRow & { weight: number; contribution: number; [source: `source:${string}`]: number | null };
+export type JoinedHolding = import("./HoldingRow.ts").HoldingRow & { weight: number; /** Percentage points. */ contribution: number; [source: `source:${string}`]: number | null };

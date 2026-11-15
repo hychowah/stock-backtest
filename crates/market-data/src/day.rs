@@ -4,11 +4,11 @@ use serde::{Serialize, Serializer};
 use std::fmt;
 use ts_rs::TS;
 
-/// A calendar day, counted as days since 1970-01-01 (`Day(0)`), so the order
-/// and differences of the numbers are those of the calendar. The years are
-/// those of Python's `date`, 1 to 9999. The prepared store holds a day as its
-/// `i32`, and a mapped day column reads as `&[Day]`. Replies and the
-/// website's types write it as ISO text.
+/// A calendar day, written in replies and the website's types as ISO text,
+/// `YYYY-MM-DD`, with a year from 1 to 9999. The program counts it as days
+/// since 1970-01-01 (`Day(0)`), so the order and differences of the numbers
+/// are those of the calendar; the prepared store holds a day as its `i32`,
+/// and a mapped day column reads as `&[Day]`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, TS)]
 #[ts(type = "string")]
 #[repr(transparent)]

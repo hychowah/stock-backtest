@@ -2,12 +2,13 @@
 //! changed by single statements (see the crate comment for the states).
 
 use crate::http::Failure;
-use engine::Schedule;
-use engine::commands::Headline;
+use engine::commands::{Description, Headline};
+use engine::{Schedule, Strategy, StrategyFile};
 use market_data::{Error, Market};
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use ts_rs::TS;
@@ -32,7 +33,7 @@ const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
 /// The application database of one home. Each use opens its own
 /// connection, so any thread can use it.
 #[derive(Clone, Debug)]
-pub struct Store {
+pub(crate) struct Store {
     database: PathBuf,
     runs: PathBuf,
 }
@@ -77,10 +78,14 @@ pub struct RunRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub error: Option<Error>,
-    /// The canonical strategy: in the reply of one run, not in the list.
+    /// The canonical strategy file and what each of its steps reads: in a
+    /// reply about one run, not in the list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(as = "Option<StrategyFile<'static>>", optional)]
+    pub strategy: Option<Box<RawValue>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub strategy: Option<String>,
+    pub description: Option<Description>,
 }
 
 /// What a complete run gave, stored when it finished.
@@ -154,7 +159,7 @@ impl Store {
 
     /// The result file of run `id`: 404 for an unknown run, 409 for a run
     /// that is not complete.
-    pub fn result(&self, id: i64) -> Result<PathBuf, Failure> {
+    pub(crate) fn result(&self, id: i64) -> Result<PathBuf, Failure> {
         let state = self.state(&self.connect()?, id)?;
         if state != "complete" {
             return Err(Failure::conflict(Error::new(format!("run {id} has no result: it is {state}"), "id")));
@@ -173,7 +178,7 @@ impl Store {
         let paused = db.query_row("SELECT paused FROM queue", [], |row| row.get(0))?;
         let sql = format!("SELECT {COLUMNS} FROM runs ORDER BY position IS NULL, state != 'running', position, id DESC");
         let mut statement = db.prepare(&sql)?;
-        let runs = statement.query_map([], |row| run_row(row, false))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let runs = statement.query_map([], run_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(RunsReply { paused, runs })
     }
 }
@@ -195,12 +200,16 @@ pub(crate) struct Edit {
 }
 
 impl Store {
-    /// Run `id` with its strategy, or 404.
+    /// Run `id` with its strategy and its description, or 404.
     pub(crate) fn get(&self, id: i64) -> Result<RunRow, Failure> {
         let db = self.connect()?;
         let sql = format!("SELECT {COLUMNS}, strategy FROM runs WHERE id=?");
-        let row = db.query_row(&sql, [id], |row| run_row(row, true)).optional()?;
-        row.ok_or_else(|| missing("run", id))
+        let row = db.query_row(&sql, [id], |row| Ok((run_row(row)?, row.get::<_, String>("strategy")?))).optional()?;
+        let (mut run, text) = row.ok_or_else(|| missing("run", id))?;
+        let strategy = Strategy::parse(&text).map_err(|e| Failure::io(e.in_file("data/app.sqlite: runs.strategy")))?;
+        run.description = Some(engine::commands::describe(&strategy));
+        run.strategy = Some(RawValue::from_string(text).expect("a canonical strategy is JSON"));
+        Ok(run)
     }
 
     /// Adds a waiting run at the end of the queue. The schedule's seed is
@@ -393,8 +402,8 @@ impl From<&engine::commands::Saved> for Outcome {
     }
 }
 
-/// A run row from the columns [`COLUMNS`], then the strategy when `strategy`.
-fn run_row(row: &Row<'_>, strategy: bool) -> rusqlite::Result<RunRow> {
+/// A run row from the columns [`COLUMNS`], without its strategy.
+fn run_row(row: &Row<'_>) -> rusqlite::Result<RunRow> {
     #[derive(Deserialize)]
     struct Stored {
         message: String,
@@ -418,6 +427,7 @@ fn run_row(row: &Row<'_>, strategy: bool) -> rusqlite::Result<RunRow> {
             let stored: Stored = serde_json::from_str(&text).expect("a stored error");
             Error::new(stored.message, stored.place)
         }),
-        strategy: if strategy { Some(row.get("strategy")?) } else { None },
+        strategy: None,
+        description: None,
     })
 }

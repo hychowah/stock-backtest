@@ -2,9 +2,9 @@
 import type { Suggestion } from "./Suggestion.ts";
 
 /**
- * A formula reading that failed: the oracle's error code, a message, the
- * characters `[start, end)` of the fault, counted from 0, and up to three
- * replacements for them.
+ * A formula reading that failed: an error code, a message, the characters
+ * `[start, end)` of the fault, counted from 0, and up to three replacements
+ * for them.
  */
 export type Fault = { 
 /**

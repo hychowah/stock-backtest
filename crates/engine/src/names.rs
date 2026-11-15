@@ -17,6 +17,8 @@
 use crate::formula::Measure;
 use market_data::builtins::BUILTINS;
 use market_data::parameters::PARAMETERS;
+use serde::Serialize;
+use ts_rs::TS;
 
 /// One source name.
 #[derive(Debug)]
@@ -53,14 +55,26 @@ pub enum Field {
     EnterpriseValue,
 }
 
+/// What a step's source reads: a name of the list of one of the first four
+/// kinds, a file variable, or other formula text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceKind {
+    BuiltIn,
+    Input,
+    Measure,
+    Field,
+    Variable,
+    Formula,
+}
+
 impl Kind {
-    /// `built-in`, `input`, `measure` or `field`.
-    pub fn id(&self) -> &'static str {
+    pub fn id(&self) -> SourceKind {
         match self {
-            Kind::Builtin { .. } => "built-in",
-            Kind::Input { .. } => "input",
-            Kind::Measure { .. } => "measure",
-            Kind::Field(_) => "field",
+            Kind::Builtin { .. } => SourceKind::BuiltIn,
+            Kind::Input { .. } => SourceKind::Input,
+            Kind::Measure { .. } => SourceKind::Measure,
+            Kind::Field(_) => SourceKind::Field,
         }
     }
 }

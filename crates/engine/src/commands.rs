@@ -9,10 +9,10 @@ use crate::results::{self, ResultFile};
 use crate::statistics;
 use crate::names;
 use crate::run::Screened;
-use crate::names::Field;
+use crate::names::{Field, SourceKind};
 use crate::strategy::{self, Source, Step, Test};
 use crate::formula;
-use crate::views::{self, ExploreReply, JoinedHolding, Selection, SourceValues};
+use crate::views::{self, ContributionRow, ExploreReply, JoinedHolding, Selection, SourceValues};
 use crate::{Error, Plan, Schedule, Strategy};
 use rayon::prelude::*;
 use market_data::commands::Home;
@@ -245,7 +245,9 @@ pub fn export_tables(request: &ExportResultsRequest) -> Result<ExportResultsRepl
     }
     let rows = table.finish().map_err(|e| export.fail(e))?;
     export.tables.insert("sectors".to_string(), rows);
-    export.table("contributions", &["trial", "period"], views::contributions)?;
+    export.table("contributions", &["trial", "period"], |file| {
+        Ok(views::contributions(file)?.into_iter().map(ContributionRow::from).collect())
+    })?;
     export.finish()
 }
 
@@ -340,6 +342,7 @@ pub struct ScreenReply {
     pub generation: u64,
     pub as_of: String,
     pub identity: String,
+    pub description: Description,
     /// In rank order.
     pub picks: Vec<Screened>,
 }
@@ -360,6 +363,7 @@ pub fn screen(home: &Home, request: &ScreenRequest) -> Result<ScreenReply, Error
         generation: manifest.generation,
         as_of: manifest.as_of.clone(),
         identity: strategy.identity(),
+        description: describe(strategy),
         picks,
     })
 }
@@ -377,13 +381,23 @@ pub struct Checked {
     pub file: String,
     pub canonical: String,
     pub identity: String,
-    /// In file order.
-    pub variables: Vec<CheckedVariable>,
-    pub sleeves: Vec<CheckedSleeve>,
+    #[serde(flatten)]
+    pub description: Description,
 }
 
-#[derive(Debug, Serialize)]
-pub struct CheckedVariable {
+/// What each variable and step of a strategy reads, and the unit and display
+/// of its values: what a page needs to show a run's or a screen's values
+/// without reading the strategy again.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct Description {
+    /// In file order.
+    pub variables: Vec<DescribedVariable>,
+    pub sleeves: Vec<DescribedSleeve>,
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct DescribedVariable {
     pub name: String,
     /// The canonical formula text.
     pub formula: String,
@@ -391,39 +405,52 @@ pub struct CheckedVariable {
     pub display: &'static str,
 }
 
-#[derive(Debug, Serialize)]
-pub struct CheckedSleeve {
+#[derive(Debug, Serialize, TS)]
+pub struct DescribedSleeve {
     pub name: Option<String>,
-    pub steps: Vec<CheckedStep>,
+    pub steps: Vec<DescribedStep>,
 }
 
-/// One step, `filter` or `rank`; its comparison and ranks are in the
-/// canonical form. A number filter's threshold is also given in the
-/// source's stored units.
-#[derive(Debug, Serialize)]
-pub struct CheckedStep {
-    pub step: &'static str,
-    pub source: CheckedSource,
+/// One step; its comparison and ranks are in the canonical form. A number
+/// filter's threshold is also given in the source's stored units.
+#[derive(Debug, Serialize, TS)]
+pub struct DescribedStep {
+    pub step: StepKind,
+    pub source: DescribedSource,
     pub unit: &'static str,
     pub display: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub stored: Option<f64>,
 }
 
-/// What a step reads ([`Source::kind`]), and the source as the canonical
-/// form writes it.
-#[derive(Debug, Serialize)]
-pub struct CheckedSource {
-    pub kind: &'static str,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+pub enum StepKind {
+    Filter,
+    Rank,
+}
+
+/// What a step reads, and the source as the canonical form writes it (the
+/// name of a holding's `source:` field without that prefix).
+#[derive(Debug, Serialize, TS)]
+pub struct DescribedSource {
+    pub kind: SourceKind,
     pub name: String,
 }
 
 /// One strategy file as the program reads it, with no market data.
 pub fn check(file: &str, strategy: &Strategy) -> Checked {
+    let (canonical, identity) = (strategy.canonical().to_string(), strategy.identity());
+    Checked { file: file.to_string(), canonical, identity, description: describe(strategy) }
+}
+
+/// The description of a strategy's variables and steps.
+pub fn describe(strategy: &Strategy) -> Description {
     let variables = strategy
         .variables()
         .iter()
-        .map(|v| CheckedVariable {
+        .map(|v| DescribedVariable {
             name: v.name().expect("a variable has a name").to_string(),
             formula: v.text().to_string(),
             unit: v.unit().id(),
@@ -433,13 +460,13 @@ pub fn check(file: &str, strategy: &Strategy) -> Checked {
     let step = |step: &Step| {
         let source = step.source();
         let (step, stored) = match step {
-            Step::Filter { test: Test::Number(_, threshold), .. } => ("filter", Some(threshold.stored)),
-            Step::Filter { .. } => ("filter", None),
-            Step::Rank { .. } => ("rank", None),
+            Step::Filter { test: Test::Number(_, threshold), .. } => (StepKind::Filter, Some(threshold.stored)),
+            Step::Filter { .. } => (StepKind::Filter, None),
+            Step::Rank { .. } => (StepKind::Rank, None),
         };
-        CheckedStep {
+        DescribedStep {
             step,
-            source: CheckedSource { kind: source.kind(), name: strategy.written(source) },
+            source: DescribedSource { kind: source.kind(), name: strategy.written(source) },
             unit: source.unit(),
             display: source.display(),
             stored,
@@ -448,9 +475,9 @@ pub fn check(file: &str, strategy: &Strategy) -> Checked {
     let sleeves = strategy
         .sleeves()
         .iter()
-        .map(|sleeve| CheckedSleeve { name: sleeve.name.clone(), steps: sleeve.steps.iter().map(step).collect() })
+        .map(|sleeve| DescribedSleeve { name: sleeve.name.clone(), steps: sleeve.steps.iter().map(step).collect() })
         .collect();
-    Checked { file: file.to_string(), canonical: strategy.canonical().to_string(), identity: strategy.identity(), variables, sleeves }
+    Description { variables, sleeves }
 }
 
 /// `bt catalog --market M`.
@@ -484,7 +511,7 @@ pub struct CatalogReply {
 pub struct CatalogName {
     pub name: &'static str,
     /// `built-in`, `input`, `measure` or `field`.
-    pub kind: &'static str,
+    pub kind: SourceKind,
     pub unit: &'static str,
     pub display: &'static str,
     /// Only a whole step can use the name, not a formula.
@@ -582,7 +609,7 @@ fn check_texts(data: &MarketData, name: &str, strategy: &Strategy) -> Result<(),
                 && !texts(data, *field).contains(text.as_str())
             {
                 let (market, field) = (data.manifest().market.id(), names::of_field(*field).name.to_lowercase());
-                let message = format!("no company of {market} has the {field} {text:?}: `bt catalog --market {market}` lists them");
+                let message = format!("no company of {market} has the {field} {text:?}: the catalog of {market} lists every {field}");
                 return Err(Error::new(message, format!("{name}: sleeves[{}].steps[{}]", s + 1, n + 1)));
             }
         }

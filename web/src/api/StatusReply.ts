@@ -2,10 +2,10 @@
 import type { MarketStatus } from "./MarketStatus.ts";
 
 /**
- * `bt data status`.
+ * What prepared data each market has (`bt data status`).
  */
 export type StatusReply = { 
 /**
- * One entry per market, in [`Market::ALL`] order.
+ * One entry per market: `us`, `hk`, then `jp`.
  */
 markets: Array<MarketStatus>, };

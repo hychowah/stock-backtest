@@ -28,7 +28,7 @@
 //!   queue.
 //! - **Crash, abort and out-of-memory kill.** These end the whole process,
 //!   so the run stays `running`. The next start holds it, in its place: the
-//!   rest of the queue goes on, and the owner releases or deletes it. A run
+//!   rest of the queue goes on, and the user releases or deletes it. A run
 //!   that always ends the server therefore cannot end it again by itself.
 
 use crate::store::{Claimed, Outcome, Store, remove};

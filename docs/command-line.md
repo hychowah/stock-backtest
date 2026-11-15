@@ -34,7 +34,7 @@ The rules:
 - A strategy file has `sleeves`. A sleeve has `steps`, and a `name` when the file has two or more sleeves. Each sleeve needs a Rank step.
 - A sleeve runs its steps in order on all candidates. The candidates of a day are the companies of the market that pass its screen on that day: they have a usable report and price. Each step sees only what the steps before it kept.
 - A Filter step is `{"filter": SOURCE, "op": OP, "value": THRESHOLD}`. `op` is `<`, `<=`, `>` or `>=`. A candidate with no value for the source fails the Filter.
-- `Sector` and `Exchange` are text. They take `is` or `is not` and a text value with the exact spelling and case of the market's data. `bt check` needs no market data, so it accepts any text. `bt run`, `bt screen` and `bt export cross-section` refuse an `is` value that no company of the market has, and name `bt catalog`. An `is not` value that no company has is accepted.
+- `Sector` and `Exchange` are text. They take `is` or `is not` and a text value with the exact spelling and case of the market's data. `bt check` needs no market data, so it accepts any text. `bt run`, `bt screen` and `bt export cross-section` refuse an `is` value that no company of the market has, and point to the market's catalog. An `is not` value that no company has is accepted.
 - A Rank step is `{"rank": SOURCE, "order": "highest" or "lowest", "from": A, "to": B}`. It orders the candidates that have a value and keeps the positions A to B, with 1 <= A <= B. A candidate with no value is left out.
 - A source is a name from `bt catalog` (case and repeated spaces do not matter), a variable of the file, or formula text. For example, the free-cash-flow yield is named `FCF yield`, in percent: `"5"` means 5%.
 
@@ -209,7 +209,7 @@ bt explore out/pe-30.sqlite --trial 1 --periods 2-5 --ranks 1-2
 bt screen value.json --market us --home HOME_DIR
 ```
 
-`bt screen` selects with the strategy file on the latest session of the market. The reply has `day`, `identity` and `picks`. Each pick has `rank`, `symbol`, `name`, `sector`, `ranking_value` and `steps`: for each step, its `value` and, for a Rank step, its `step_rank`.
+`bt screen` selects with the strategy file on the latest session of the market. The reply has `day`, `identity`, `description` (the `variables` and `sleeves` that `bt check` prints) and `picks`. Each pick has `rank`, `symbol`, `name`, `sector`, the candidate's other fields as a `holdings` row names them (`exchange`, `candidate_rank`, `fiscal`, `market_cap`, `enterprise_value`, `ebitda`, `ebitda_yield`, `ev_ebitda` and `spread`), `ranking_value` and `steps`: for each step, its `value` and, for a Rank step, its `step_rank`.
 
 ### Cross-section
 
@@ -283,7 +283,7 @@ The folder `loop-best` then holds the tables of `variants/pe-30.json`. Before ea
 bt serve --home HOME_DIR [--port 3000]
 ```
 
-`bt serve` serves the website and its API on `127.0.0.1` (port 3000 unless `--port` is given; `--port 0` takes a free port). When it is ready, it prints one line, `{"serving": "http://127.0.0.1:PORT"}`. It keeps the list of runs, the queue and the variable library in `data/app.sqlite` of the home, and runs the queue one run at a time. Each run's result file is `data/runs/<id>.sqlite`. The server starts without prepared data, but adding a run needs it, as `bt run` does. A run added through the website has at most 1,000 trials; `bt run` has no such limit. Only one server runs on a home: a second one stops with "another server is running on this home". Ctrl+C or SIGTERM stops the server, and a run that was in progress waits in the queue again. If the server ends any other way while a run is in progress, the next start holds that run and continues with the rest of the queue: release it to run it again, or delete it.
+`bt serve` serves the website and its API on `127.0.0.1` (port 3000 unless `--port` is given; `--port 0` takes a free port). When it is ready, it prints one line, `{"serving": "http://127.0.0.1:PORT"}`. It keeps the list of runs, the queue and the variable library in `data/app.sqlite` of the home, and runs the queue one run at a time. Each run's result file is `data/runs/<id>.sqlite`. The server starts without prepared data, but adding a run needs it, as `bt run` does. A run added to the list has at most 1,000 trials, because the server holds every trial in memory while it runs; `bt run` has no such limit. Only one server runs on a home: a second one stops with "another server is running on this home". Ctrl+C or SIGTERM stops the server, and a run that was in progress waits in the queue again. If the server ends any other way while a run is in progress, the next start holds that run and continues with the rest of the queue: release it to run it again, or delete it.
 
 Scripts do not need the server: they keep using `bt run`, which works beside a running server.
 

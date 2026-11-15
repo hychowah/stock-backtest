@@ -79,7 +79,7 @@ fn an_is_text_that_no_company_of_the_market_has_is_refused_before_the_run() {
     let ((reply, success), file) = run("wrong", "is", "utilities");
     assert!(!success);
     assert_eq!(reply["error"]["place"], format!("{}: sleeves[1].steps[1]", path(&file)), "{reply}");
-    assert!(reply["error"]["message"].as_str().unwrap().contains("bt catalog --market hk"), "{reply}");
+    assert!(reply["error"]["message"].as_str().unwrap().contains("the catalog of hk lists every sector"), "{reply}");
     // A file may run on several markets, so `is not` takes any text.
     assert!(run("other", "is not", "utilities").0.1);
     assert!(run("right", "is", "Utilities").0.1);

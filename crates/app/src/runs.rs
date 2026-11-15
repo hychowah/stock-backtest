@@ -8,15 +8,18 @@ use axum::extract::State;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use engine::commands::check_run;
-use engine::{Schedule, Strategy};
+use engine::{Schedule, Strategy, StrategyFile};
 use market_data::{Error, Market, MarketData};
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use ts_rs::TS;
 
-/// The most trials a run added over HTTP may have. Planning and running a
-/// schedule holds every trial in memory, so a huge count would end the
-/// server, and the run would be taken again at the next start. `bt run` has
-/// no such limit: a run that is too big there ends only its own process.
+/// The most trials of a run in the list. A run holds every trial in memory,
+/// inside the server, so a run too big for the memory ends the server (and
+/// the next start holds it). 1,000 trials of a quarterly US test peak at
+/// 2.2 GB and write a 0.7 GB result on the machine where this was measured,
+/// so the bound is safe there and ten times it would not be. `bt run` has no
+/// such limit: a run too big there ends only its own process.
 const MAX_TRIALS: u32 = 1000;
 
 /// `POST /api/runs`.
@@ -28,8 +31,9 @@ pub struct AddRun {
     pub market: Market,
     /// A missing seed of random trials is drawn when the run is added.
     pub schedule: Schedule,
-    /// The text of a strategy file.
-    pub strategy: String,
+    /// A strategy file's JSON, which is read as `bt` reads the file.
+    #[ts(as = "StrategyFile<'static>")]
+    pub strategy: Box<RawValue>,
 }
 
 /// `PATCH /api/runs/{id}`: the fields to change. A market, schedule or
@@ -47,8 +51,8 @@ pub struct EditRun {
     pub market: Option<Market>,
     #[ts(optional)]
     pub schedule: Option<Schedule>,
-    #[ts(optional)]
-    pub strategy: Option<String>,
+    #[ts(as = "Option<StrategyFile<'static>>", optional)]
+    pub strategy: Option<Box<RawValue>>,
 }
 
 /// `POST /api/runs/{id}/move`.
@@ -94,7 +98,7 @@ async fn one(State(app): State<App>, Id(id): Id) -> Result<Json<RunRow>, Failure
 
 async fn add(State(app): State<App>, Body(run): Body<AddRun>) -> Result<Json<RunRow>, Failure> {
     blocking(move || {
-        let (schedule, strategy) = settings(&app, run.market, &run.schedule, &run.strategy)?;
+        let (schedule, strategy) = settings(&app, run.market, &run.schedule, run.strategy.get())?;
         let row = app.store.add(&run.name, run.market, &schedule, &strategy)?;
         app.worker.wake();
         Ok(row)
@@ -110,7 +114,7 @@ async fn edit(State(app): State<App>, Id(id): Id, Body(edit): Body<EditRun>) -> 
             let market = edit.market.unwrap_or(stored.market);
             let schedule = edit.schedule.unwrap_or(stored.schedule);
             let strategy = edit.strategy.or(stored.strategy).expect("one run has its strategy");
-            let (schedule, strategy) = settings(&app, market, &schedule, &strategy)?;
+            let (schedule, strategy) = settings(&app, market, &schedule, strategy.get())?;
             Some((market, schedule, strategy))
         } else {
             None
@@ -125,7 +129,7 @@ async fn edit(State(app): State<App>, Id(id): Id, Body(edit): Body<EditRun>) -> 
 /// gives the schedule with its seed drawn and the canonical strategy.
 fn settings(app: &App, market: Market, schedule: &Schedule, strategy: &str) -> Result<(Schedule, String), Failure> {
     if schedule.trials.is_some_and(|trials| trials > MAX_TRIALS) {
-        let message = format!("the website runs at most {MAX_TRIALS} trials; `bt run` has no such limit");
+        let message = format!("a run of the list has at most {MAX_TRIALS} trials, because the server holds every trial in memory");
         return Err(Failure::input(Error::new(message, "trials")));
     }
     let strategy = Strategy::parse(strategy).map_err(|e| e.in_file("strategy"))?;

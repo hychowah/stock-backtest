@@ -6,7 +6,7 @@ import type { Day } from "./Day.ts";
  */
 export type BandRow = { day: Day, 
 /**
- * Over the trials' strategy values: `statistics.median`, `min`, `max`.
+ * The median, lowest and highest of the trials' strategy values.
  */
 median: number, lowest: number, highest: number, 
 /**

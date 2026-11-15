@@ -161,9 +161,9 @@ impl Unit {
     }
 }
 
-/// A formula reading that failed: the oracle's error code, a message, the
-/// characters `[start, end)` of the fault, counted from 0, and up to three
-/// replacements for them.
+/// A formula reading that failed: an error code, a message, the characters
+/// `[start, end)` of the fault, counted from 0, and up to three replacements
+/// for them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct Fault {
@@ -268,6 +268,28 @@ impl Formula {
     /// The file variable's name, when it is one.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
+    }
+
+    /// The names of the file variables it reads, directly or through other
+    /// variables.
+    pub fn uses(&self) -> Vec<&str> {
+        fn walk<'f>(node: &'f Node, out: &mut Vec<&'f str>) {
+            match node {
+                Node::Variable(formula) => {
+                    out.extend(formula.name());
+                    walk(formula.tree(), out);
+                }
+                Node::Neg(arg) | Node::Lookback { arg, .. } | Node::At { arg, .. } => walk(arg, out),
+                Node::Binary { left, right, .. } => {
+                    walk(left, out);
+                    walk(right, out);
+                }
+                Node::Parameter(_) | Node::Constant { .. } | Node::Annual { .. } | Node::Measure(_) => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.tree, &mut out);
+        out
     }
 }
 
@@ -1176,10 +1198,9 @@ fn editable(value: &str) -> String {
     format!("{sign}{first}{rest}e{exponent}")
 }
 
-/// How the editor draws a formula (the product's `formula_text.picture`): a
-/// fraction over a line, a function with its hint, each name as the list
-/// spells it, a number as it was typed. Brackets are not kept; `parens` is
-/// set where the tree needs them.
+/// How the editor draws a formula: a fraction over a line, a function with
+/// its hint, each name as the list spells it, a number as it was typed.
+/// Brackets are not kept; `parens` is set where the tree needs them.
 #[derive(Debug, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct Picture {

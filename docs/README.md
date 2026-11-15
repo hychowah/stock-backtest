@@ -25,7 +25,7 @@ Start with the [project README](../README.md).
 - [Data files](../data/README.md): the local databases and what can be rebuilt.
 - [Workspaces](workspaces.md): the WSL source checkout, the native Windows runtime and deployment.
 - [Tools](../tools/README.md): deployment, operations and FMP API probes.
-- [Command line](command-line.md): how to write a strategy file, and how to check, run and read backtests with the `bt` program.
+- [Command line](command-line.md): how to write a strategy file, how to check, run and read backtests with the `bt` program, and how to serve the website with `bt serve` and add a result to its list with `bt save`.
 
 ## Words used in these documents
 

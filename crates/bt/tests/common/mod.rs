@@ -136,6 +136,13 @@ impl Server {
     /// Sends `method` to `path` with a JSON body, and an `Origin` header when
     /// one is given; returns the status and the JSON reply.
     pub fn send(&self, method: &str, path: &str, body: Option<&Value>, origin: Option<&str>) -> (u16, Value) {
+        let (status, text) = self.request(method, path, body, origin);
+        let reply = serde_json::from_str(&text).unwrap_or_else(|_| panic!("{method} {path}: {text}"));
+        (status, reply)
+    }
+
+    /// As [`send`](Self::send), with the reply as text.
+    pub fn request(&self, method: &str, path: &str, body: Option<&Value>, origin: Option<&str>) -> (u16, String) {
         let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
         let mut request = ureq::http::Request::builder().method(method).uri(format!("{}{path}", self.url));
         if let Some(origin) = origin {
@@ -143,9 +150,7 @@ impl Server {
         }
         let request = request.header("Content-Type", "application/json").body(body.map_or(String::new(), Value::to_string)).unwrap();
         let mut response = agent.run(request).unwrap_or_else(|e| panic!("{method} {path}: {e}"));
-        let text = response.body_mut().read_to_string().unwrap();
-        let reply = serde_json::from_str(&text).unwrap_or_else(|_| panic!("{method} {path}: {text}"));
-        (response.status().as_u16(), reply)
+        (response.status().as_u16(), response.body_mut().read_to_string().unwrap())
     }
 
     /// Sends a change from the website's own origin.

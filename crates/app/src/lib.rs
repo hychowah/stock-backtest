@@ -2,8 +2,8 @@
 //! queue and the saved results, a worker that runs the queue, and the
 //! variable library.
 //!
-//! The routes are listed in [`http`], the worker's rules in the `worker`
-//! module and the library's in the `library` module.
+//! The routes are listed in the `http` module, the worker's rules in the
+//! `worker` module and the library's in the `library` module.
 //!
 //! # The database
 //!
@@ -51,10 +51,11 @@
 //! Each change is one update whose condition names the states it starts
 //! from, so a change that loses a race with the worker changes nothing and
 //! is refused. Move is the exception: one write transaction reads the queue
-//! and renumbers it, and refuses a run that is no longer waiting or held. Stop and delete write their state before they set the run's
-//! stop flag. The worker records the end of a run only while the run is
-//! still running: a run stopped meanwhile stays stopped, and the result
-//! file of a run deleted meanwhile is removed.
+//! and renumbers it, and refuses a run that is no longer waiting or held.
+//! Stop and delete write their state before they set the run's stop flag.
+//! The worker records the end of a run only while the run is still running:
+//! a run stopped meanwhile stays stopped, and the result file of a run
+//! deleted meanwhile is removed.
 //!
 //! # Who writes
 //!
@@ -77,11 +78,11 @@
 //! the same home is refused. A clean shutdown puts the run it interrupted
 //! back to waiting. At start, with the lock held, a run still marked running
 //! means the last server died while running it, perhaps because of that
-//! run: it is held, so the rest of the queue goes on and the owner releases
+//! run: it is held, so the rest of the queue goes on and the user releases
 //! or deletes it.
 
 mod formula;
-pub mod http;
+mod http;
 mod library;
 mod reference;
 mod results;
@@ -89,10 +90,12 @@ mod runs;
 mod store;
 mod worker;
 
-pub use http::{App, Body, Failure, Id, blocking, serve};
+pub use http::serve;
 pub use library::{NewVariable, Variable};
 pub use runs::{AddRun, Deleted, EditRun, MoveRun, Queue};
-pub use store::{Outcome, RunRow, RunsReply, State, Store};
+pub use store::{Outcome, RunRow, RunsReply, State};
+
+use store::Store;
 
 use market_data::Error;
 use std::path::Path;

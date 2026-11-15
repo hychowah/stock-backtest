@@ -2,7 +2,8 @@
 //! derived from its stored rows alone with the oracle's arithmetic. No view
 //! opens market data or selects again. Each view has one row type, shared,
 //! like the stored rows of [`results`](crate::results), by the export, the
-//! HTTP replies and the website's types.
+//! HTTP replies and the website's types; only the attribution's exported
+//! row differs from the one the website reads.
 //!
 //! - [`statistics`]: the statistics over the trials, one row each.
 //! - [`growth`]: each trial's growth of 1 by day, and [`band`] over the
@@ -10,7 +11,8 @@
 //! - [`sectors`]: each trial's sector weights, and [`sector_spread`] over the
 //!   trials (`result_sectors`).
 //! - [`contributions`]: each period's equal-weight attribution
-//!   (`contributions.js`).
+//!   (`contributions.js`): the top holdings with their contributions, which
+//!   the exported [`ContributionRow`] joins into a text of symbols.
 //! - [`explore`]: one trial or all trials over a window of periods and a
 //!   range of ranks (`result_exploration`).
 //! - [`holdings`]: each holding with its weight, contribution and the value
@@ -130,7 +132,7 @@ pub fn growth(file: &ResultFile) -> Result<Vec<Vec<GrowthRow>>, Error> {
 #[ts(export)]
 pub struct BandRow {
     pub day: Day,
-    /// Over the trials' strategy values: `statistics.median`, `min`, `max`.
+    /// The median, lowest and highest of the trials' strategy values.
     pub median: f64,
     pub lowest: f64,
     pub highest: f64,
@@ -277,12 +279,12 @@ pub fn sector_spread(trials: &[Vec<SectorShare>]) -> Vec<SectorSpread> {
         .collect()
 }
 
-/// One period's equal-weight attribution (`contributions`; `contributions.js`
-/// `analyze`). A holding's contribution is its return / the period's
-/// holdings.
+/// One period's gains and losses split among its top ten holdings and the
+/// rest, as fractions of the portfolio. A holding's contribution is its
+/// return / the period's holdings, all holdings weighing the same.
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
-pub struct ContributionRow {
+pub struct Attribution {
     pub trial: u32,
     pub period: u32,
     pub count: usize,
@@ -291,23 +293,57 @@ pub struct ContributionRow {
     pub gains: f64,
     pub losses: f64,
     pub net: f64,
-    /// The ten highest contributions (symbol order among equal ones), added
-    /// in that order, and the rest, added in rank order; `top` holds their
-    /// symbols, joined by spaces.
+    /// The ten highest contributions (symbol order among equal ones), and
+    /// their sum, added in that order.
+    pub top: Vec<Contributor>,
+    pub top_total: f64,
+    /// The other holdings' contributions, added in rank order: all of them,
+    /// the positive ones, and the negative ones as a positive number.
+    pub other_total: f64,
+    pub other_gains: f64,
+    pub other_losses: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+pub struct Contributor {
+    pub symbol: String,
+    /// A fraction of the portfolio; times 100 it is the holdings'
+    /// percentage points.
+    pub contribution: f64,
+}
+
+/// An [`Attribution`] as the exported table `contributions` has it: the top
+/// holdings' symbols joined by spaces, without the other gains and losses.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ContributionRow {
+    pub trial: u32,
+    pub period: u32,
+    pub count: usize,
+    pub gains: f64,
+    pub losses: f64,
+    pub net: f64,
     pub top_total: f64,
     pub other_total: f64,
     pub top: String,
 }
 
+impl From<Attribution> for ContributionRow {
+    fn from(a: Attribution) -> ContributionRow {
+        let top = a.top.iter().map(|c| c.symbol.as_str()).collect::<Vec<_>>().join(" ");
+        let (trial, period, count, gains, losses, net) = (a.trial, a.period, a.count, a.gains, a.losses, a.net);
+        ContributionRow { trial, period, count, gains, losses, net, top_total: a.top_total, other_total: a.other_total, top }
+    }
+}
+
 /// Each period's attribution, in key order.
-pub fn contributions(file: &ResultFile) -> Result<Vec<ContributionRow>, Error> {
+pub fn contributions(file: &ResultFile) -> Result<Vec<Attribution>, Error> {
     let (periods, holdings) = (file.periods()?, file.holdings()?);
     let books = by_period(&periods, &holdings, |h: &HoldingRow| (h.trial, h.period));
     Ok(periods.iter().zip(books).map(|(p, held)| analyze(p, held)).collect())
 }
 
 /// The attribution of one period's holdings, given in rank order.
-fn analyze(period: &PeriodRow, holdings: &[HoldingRow]) -> ContributionRow {
+fn analyze(period: &PeriodRow, holdings: &[HoldingRow]) -> Attribution {
     let n = holdings.len() as f64;
     // Math.max(0, x) is +0 for any x that is not above 0.
     let positive = |x: f64| if x > 0.0 { x } else { 0.0 };
@@ -324,13 +360,16 @@ fn analyze(period: &PeriodRow, holdings: &[HoldingRow]) -> ContributionRow {
     // keeping the first ten of each sorted prefix keeps the first ten of all.
     top.sort_by(|a, b| b.0.partial_cmp(&a.0).expect("finite contributions").then(a.1.cmp(b.1)));
     top.truncate(10);
-    let mut other_total = 0.0;
+    let (mut other_total, mut other_gains, mut other_losses) = (0.0, 0.0, 0.0);
     for h in holdings {
         if !top.iter().any(|t| t.1 == h.symbol) {
-            other_total += h.return_value / n;
+            let c = h.return_value / n;
+            other_total += c;
+            other_gains += positive(c);
+            other_losses += positive(-c);
         }
     }
-    ContributionRow {
+    Attribution {
         trial: period.trial,
         period: period.period,
         count: holdings.len(),
@@ -338,8 +377,10 @@ fn analyze(period: &PeriodRow, holdings: &[HoldingRow]) -> ContributionRow {
         losses,
         net,
         top_total: top.iter().fold(0.0, |s, t| s + t.0),
+        top: top.iter().map(|&(contribution, symbol)| Contributor { symbol: symbol.to_string(), contribution }).collect(),
         other_total,
-        top: top.iter().map(|t| t.1).collect::<Vec<_>>().join(" "),
+        other_gains,
+        other_losses,
     }
 }
 
@@ -381,10 +422,9 @@ pub struct Window {
     pub periods: u32,
 }
 
-/// One trial over the selected periods and ranks (`_reduce`). A period's
-/// return is the mean of its holdings' returns within the ranks (Python's
-/// `sum`), or its stored return when the ranks are the strategy's; SPY keeps
-/// its stored return. The periods compound over the window: from the
+/// One trial over the selected periods and ranks. A period's return is the
+/// mean of its holdings' returns within the ranks, or its stored return when
+/// the ranks are the strategy's; SPY keeps its stored return. The periods compound over the window: from the
 /// trial's start when it starts at period 1, else from the entry of its
 /// first period, to the exit of its last.
 #[derive(Debug, Serialize, TS)]
@@ -590,14 +630,14 @@ pub fn explore(file: &ResultFile, selection: &Selection) -> Result<ExploreReply,
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(
     export,
-    type = "import(\"./HoldingRow.ts\").HoldingRow & { weight: number; contribution: number; [source: `source:${string}`]: number | null }"
+    type = "import(\"./HoldingRow.ts\").HoldingRow & { weight: number; /** Percentage points. */ contribution: number; [source: `source:${string}`]: number | null }"
 )]
 pub struct JoinedHolding {
     #[serde(flatten)]
     pub row: HoldingRow,
-    /// 1 / the period's holdings, and the return × the weight in percentage
-    /// points (`portfolio_results._holdings`).
+    /// 1 / the period's holdings.
     pub weight: f64,
+    /// The return × the weight, in percentage points.
     pub contribution: f64,
     #[serde(flatten)]
     pub sources: SourceValues,

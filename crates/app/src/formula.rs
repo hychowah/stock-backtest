@@ -1,20 +1,5 @@
-//! `POST /api/formula`: the formula editor's check.
-//!
-//! The request is `{"formula": TEXT, "display"?: DISPLAY, "variables":
-//! {NAME: {"formula": TEXT, "display"?: DISPLAY}}}`, the variables as a
-//! strategy file spells them, so the formula can name them. The reply is
-//! always 200 with one of two shapes, so the page draws from either:
-//!
-//! - `{"checked": {canonical, unit, display, displays, picture}}`: the
-//!   canonical text, the unit's id, the display given (the unit's default
-//!   when it is none of the unit's), the displays the unit allows, and the
-//!   [`Picture`] the page draws.
-//! - `{"fault": {code, message, start, end, suggestions}}`: the characters
-//!   `[start, end)` at fault, counted from 0, and up to three replacements
-//!   for them.
-//!
-//! A body that is not that JSON, or variables a strategy file would refuse,
-//! get 400.
+//! The formula editor's check: the formula read with the variables of the
+//! file being written, answered as the editor draws it.
 
 use crate::http::{App, Body, Failure, blocking};
 use axum::routing::post;
@@ -28,6 +13,8 @@ pub(crate) fn routes() -> Router<App> {
     Router::new().route("/api/formula", post(check))
 }
 
+/// A formula to check, with the variables of a strategy file, as the file
+/// spells them, so the formula can name them.
 #[derive(Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export)]
@@ -40,39 +27,40 @@ pub struct FormulaRequest {
     pub variables: Box<RawValue>,
 }
 
+/// One of two shapes, so the page draws from either: the formula as read,
+/// or the fault: the characters `[start, end)` at fault, counted from 0, and
+/// up to three replacements for them.
 #[derive(Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum FormulaReply {
-    Checked(Checked),
+    Checked(CheckedFormula),
     Fault(Fault),
 }
 
 #[derive(Serialize, TS)]
 #[ts(export)]
-pub struct Checked {
+pub struct CheckedFormula {
     pub canonical: String,
+    /// The unit's id.
     pub unit: &'static str,
+    /// The display given, or the unit's default when it is none of the
+    /// unit's; and the displays the unit allows.
     pub display: &'static str,
     pub displays: Vec<&'static str>,
+    /// What the page draws to show how the text was read.
     pub picture: Picture,
 }
 
 async fn check(Body(request): Body<FormulaRequest>) -> Result<Json<FormulaReply>, Failure> {
     blocking(move || {
-        // The file's own reader checks the variables and keeps their order;
-        // the strategy around them only has to be a valid one.
-        let file = format!(
-            r#"{{"variables": {}, "sleeves": [{{"steps": [{{"rank": "Revenue", "order": "highest", "from": 1, "to": 1}}]}}]}}"#,
-            request.variables.get()
-        );
-        let strategy = Strategy::parse(&file)?;
-        Ok(Json(match Formula::read(&request.formula, strategy.variables()) {
+        let variables = Strategy::read_variables(request.variables.get())?;
+        Ok(Json(match Formula::read(&request.formula, &variables) {
             Err(fault) => FormulaReply::Fault(fault),
             Ok(formula) => {
                 let unit = formula.unit();
                 let display = request.display.as_deref().and_then(|d| unit.displays().iter().copied().find(|&shown| shown == d));
-                FormulaReply::Checked(Checked {
+                FormulaReply::Checked(CheckedFormula {
                     canonical: formula.text().to_string(),
                     unit: unit.id(),
                     display: display.unwrap_or(formula.display()),

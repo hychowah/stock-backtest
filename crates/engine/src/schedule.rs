@@ -10,8 +10,9 @@ use ts_rs::TS;
 /// are the flags of `bt run` (`--every`, `--trials`, `--seed`, `--dates`),
 /// the JSON of a request and a reply, and what a result file stores. Values
 /// stay as given (days as ISO text, `YYYY-MM-DD`; an interval as `Nw` or
-/// `Nm`); [`Plan::new`] checks them all once against the data and names the
-/// key at fault as the error's place. A schedule is one of:
+/// `Nm`); the server checks them all together against the market's data
+/// when the run is added or changed, and names the key at fault as the
+/// error's place. A schedule is one of:
 /// - `every`: one trial that trades at every interval from the start;
 /// - `every` and `trials` (at least 1), with an optional `seed`: that many
 ///   trials, each trading on one random session in every interval;
@@ -32,7 +33,7 @@ pub struct Schedule {
     #[ts(optional)]
     pub trials: Option<u32>,
     /// The seed of random dates: the same seed on the same sessions gives
-    /// the same dates. [`Schedule::drawn`] gives one when it is missing.
+    /// the same dates. A missing seed is drawn when the run is added.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub seed: Option<u32>,

@@ -57,8 +57,8 @@ fn the_read_routes_answer_the_exported_rows_and_the_commands_replies() {
     let period: Vec<Value> = rows(&holdings, "holdings").into_iter().filter(|h| h["trial"] == 2 && h["period"] == 3).collect();
     assert_eq!(api("holdings?trial=2&period=3")["holdings"].as_array().unwrap(), &period);
     assert_eq!(api("holdings?trial=1")["sources"], json!(["source:EBITDA yield", "source:Dividend yield", "source:P/E 5-year average"]));
-    assert_eq!(api("curve").as_array().unwrap(), &rows(&tables, "band"));
-    assert_eq!(each("curve", None), rows(&tables, "growth"));
+    assert_eq!(api("curve")["band"].as_array().unwrap(), &rows(&tables, "band"));
+    assert_eq!(each("curve", Some("growth")), rows(&tables, "growth"));
     let sectors = api("sectors");
     let (all, by_trial): (Vec<Value>, Vec<Value>) = rows(&tables, "sectors").into_iter().partition(|s| s["trial"] == "all");
     assert_eq!(sectors["trials"].as_array().unwrap(), &by_trial);
@@ -70,15 +70,30 @@ fn the_read_routes_answer_the_exported_rows_and_the_commands_replies() {
         })
         .collect();
     assert_eq!(sectors["spread"].as_array().unwrap(), &spread);
-    assert_eq!(each("contributions", None), rows(&tables, "contributions"));
+    // The pies' slices: the top holdings and the other gains and losses add
+    // up to the exported row's net, as far as the order of addition allows.
+    let attributions = each("contributions", None);
+    let exported = rows(&tables, "contributions");
+    assert_eq!(attributions.len(), exported.len());
+    for (a, row) in attributions.iter().zip(&exported) {
+        let top = a["top"].as_array().unwrap();
+        let symbols: Vec<&str> = top.iter().map(|t| t["symbol"].as_str().unwrap()).collect();
+        assert_eq!(symbols.join(" "), row["top"].as_str().unwrap());
+        for key in ["trial", "period", "count", "gains", "losses", "net", "top_total", "other_total"] {
+            assert_eq!(a[key], row[key], "{key}: {a}");
+        }
+        let number = |v: &Value| v.as_f64().unwrap();
+        let slices = top.iter().map(|t| number(&t["contribution"])).sum::<f64>() + number(&a["other_gains"]) - number(&a["other_losses"]);
+        assert!((slices - number(&row["net"])).abs() < 1e-12, "{a}");
+    }
     for trial in ["1", "all"] {
         let explored = bt_ok(&["explore", path(&result), "--trial", trial, "--periods", "2-3", "--ranks", "1-4"]);
         assert_eq!(api(&format!("explore?trial={trial}&periods=2-3&ranks=1-4")), explored);
     }
 
     assert_eq!(server.get("/api/catalog/hk"), bt_ok(&["catalog", "--market", "hk", "--home", home_arg]));
-    let text = std::fs::read_to_string(strategy).unwrap();
-    let (status, picks) = server.send("POST", "/api/screen", Some(&json!({"strategy": text, "market": "hk"})), None);
+    let file: Value = serde_json::from_str(&std::fs::read_to_string(strategy).unwrap()).unwrap();
+    let (status, picks) = server.send("POST", "/api/screen", Some(&json!({"strategy": file, "market": "hk"})), None);
     assert_eq!((status, picks), (200, bt_ok(&["screen", strategy, "--market", "hk", "--home", home_arg])));
     assert_eq!(server.get("/api/data/status"), bt_ok(&["data", "status", "--home", home_arg]));
 
@@ -91,7 +106,7 @@ fn the_read_routes_answer_the_exported_rows_and_the_commands_replies() {
     assert_eq!(refused("/api/runs/1/periods?trial=3"), (400, "trial".to_string()));
     assert_eq!(refused("/api/runs/1/holdings?trial=1&period=99"), (400, "period".to_string()));
     assert_eq!(refused("/api/runs/1/explore?trial=1&periods=2&ranks=1-4"), (400, "periods".to_string()));
-    let (status, reply) = server.send("POST", "/api/screen", Some(&json!({"strategy": "{}", "market": "hk"})), None);
+    let (status, reply) = server.send("POST", "/api/screen", Some(&json!({"strategy": {}, "market": "hk"})), None);
     assert_eq!(status, 400, "{reply}");
     assert!(reply["error"]["place"].as_str().unwrap().starts_with("strategy"), "{reply}");
     assert!(server.terminate());

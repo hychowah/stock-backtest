@@ -43,6 +43,20 @@ fn an_older_entry_can_use_a_newer_one_and_cycles_duplicates_and_used_entries_are
     assert_eq!(status, 400, "{reply}");
     assert!(reply["error"]["place"].as_str().unwrap().starts_with("formula, character"), "{reply}");
 
+    // A change that breaks an entry it does not name directly: the entry at
+    // fault is named, with its own fault.
+    let [w1, b2, a3] = ["W1", "B2", "A3"].map(|name| add(&server, name, "Revenue"));
+    for (id, name, formula) in [(b2, "B2", "A3 + Revenue"), (w1, "W1", "B2 * 2")] {
+        server.ok("PUT", &format!("/api/variables/{id}"), json!({"name": name, "formula": formula, "favourite": false}));
+    }
+    let ratio = json!({"name": "A3", "formula": "Revenue / Revenue", "favourite": false});
+    let (status, reply) = server.change("PUT", &format!("/api/variables/{a3}"), ratio);
+    assert_eq!(status, 400, "{reply}");
+    assert!(reply["error"]["place"].as_str().unwrap().starts_with("variables.\"B2\", character"), "{reply}");
+    for id in [w1, b2, a3] {
+        assert_eq!(server.change("DELETE", &format!("/api/variables/{id}"), json!(null)).0, 200);
+    }
+
     let (status, _) = server.change("DELETE", &format!("/api/variables/{older}"), json!(null));
     assert_eq!(status, 200);
     assert_eq!(server.get("/api/variables").as_array().unwrap().len(), 1);

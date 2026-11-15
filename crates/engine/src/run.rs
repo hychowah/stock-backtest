@@ -86,18 +86,24 @@ pub(crate) struct Holding {
     pub sleeves: Vec<Trail>,
 }
 
-/// How a holding exited.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Status {
+/// How the holding was sold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(rename = "ExitStatus")] // `market_data::ExitStatus` has the Rust name.
+pub enum Status {
     /// At the last close on or before the exit day, at most 10 days earlier.
+    #[serde(rename = "Scheduled exit")]
     Scheduled,
     /// No close in those 10 days: at the last earlier one.
+    #[serde(rename = "Last available price")]
     LastAvailable,
     /// A scheduled exit of the last period, when the plan ends on a mark.
+    #[serde(rename = "Marked to date")]
     Marked,
 }
 
 impl Status {
+    pub(crate) const ALL: [Status; 3] = [Status::Scheduled, Status::LastAvailable, Status::Marked];
+
     /// The oracle's text.
     pub(crate) fn text(self) -> &'static str {
         match self {
@@ -210,7 +216,8 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[&Strategy], stop
     Ok(Some(runs))
 }
 
-/// One pick of the latest screen.
+/// One pick of the latest screen: its candidate's fields under the names
+/// and in the units of a holding row (`HoldingRow`).
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct Screened {
@@ -218,6 +225,15 @@ pub struct Screened {
     pub symbol: String,
     pub name: String,
     pub sector: String,
+    pub exchange: String,
+    pub candidate_rank: Option<u32>,
+    pub fiscal: Day,
+    pub market_cap: f64,
+    pub enterprise_value: f64,
+    pub ebitda: f64,
+    pub ebitda_yield: f64,
+    pub ev_ebitda: f64,
+    pub spread: f64,
     /// The value of the first picking sleeve's last Rank step.
     pub ranking_value: f64,
     /// Each picking sleeve's step trail, in sleeve and step order.
@@ -247,24 +263,36 @@ pub(crate) fn screen(data: &MarketData, strategy: &Strategy) -> Result<(Day, Vec
     let companies = data.companies();
     let picks = picks
         .into_iter()
-        .map(|pick| Screened {
-            rank: pick.rank,
-            symbol: companies.symbol(pick.candidate.company).to_string(),
-            name: companies.name(pick.candidate.company).to_string(),
-            sector: companies.sector(pick.candidate.company).to_string(),
-            ranking_value: pick.value,
-            steps: pick
-                .sleeves
-                .iter()
-                .flat_map(|trail| {
-                    (1..).zip(&trail.steps).map(|(step, o)| ScreenedStep {
-                        sleeve: trail.sleeve as u32 + 1,
-                        step,
-                        value: o.value,
-                        step_rank: o.rank,
+        .map(|pick| {
+            let c = pick.candidate;
+            Screened {
+                rank: pick.rank,
+                symbol: companies.symbol(c.company).to_string(),
+                name: companies.name(c.company).to_string(),
+                sector: companies.sector(c.company).to_string(),
+                exchange: companies.exchange(c.company).to_string(),
+                candidate_rank: c.rank,
+                fiscal: c.fiscal,
+                market_cap: c.market_cap,
+                enterprise_value: c.enterprise_value,
+                ebitda: c.ebitda,
+                ebitda_yield: c.ebitda_yield,
+                ev_ebitda: c.ev_ebitda,
+                spread: c.spread,
+                ranking_value: pick.value,
+                steps: pick
+                    .sleeves
+                    .iter()
+                    .flat_map(|trail| {
+                        (1..).zip(&trail.steps).map(|(step, o)| ScreenedStep {
+                            sleeve: trail.sleeve as u32 + 1,
+                            step,
+                            value: o.value,
+                            step_rank: o.rank,
+                        })
                     })
-                })
-                .collect(),
+                    .collect(),
+            }
         })
         .collect();
     Ok((day, picks))

@@ -3,8 +3,8 @@
 //!
 //! One row type per table ([`TrialRow`], [`PeriodRow`], [`HoldingRow`],
 //! [`StepRow`], [`CurveRow`]), shared by the export, the HTTP replies and the
-//! website's types: a row serializes to its table's fields in their order,
-//! days as ISO text.
+//! website's types (the curve rows reach the website only as growth): a row
+//! serializes to its table's fields in their order, days as ISO text.
 //!
 //! Tables, keyed by the columns in brackets; every count starts at 1:
 //! - `run`, one row: strategy (canonical form), identity, market, schedule
@@ -30,7 +30,7 @@
 //! refused with "run it again", never read with this layout.
 
 use crate::Error;
-use crate::run::Run;
+use crate::run::{Run, Status};
 use crate::schedule::Schedule;
 use crate::statistics::Summary;
 use crate::strategy::Strategy;
@@ -263,8 +263,7 @@ pub struct HoldingRow {
     pub spread: f64,
     #[serde(rename = "return")]
     pub return_value: f64,
-    /// The oracle's status text.
-    pub status: String,
+    pub status: Status,
     pub ranking_value: f64,
     /// The first picking sleeve, from 1.
     pub sleeve: u32,
@@ -282,8 +281,7 @@ pub struct StepRow {
     pub step_rank: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, TS)]
-#[ts(export)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CurveRow {
     pub trial: u32,
     pub period: u32,
@@ -440,6 +438,13 @@ impl ResultFile {
         let mut statement = self.db.prepare(sql).map_err(fail)?;
         let rows = statement.query_map(params, read).map_err(fail)?;
         rows.collect::<rusqlite::Result<Vec<T>>>().map_err(fail)
+    }
+}
+
+impl FromSql for Status {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let text = value.as_str()?;
+        Status::ALL.into_iter().find(|s| s.text() == text).ok_or(FromSqlError::InvalidType)
     }
 }
 

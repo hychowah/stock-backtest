@@ -33,7 +33,7 @@
 
 use crate::Error;
 use crate::formula::Formula;
-use crate::names::{self, Field, Kind};
+use crate::names::{self, Field, Kind, SourceKind};
 use market_data::builtins::BUILTINS;
 use serde::de::{Deserializer, MapAccess, Visitor};
 use serde::ser::{SerializeMap, Serializer};
@@ -42,6 +42,7 @@ use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use ts_rs::TS;
 
 /// The longest threshold text, and the longest decimal it expands to
 /// (`definitions.CEILINGS` literal and expanded_literal).
@@ -102,17 +103,17 @@ impl Source {
     }
 
     /// What it reads: the [kind](Kind::id) of a name of the list when it is
-    /// that whole name, `variable` for a file variable, else `formula`.
-    pub fn kind(&self) -> &'static str {
+    /// that whole name, a file variable, else formula text.
+    pub fn kind(&self) -> SourceKind {
         match self {
             &Source::Builtin(index) => names::of_builtin(index).kind.id(),
             &Source::Field(field) => names::of_field(field).kind.id(),
-            Source::Formula(formula) if formula.name().is_some() => "variable",
+            Source::Formula(formula) if formula.name().is_some() => SourceKind::Variable,
             // A formula that prints as an input's or a measure's name is
             // that name only when it is what the whole name reads.
             Source::Formula(formula) => match names::find(formula.text()) {
                 Some(name) if whole(name.name, &[]).as_ref() == Some(self) => name.kind.id(),
-                _ => "formula",
+                _ => SourceKind::Formula,
             },
         }
     }
@@ -175,7 +176,8 @@ impl Compare {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
 pub enum Order {
     Highest,
     Lowest,
@@ -383,45 +385,77 @@ impl Strategy {
     }
 }
 
-#[derive(Serialize)]
-struct CanonicalFile<'a> {
-    #[serde(skip_serializing_if = "<[_]>::is_empty")]
-    #[serde(serialize_with = "canonical_variables")]
-    variables: &'a [Arc<Formula>],
-    sleeves: Vec<CanonicalSleeve<'a>>,
+/// A strategy file: the shape a page sends, and the canonical form in which
+/// the server stores and returns a strategy.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct StrategyFile<'a> {
+    /// In file order: each formula can name the variables above it.
+    #[serde(skip_serializing_if = "FileVariables::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, FileVariable<'a>>>", optional)]
+    variables: FileVariables<'a>,
+    sleeves: Vec<FileSleeve<'a>>,
 }
 
-/// The variables as a JSON object in file order.
-fn canonical_variables<S: Serializer>(variables: &&[Arc<Formula>], serializer: S) -> Result<S::Ok, S::Error> {
-    #[derive(Serialize)]
-    struct Variable<'a> {
-        formula: &'a str,
-        display: &'a str,
-    }
-    let mut map = serializer.serialize_map(Some(variables.len()))?;
-    for formula in variables.iter() {
-        let name = formula.name().expect("a variable has a name");
-        map.serialize_entry(name, &Variable { formula: formula.text(), display: formula.display() })?;
-    }
-    map.end()
+/// A variable of a strategy file: its canonical formula text and its
+/// display.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct FileVariable<'a> {
+    formula: &'a str,
+    display: &'a str,
 }
 
-#[derive(Serialize)]
-struct CanonicalSleeve<'a> {
+/// The variables, written as a JSON object in file order.
+struct FileVariables<'a>(&'a [Arc<Formula>]);
+
+impl FileVariables<'_> {
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Serialize for FileVariables<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for formula in self.0 {
+            let name = formula.name().expect("a variable has a name");
+            map.serialize_entry(name, &FileVariable { formula: formula.text(), display: formula.display() })?;
+        }
+        map.end()
+    }
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct FileSleeve<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     name: Option<&'a str>,
-    steps: Vec<CanonicalStep<'a>>,
+    steps: Vec<FileStep<'a>>,
 }
 
-#[derive(Serialize)]
+/// A Filter step or a Rank step, told apart by the key `filter` or `rank`.
+#[derive(Serialize, TS)]
 #[serde(untagged)]
-enum CanonicalStep<'a> {
-    Filter { filter: String, op: &'static str, value: &'a str },
-    Rank { rank: String, order: &'static str, from: u32, to: u32 },
+#[ts(export)]
+pub enum FileStep<'a> {
+    Filter {
+        filter: String,
+        #[ts(type = r#""<" | "<=" | ">" | ">=" | "is" | "is not""#)]
+        op: &'static str,
+        value: &'a str,
+    },
+    Rank {
+        rank: String,
+        order: Order,
+        from: u32,
+        to: u32,
+    },
 }
 
 fn canonical<'a>(sleeves: &'a [Sleeve], variables: &'a [Arc<Formula>]) -> String {
-    let step = |step: &'a Step| -> CanonicalStep<'a> {
+    let step = |step: &'a Step| -> FileStep<'a> {
         match step {
             Step::Filter { source, test } => {
                 let (op, value) = match test {
@@ -432,20 +466,14 @@ fn canonical<'a>(sleeves: &'a [Sleeve], variables: &'a [Arc<Formula>]) -> String
                     Test::Is(text) => ("is", text),
                     Test::IsNot(text) => ("is not", text),
                 };
-                CanonicalStep::Filter { filter: written(source, variables), op, value }
+                FileStep::Filter { filter: written(source, variables), op, value }
             }
-            &Step::Rank { ref source, order, from, to } => {
-                let order = if order == Order::Highest { "highest" } else { "lowest" };
-                CanonicalStep::Rank { rank: written(source, variables), order, from, to }
-            }
+            &Step::Rank { ref source, order, from, to } => FileStep::Rank { rank: written(source, variables), order, from, to },
         }
     };
-    let file = CanonicalFile {
-        variables,
-        sleeves: sleeves
-            .iter()
-            .map(|s| CanonicalSleeve { name: s.name.as_deref(), steps: s.steps.iter().map(step).collect() })
-            .collect(),
+    let file = StrategyFile {
+        variables: FileVariables(variables),
+        sleeves: sleeves.iter().map(|s| FileSleeve { name: s.name.as_deref(), steps: s.steps.iter().map(step).collect() }).collect(),
     };
     serde_json::to_string(&file).expect("a strategy serializes")
 }

@@ -2,11 +2,11 @@ use serde::Serialize;
 use std::fmt;
 use ts_rs::TS;
 
-/// Why a command failed. `bt` prints it as `{"error": {"message", "place"}}`
-/// and exits with status 1. Commands check their inputs once, at the start;
-/// an error names the input, file or folder at fault in `place`.
+/// Why a command or a request was refused: `{"error": {"message", "place"}}`,
+/// where `place` names the input, file or folder at fault. Commands check
+/// their inputs once, at the start.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[ts(export, rename = "ApiError")] // TypeScript's own `Error` keeps its name.
 pub struct Error {
     /// What went wrong and, where the user can act, what to do.
     pub message: String,

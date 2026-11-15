@@ -5,4 +5,4 @@ import type { GrowthRow } from "./GrowthRow.ts";
 /**
  * The band over the trials, or one trial's growth.
  */
-export type CurveReply = Array<BandRow> | Array<GrowthRow>;
+export type CurveReply = { "band": Array<BandRow> } | { "growth": Array<GrowthRow> };

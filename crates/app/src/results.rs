@@ -1,26 +1,10 @@
-//! The read routes of a complete run's result: each reads the run's result
-//! file with the engine's views and answers their rows without `case`: the
-//! rows of `bt export tables`, except that the holdings are those of `bt
-//! export holdings` (with their `source:` fields) and the sector spread is
-//! the `sectors` rows of trial `all` without that trial. The page writes its
-//! CSV files from these rows.
-//!
-//! | Route | Query | Reply |
-//! |---|---|---|
-//! | `GET /api/runs/{id}/trials` | | [`TrialsReply`] |
-//! | `GET /api/runs/{id}/periods` | `trial` | [`PeriodRow`]s |
-//! | `GET /api/runs/{id}/holdings` | `trial`, `period` (optional) | [`HoldingsReply`] |
-//! | `GET /api/runs/{id}/curve` | `trial` (optional) | [`CurveReply`]: the band, or the trial's growth |
-//! | `GET /api/runs/{id}/sectors` | | [`SectorsReply`] |
-//! | `GET /api/runs/{id}/contributions` | `trial` | [`ContributionRow`]s |
-//! | `GET /api/runs/{id}/explore` | `trial` (a number or `all`), `periods`, `ranks` (`A-B`) | [`ExploreReply`] |
-//!
-//! An id that is not a number gets 400, an unknown id 404, a run without a
-//! result 409, and a result file
-//! that is missing or cannot be read 500, on every route alike. A missing or
-//! malformed query value, or a trial or period the result does not have,
-//! gets 400 with the value's name as the place. A route about one trial
-//! reads only that trial's rows.
+//! The routes that read a complete run's result file with the engine's
+//! views. Their rows are those of `bt export tables`, without `case`, except
+//! that the holdings are those of `bt export holdings` (with their `source:`
+//! fields), the sector spread is the `sectors` rows of trial `all` without
+//! that trial, and an attribution lists its top holdings. The page writes
+//! its CSV files from these rows. A route about one trial reads only that
+//! trial's rows.
 
 use crate::http::{App, Failure, Id, blocking};
 use axum::extract::rejection::QueryRejection;
@@ -29,7 +13,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use engine::results::{PeriodRow, ResultFile, StepRow, TrialRow};
 use engine::views::{
-    self, BandRow, ContributionRow, ExploreReply, GrowthRow, JoinedHolding, SectorShare, SectorSpread, Selection, StatisticRow,
+    self, Attribution, BandRow, ExploreReply, GrowthRow, JoinedHolding, SectorShare, SectorSpread, Selection, StatisticRow,
 };
 use market_data::Error;
 use serde::Serialize;
@@ -67,7 +51,7 @@ pub struct HoldingsReply {
 
 /// The band over the trials, or one trial's growth.
 #[derive(Debug, Serialize, TS)]
-#[serde(untagged)]
+#[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum CurveReply {
     Band(Vec<BandRow>),
@@ -133,7 +117,7 @@ async fn sectors(State(app): State<App>, Id(id): Id) -> Reply<SectorsReply> {
     .await
 }
 
-async fn contributions(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Vec<ContributionRow>> {
+async fn contributions(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Vec<Attribution>> {
     let trial = number(&query?.0, "trial")?;
     read(app, id, Some(trial), |file| views::contributions(&file)).await
 }

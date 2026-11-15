@@ -29,11 +29,11 @@ fn slow(name: &str) -> Value {
     let terms: Vec<String> = (1..=2000).map(|k| format!("Revenue * {k}")).collect();
     let strategy = json!({"sleeves": [{"steps": [{"rank": sum(&terms), "order": "highest", "from": 1, "to": 5}]}]});
     let schedule = json!({"start": "2016-01-04", "end": "2023-06-28", "every": "1w"});
-    json!({"name": name, "market": "us", "schedule": schedule, "strategy": strategy.to_string()})
+    json!({"name": name, "market": "us", "schedule": schedule, "strategy": strategy})
 }
 
 fn run(name: &str, schedule: Value) -> Value {
-    json!({"name": name, "market": "us", "schedule": schedule, "strategy": RANK})
+    json!({"name": name, "market": "us", "schedule": schedule, "strategy": serde_json::from_str::<Value>(RANK).unwrap()})
 }
 
 /// The test's own steps on a server.
@@ -99,7 +99,10 @@ fn bt_run(dir: &Path, home: &Path, schedule: &Value) -> Value {
 fn a_server_answers_refuses_other_origins_and_a_second_server_and_exits_on_sigterm() {
     let dir = tempfile::tempdir().unwrap();
     let home = prepared(dir.path());
+    std::fs::create_dir(home.join("web")).unwrap();
+    std::fs::write(home.join("web/index.html"), "<p>the page</p>").unwrap();
     let server = serve(&home);
+    assert_eq!(server.request("GET", "/", None, None), (200, "<p>the page</p>".to_string()));
     assert_eq!(server.get("/api/runs"), json!({"paused": false, "runs": []}));
     for (method, path, status, place) in
         [("GET", "/api/runs/abc", 400, "id"), ("GET", "/api/nothing", 404, "path"), ("PUT", "/api/runs", 405, "method")]
@@ -128,8 +131,11 @@ fn an_added_run_completes_with_the_headline_of_bt_run_with_its_seed() {
     let schedule = &done["schedule"];
     assert!(schedule["seed"].is_u64(), "the seed is drawn when the run is added: {done}");
     assert_eq!(done["outcome"]["headline"], headline(&bt_run(dir.path(), &home, schedule)));
-    assert!(done["strategy"].as_str().unwrap().starts_with(r#"{"sleeves""#));
-    assert!(server.get("/api/runs")["runs"][0].get("strategy").is_none(), "the list leaves out the strategy");
+    let checked = &bt_ok(&["check", path(&dir.path().join("rank.json"))])["files"][0];
+    assert_eq!(done["strategy"], serde_json::from_str::<Value>(checked["canonical"].as_str().unwrap()).unwrap());
+    assert_eq!(done["description"], json!({"variables": checked["variables"], "sleeves": checked["sleeves"]}));
+    let listed = &server.get("/api/runs")["runs"][0];
+    assert!(listed.get("strategy").is_none() && listed.get("description").is_none(), "the list leaves out the strategy");
     assert!(result(&home, id).is_file());
 
     let mut bad = run("bad", json!({"start": "2021-07-01", "end": "2023-06-28", "every": "3x"}));
@@ -137,9 +143,9 @@ fn an_added_run_completes_with_the_headline_of_bt_run_with_its_seed() {
     assert_eq!((status, &reply["error"]["place"]), (400, &json!("every")), "{reply}");
     bad["schedule"] = json!({"start": "2021-07-01", "end": "2023-06-28", "every": "1w", "trials": 4000000000u32});
     let (status, reply) = server.change("POST", "/api/runs", bad.clone());
-    assert_eq!((status, &reply["error"]["place"]), (400, &json!("trials")), "the website runs at most 1,000 trials: {reply}");
+    assert_eq!((status, &reply["error"]["place"]), (400, &json!("trials")), "a run of the list has at most 1,000 trials: {reply}");
     bad["schedule"] = quick();
-    bad["strategy"] = json!(r#"{"sleeves": []}"#);
+    bad["strategy"] = json!({"sleeves": []});
     let (status, reply) = server.change("POST", "/api/runs", bad);
     assert_eq!((status, &reply["error"]["place"]), (400, &json!("strategy: sleeves")), "{reply}");
 }
@@ -172,6 +178,37 @@ fn the_queue_holds_edits_releases_moves_stops_pauses_and_resumes() {
     assert!(!result(&home, a).exists());
     let (status, reply) = server.change("PATCH", &format!("/api/runs/{c}"), json!({"schedule": every}));
     assert_eq!(status, 409, "a complete run's settings stay: {reply}");
+}
+
+#[test]
+fn a_run_that_fails_keeps_its_error_and_a_held_run_runs_its_edited_strategy() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let server = serve(&home);
+    server.ok("PUT", "/api/queue", json!({"paused": true}));
+    // `at( )` reads a day after the first entry day, which every candidate
+    // reaches: the run stops there.
+    let strategy = json!({
+        "variables": {"Later revenue": {"formula": "at(Revenue, 2022-12-30)"}},
+        "sleeves": [{"steps": [{"rank": "Later revenue", "order": "highest", "from": 1, "to": 3}]}]
+    });
+    let dates = json!({"start": "2021-07-01", "end": "2023-06-28", "dates": ["2022-07-01", "2023-01-02"]});
+    let failing = server.add(json!({"name": "future", "market": "us", "schedule": dates, "strategy": strategy}));
+    let held = server.add(run("held", quick()));
+    server.ok("POST", &format!("/api/runs/{held}/hold"), json!({}));
+    let dividends = json!({"sleeves": [{"steps": [{"rank": "dividend yield", "order": "highest", "from": 1, "to": 5}]}]});
+    let edited = server.ok("PATCH", &format!("/api/runs/{held}"), json!({"strategy": dividends}));
+    assert_eq!(edited["strategy"]["sleeves"][0]["steps"][0]["rank"], "Dividend yield", "the canonical form is stored");
+    server.ok("POST", &format!("/api/runs/{held}/release"), json!({}));
+    server.ok("PUT", "/api/queue", json!({"paused": false}));
+
+    let failed = server.wait(failing, "failed");
+    let error = &failed["error"];
+    assert!(error["message"].as_str().unwrap().contains("FUTURE_DATE"), "{failed}");
+    assert!(error["place"].as_str().unwrap().starts_with("strategy: us, trial 1, 2022-07-01, "), "{failed}");
+    assert!(failed.get("outcome").is_none() && !result(&home, failing).exists());
+    server.wait(held, "complete");
+    assert_eq!(server.get(&format!("/api/runs/{held}/holdings?trial=1"))["sources"], json!(["source:Dividend yield"]));
 }
 
 #[test]
