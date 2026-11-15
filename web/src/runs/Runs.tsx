@@ -1,4 +1,13 @@
 import type { ComponentChildren } from "preact";
+import { SavedPanel } from "./SavedPanel.tsx";
 
-/** Runs & saved; `queue` is the queue panel, drawn first when it is not in the tray. */
-export const Runs = ({ visible, queue }: { visible: boolean; queue: ComponentChildren }) => <section id="workspace-runs" hidden={!visible}>{queue}</section>;
+/** Runs & saved: the queue panel (`queue`, drawn here while the tray is
+ *  closed), then the saved table. */
+export function Runs({ visible, queue }: { visible: boolean; queue: ComponentChildren }) {
+  return (
+    <section id="workspace-runs" hidden={!visible}>
+      {queue}
+      <SavedPanel />
+    </section>
+  );
+}
