@@ -76,10 +76,12 @@
 //!
 //! `bt serve` holds `data/serve.lock` while it runs, and a second server on
 //! the same home is refused. A clean shutdown puts the run it interrupted
-//! back to waiting. At start, with the lock held, a run still marked running
-//! means the last server died while running it, perhaps because of that
-//! run: it is held, so the rest of the queue goes on and the user releases
-//! or deletes it.
+//! back to waiting. A run holds every trial in memory inside the server, so a
+//! run too big for the memory ends the server; a run has no limit on its
+//! trials. At start, with the lock held, a run still marked running means
+//! the last server died while running it, perhaps because of that run: it
+//! is held, so the rest of the queue goes on and the user releases or
+//! deletes it.
 
 mod formula;
 mod http;

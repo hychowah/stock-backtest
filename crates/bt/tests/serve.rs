@@ -155,9 +155,6 @@ fn an_added_run_completes_with_the_headline_of_bt_run_with_its_seed() {
     let mut bad = run("bad", json!({"start": "2021-07-01", "end": "2023-06-28", "every": "3x"}));
     let (status, reply) = server.change("POST", "/api/runs", bad.clone());
     assert_eq!((status, &reply["error"]["place"]), (400, &json!("every")), "{reply}");
-    bad["schedule"] = json!({"start": "2021-07-01", "end": "2023-06-28", "every": "1w", "trials": 4000000000u32});
-    let (status, reply) = server.change("POST", "/api/runs", bad.clone());
-    assert_eq!((status, &reply["error"]["place"]), (400, &json!("trials")), "a run of the list has at most 1,000 trials: {reply}");
     bad["schedule"] = quick();
     bad["strategy"] = json!({"sleeves": []});
     let (status, reply) = server.change("POST", "/api/runs", bad);

@@ -75,7 +75,7 @@ export function Dates({ hidden, form, sessions, change }: {
         <div id="random-controls" hidden={form.testing !== "random"}>
           <label class="narrow">
             Random trials
-            <input id="random-trials" type="number" min={1} max={1000} step={1} required disabled={!random} value={form.trials} onInput={whole("trials", 1)} />
+            <input id="random-trials" type="number" min={1} step={1} required disabled={!random} value={form.trials} onInput={whole("trials", 1)} />
           </label>
           <details class="random-advanced">
             <summary>Advanced: repeat the same random dates</summary>
@@ -101,7 +101,7 @@ export function Dates({ hidden, form, sessions, change }: {
           Month-end dates keep the original day anchor. Equal weights reset at each rebalance.
         </p>
         <p class="hint">
-          Random testing samples one trading date independently inside each rebalance block for every trial. Trial count defaults to 24 and is configurable (1–1,000). Each run draws fresh dates;
+          Random testing samples one trading date independently inside each rebalance block for every trial. Trial count defaults to 24 and is configurable (at least 1). Each run draws fresh dates;
           repeating a date set is optional under Advanced. Actual holding intervals vary around the selected frequency; both strategy and paired SPY hold cash until the first sampled trade.
         </p>
         <p class="hint">Custom week/month interval: weeks support 1–104. Months support 1–24. Clear this option to use the frequency preset.</p>

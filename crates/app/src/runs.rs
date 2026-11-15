@@ -9,18 +9,10 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use engine::commands::check_run;
 use engine::{Schedule, StrategyFile};
-use market_data::{Error, Market, MarketData};
+use market_data::{Market, MarketData};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use ts_rs::TS;
-
-/// The most trials of a run in the list. A run holds every trial in memory,
-/// inside the server, so a run too big for the memory ends the server. 1,000
-/// trials of a quarterly US test peak at 2.2 GB and write a 0.7 GB result
-/// on the machine where this was measured, so the bound is safe there and
-/// ten times it would not be. `bt run` has no such limit: a run too big
-/// there ends only its own process.
-const MAX_TRIALS: u32 = 1000;
 
 /// `POST /api/runs`.
 #[derive(Debug, Deserialize, TS)]
@@ -128,10 +120,6 @@ async fn edit(State(app): State<App>, Id(id): Id, Body(edit): Body<EditRun>) -> 
 /// Checks a run's settings against the market's data, as the run will:
 /// gives the schedule with its seed drawn and the canonical strategy.
 fn settings(app: &App, market: Market, schedule: &Schedule, strategy: &str) -> Result<(Schedule, String), Failure> {
-    if schedule.trials.is_some_and(|trials| trials > MAX_TRIALS) {
-        let message = format!("a run of the list has at most {MAX_TRIALS} trials, because the server holds every trial in memory");
-        return Err(Failure::input(Error::new(message, "trials")));
-    }
     let strategy = crate::strategy(strategy)?;
     let schedule = schedule.drawn();
     let data = MarketData::open(&app.home, market)?;

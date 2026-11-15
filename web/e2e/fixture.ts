@@ -17,9 +17,9 @@ const BT = join(root, "target/debug/bt");
 /** The as-of time of the fictional fixture's expected tables. */
 const AS_OF = "2023-06-30T07:30:00+00:00";
 
-/** The schedule of the long run: 1,000 weekly trials (the most a run may
- *  have) over seven and a half years of the fictional US data, ranks 1 to 50:
- *  about 40 s with a debug `bt` on a quiet machine. A check stops it as soon
+/** The schedule of the long run: 1,000 weekly trials over seven and a half
+ *  years of the fictional US data, ranks 1 to 50: about 40 s with a debug
+ *  `bt` on a quiet machine. A check stops it as soon
  *  as it has seen it running and its time since start grow, so it only has to
  *  outlast the page's next read of the run list (every 2 s while a run waits
  *  or runs) and a slow machine's delays. Enlarge the window or shorten the
