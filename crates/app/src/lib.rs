@@ -2,10 +2,8 @@
 //! queue and the saved results, a worker that runs the queue, and the
 //! variable library.
 //!
-//! Built so far: the database, `bt serve` with the router, the error
-//! replies, the origin rule, the static files, `GET /api/runs` and `POST /api/formula`. The
-//! worker, the other run and queue routes, `bt save` and the library are
-//! not built yet: the sections below describe what they will do.
+//! The routes are listed in [`http`], the worker's rules in the `worker`
+//! module and the library's in the `library` module.
 //!
 //! # The database
 //!
@@ -30,7 +28,9 @@
 //!
 //! Run N's result is `data/runs/N.sqlite`. The engine writes it whole or not
 //! at all, and it never changes. A complete run is a saved run: there is no
-//! other saved mark.
+//! other saved mark. A kill can leave a temporary file in `data/runs/`
+//! (`.N.sqlite.tmp` from a run, `.save-PID.tmp` from `bt save`): it is
+//! harmless, never listed and never reused, and nothing sweeps it.
 //!
 //! # States
 //!
@@ -42,14 +42,16 @@
 //! | waiting | the worker takes the first by position, when not paused | running |
 //! | running | the engine returns | complete or failed |
 //! | waiting, held, running | stop | stopped |
-//! | running | the server starts | waiting |
+//! | running | the server shuts down (Ctrl+C or SIGTERM) | waiting, in the same place |
+//! | running | the server starts: the last one died while running it | held, in the same place |
 //! | any | rename, lock | the same state |
 //! | not locked | delete (a running run is stopped first) | removed |
 //! | (none) | `bt save` | complete |
 //!
 //! Each change is one update whose condition names the states it starts
 //! from, so a change that loses a race with the worker changes nothing and
-//! is refused. Stop and delete write their state before they set the run's
+//! is refused. Move is the exception: one write transaction reads the queue
+//! and renumbers it, and refuses a run that is no longer waiting or held. Stop and delete write their state before they set the run's
 //! stop flag. The worker records the end of a run only while the run is
 //! still running: a run stopped meanwhile stays stopped, and the result
 //! file of a run deleted meanwhile is removed.
@@ -72,12 +74,33 @@
 //! # One server per home
 //!
 //! `bt serve` holds `data/serve.lock` while it runs, and a second server on
-//! the same home is refused. At start, with the lock held, every running run
-//! goes back to waiting: this one rule covers both a crash and a shutdown.
+//! the same home is refused. A clean shutdown puts the run it interrupted
+//! back to waiting. At start, with the lock held, a run still marked running
+//! means the last server died while running it, perhaps because of that
+//! run: it is held, so the rest of the queue goes on and the owner releases
+//! or deletes it.
 
 mod formula;
 pub mod http;
+mod library;
+mod runs;
 mod store;
+mod worker;
 
-pub use http::{App, Body, Failure, blocking, serve};
+pub use http::{App, Body, Failure, Id, blocking, serve};
+pub use library::{NewVariable, Variable};
+pub use runs::{AddRun, Deleted, EditRun, MoveRun, Queue};
 pub use store::{Outcome, RunRow, RunsReply, State, Store};
+
+use market_data::Error;
+use std::path::Path;
+
+/// `bt save RESULT --name N`: adds a result file to the run list of the
+/// home at `root` as a complete run, beside a running server or without
+/// one. The row holds the strategy, schedule, market and numbers the file
+/// stores.
+pub fn save(root: &Path, result: &Path, name: &str) -> Result<RunRow, Error> {
+    let saved = engine::commands::saved(result)?;
+    let store = Store::open(root)?;
+    store.save(name, &saved, result).map_err(|failure| failure.error)
+}

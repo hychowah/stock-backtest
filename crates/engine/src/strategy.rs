@@ -333,6 +333,14 @@ impl Strategy {
         Reader.strategy(text)
     }
 
+    /// Reads a `variables` object alone, as [`Strategy::parse`] reads a
+    /// file's: the variables in their order, each read with the ones above
+    /// it. A variable library is read this way.
+    pub fn read_variables(text: &str) -> Result<Vec<Arc<Formula>>, Error> {
+        let raw: &RawValue = serde_json::from_str(text).map_err(|_| Error::new("must be a JSON object", "variables"))?;
+        Reader.variables(raw)
+    }
+
     pub fn sleeves(&self) -> &[Sleeve] {
         &self.sleeves
     }

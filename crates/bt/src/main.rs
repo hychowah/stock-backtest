@@ -78,6 +78,14 @@ enum Command {
         #[arg(long, default_value_t = 3000)]
         port: u16,
     },
+    /// Add a result file to the home's run list as a complete run
+    Save {
+        /// A result file of `bt run`
+        result: PathBuf,
+        /// The run's name in the list
+        #[arg(long)]
+        name: String,
+    },
 }
 
 #[derive(Args)]
@@ -222,6 +230,7 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => reply::<()>(Err(error)),
         },
+        Command::Save { result, name } => reply(root.and_then(|root| app::save(&root, &result, &name))),
         Command::Data(Data::Prepare { as_of }) => reply(home.and_then(|home| {
             let as_of = match as_of {
                 Some(text) => DateTime::parse_from_rfc3339(&text)

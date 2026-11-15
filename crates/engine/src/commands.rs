@@ -148,7 +148,13 @@ pub fn run(home: &Home, request: &RunRequest, stop: &AtomicBool) -> Result<RunRe
 
 fn headline(run: &crate::run::Run) -> Headline {
     let summaries: Vec<_> = run.trials.iter().map(|t| t.summary.clone()).collect();
-    let statistics = statistics::statistics(&summaries);
+    numbers(&summaries, run.trials.iter().flat_map(|t| &t.periods).map(|p| p.holdings.len()))
+}
+
+/// The headline of the trials' summaries and every period's count of
+/// holdings.
+fn numbers(summaries: &[statistics::Summary], holdings: impl Iterator<Item = usize>) -> Headline {
+    let statistics = statistics::statistics(summaries);
     Headline {
         cagr: summaries.iter().map(|s| s.cagr).collect(),
         median: statistics.cagr.median,
@@ -156,8 +162,32 @@ fn headline(run: &crate::run::Run) -> Headline {
         best: statistics.cagr.max,
         spy_median: statistics.spy_cagr.median,
         beat_spy: statistics.beat_spy,
-        min_holdings: run.trials.iter().flat_map(|t| &t.periods).map(|p| p.holdings.len()).min().unwrap_or(0),
+        min_holdings: holdings.min().unwrap_or(0),
     }
+}
+
+/// What a list of runs keeps of a result file, read from the file alone.
+pub struct Saved {
+    pub market: Market,
+    pub schedule: Schedule,
+    pub strategy: Strategy,
+    /// The prepared generation the run read, its as-of time, and the
+    /// program that ran it.
+    pub generation: u64,
+    pub as_of: String,
+    pub program: String,
+    /// The same numbers as the run's reply gave.
+    pub headline: Headline,
+}
+
+/// Reads a result file's run row and headline.
+pub fn saved(result: &Path) -> Result<Saved, Error> {
+    let file = ResultFile::open(result)?;
+    let (strategy, schedule) = file.run()?;
+    let (market, generation, as_of, program) = file.origin()?;
+    let holdings = file.periods()?.into_iter().map(|p| p.names as usize);
+    let headline = numbers(&file.summaries()?, holdings);
+    Ok(Saved { market: market.parse()?, schedule, strategy, generation, as_of, program, headline })
 }
 
 /// Checks a run's inputs against the market's data: the strategy's `is`

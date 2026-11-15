@@ -4,6 +4,7 @@ use market_data::{Day, Error, FIRST_DAY, MarketData};
 use numbers::Random;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use ts_rs::TS;
 
 /// The run settings that set the trade dates, in one flat form: the keys
 /// are the flags of `bt run` (`--every`, `--trials`, `--seed`, `--dates`),
@@ -15,8 +16,9 @@ use std::collections::{BTreeMap, BTreeSet};
 /// - `every` and `trials` (at least 1), with an optional `seed`: that many
 ///   trials, each trading on one random session in every interval;
 /// - `dates`: one trial that trades on these sessions, in increasing order.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export)]
 pub struct Schedule {
     /// The first day of the window.
     pub start: String,
@@ -24,14 +26,18 @@ pub struct Schedule {
     pub end: String,
     /// 1 to 104 weeks (`Nw`) or 1 to 24 months (`Nm`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub every: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub trials: Option<u32>,
     /// The seed of random dates: the same seed on the same sessions gives
     /// the same dates. [`Schedule::drawn`] gives one when it is missing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub seed: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub dates: Option<Vec<String>>,
 }
 

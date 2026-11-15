@@ -312,6 +312,14 @@ impl ResultFile {
         Ok((Strategy::parse(&strategy).map_err(|e| e.in_file(place))?, serde_json::from_str(&schedule).expect("a stored schedule is JSON")))
     }
 
+    /// The run row's market, prepared generation, as-of time and program.
+    pub(crate) fn origin(&self) -> Result<(String, u64, String, String), Error> {
+        let rows = self.rows("SELECT market, generation, as_of, program FROM run", |row| {
+            Ok((row.get(0)?, row.get::<_, i64>(1)? as u64, row.get(2)?, row.get(3)?))
+        })?;
+        Ok(rows.into_iter().next().expect("a result file has one run row"))
+    }
+
     pub fn trials(&self) -> Result<Vec<TrialRow>, Error> {
         Ok(self.summaries()?.iter().map(TrialRow::new).collect())
     }

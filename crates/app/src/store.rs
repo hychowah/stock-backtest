@@ -6,9 +6,11 @@ use engine::Schedule;
 use engine::commands::Headline;
 use market_data::{Error, Market};
 use rusqlite::{Connection, OptionalExtension, Row};
+use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use ts_rs::TS;
 
 const SCHEMA: &str = r#"
 CREATE TABLE runs(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, market TEXT NOT NULL,
@@ -24,6 +26,9 @@ CREATE TABLE variables(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL 
 /// The columns of a [`RunRow`] without the strategy.
 const COLUMNS: &str = "id, name, market, schedule, state, locked, created, started, finished, outcome, error";
 
+/// The current UTC time, as the rows store it.
+const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
+
 /// The application database of one home. Each use opens its own
 /// connection, so any thread can use it.
 #[derive(Clone, Debug)]
@@ -33,8 +38,9 @@ pub struct Store {
 }
 
 /// Where a run is in its life (the crate comment's state table).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum State {
     Waiting,
     Held,
@@ -45,7 +51,8 @@ pub enum State {
 }
 
 /// One run of the list.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct RunRow {
     pub id: i64,
     pub name: String,
@@ -57,22 +64,28 @@ pub struct RunRow {
     /// UTC times, `YYYY-MM-DDTHH:MM:SSZ`.
     pub created: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub started: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub finished: Option<String>,
     /// A complete run's numbers.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub outcome: Option<Outcome>,
     /// Why a failed run failed.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub error: Option<Error>,
     /// The canonical strategy: in the reply of one run, not in the list.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub strategy: Option<String>,
 }
 
 /// What a complete run gave, stored when it finished.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Outcome {
     pub headline: Headline,
     /// The prepared generation the run read, and its as-of time.
@@ -82,13 +95,15 @@ pub struct Outcome {
     pub program: String,
     /// The run's wall time; absent for a result added by `bt save`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub seconds: Option<f64>,
 }
 
 /// `GET /api/runs`: the queue's pause and every run, the queue first
 /// (running, then waiting and held in queue order), then the others, newest
 /// first.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct RunsReply {
     pub paused: bool,
     pub runs: Vec<RunRow>,
@@ -125,7 +140,7 @@ impl Store {
     }
 
     /// A new connection with the busy timeout.
-    pub fn connect(&self) -> Result<Connection, Failure> {
+    pub(crate) fn connect(&self) -> Result<Connection, Failure> {
         let db = Connection::open(&self.database)?;
         db.busy_timeout(Duration::from_secs(5))?;
         Ok(db)
@@ -141,16 +156,16 @@ impl Store {
     /// that is not complete.
     pub fn result(&self, id: i64) -> Result<PathBuf, Failure> {
         let state = self.state(&self.connect()?, id)?;
-        if state != State::Complete {
-            return Err(Failure::conflict(Error::new(format!("run {id} has no result: it is {}", state.word()), "id")));
+        if state != "complete" {
+            return Err(Failure::conflict(Error::new(format!("run {id} has no result: it is {state}"), "id")));
         }
         Ok(self.file(id))
     }
 
-    /// The state of run `id`, or 404.
-    fn state(&self, db: &Connection, id: i64) -> Result<State, Failure> {
-        let state: Option<String> = db.query_row("SELECT state FROM runs WHERE id=?", [id], |row| row.get(0)).optional()?;
-        state.map(|s| State::parse(&s)).ok_or_else(|| Failure::unknown(Error::new(format!("there is no run {id}"), "id")))
+    /// The state of run `id` as stored, or 404.
+    fn state(&self, db: &Connection, id: i64) -> Result<String, Failure> {
+        let state = db.query_row("SELECT state FROM runs WHERE id=?", [id], |row| row.get(0)).optional()?;
+        state.ok_or_else(|| missing("run", id))
     }
 
     pub(crate) fn list(&self) -> Result<RunsReply, Failure> {
@@ -163,21 +178,218 @@ impl Store {
     }
 }
 
-impl State {
-    fn parse(text: &str) -> State {
-        serde_json::from_value(serde_json::Value::String(text.to_string())).expect("a stored state")
+/// A run the worker took from the queue.
+pub(crate) struct Claimed {
+    pub id: i64,
+    pub market: Market,
+    pub schedule: Schedule,
+    pub strategy: String,
+}
+
+/// The change of a `PATCH`: each field that is given. Settings are checked
+/// by the caller, together.
+pub(crate) struct Edit {
+    pub name: Option<String>,
+    pub locked: Option<bool>,
+    pub settings: Option<(Market, Schedule, String)>,
+}
+
+impl Store {
+    /// Run `id` with its strategy, or 404.
+    pub(crate) fn get(&self, id: i64) -> Result<RunRow, Failure> {
+        let db = self.connect()?;
+        let sql = format!("SELECT {COLUMNS}, strategy FROM runs WHERE id=?");
+        let row = db.query_row(&sql, [id], |row| run_row(row, true)).optional()?;
+        row.ok_or_else(|| missing("run", id))
     }
 
-    /// The state as it is stored and replied.
-    pub(crate) fn word(self) -> &'static str {
-        match self {
-            State::Waiting => "waiting",
-            State::Held => "held",
-            State::Running => "running",
-            State::Complete => "complete",
-            State::Failed => "failed",
-            State::Stopped => "stopped",
+    /// Adds a waiting run at the end of the queue. The schedule's seed is
+    /// drawn already.
+    pub(crate) fn add(&self, name: &str, market: Market, schedule: &Schedule, strategy: &str) -> Result<RunRow, Failure> {
+        let db = self.connect()?;
+        let sql = format!(
+            "INSERT INTO runs(name, market, schedule, strategy, state, position, created)
+             VALUES(?, ?, ?, ?, 'waiting', (SELECT coalesce(max(position), 0) + 1 FROM runs), {NOW}) RETURNING id"
+        );
+        let id = db.query_row(&sql, (name, market.id(), json(schedule), strategy), |row| row.get(0))?;
+        self.get(id)
+    }
+
+    /// Renames, locks or unlocks run `id` in any state, and changes the
+    /// settings of a waiting or held run.
+    pub(crate) fn edit(&self, id: i64, edit: &Edit) -> Result<RunRow, Failure> {
+        let db = self.connect()?;
+        let (market, schedule, strategy) = match &edit.settings {
+            Some((market, schedule, strategy)) => (Some(market.id()), Some(json(schedule)), Some(strategy.as_str())),
+            None => (None, None, None),
+        };
+        let changed = db.execute(
+            "UPDATE runs SET name=coalesce(?1, name), locked=coalesce(?2, locked), market=coalesce(?3, market),
+                 schedule=coalesce(?4, schedule), strategy=coalesce(?5, strategy)
+             WHERE id=?6 AND (?3 IS NULL OR state IN ('waiting', 'held'))",
+            (&edit.name, edit.locked, market, schedule, strategy, id),
+        )?;
+        self.changed(&db, id, changed, "only a waiting or held run's settings can change")
+    }
+
+    /// Holds a waiting run.
+    pub(crate) fn hold(&self, id: i64) -> Result<RunRow, Failure> {
+        self.change(id, "state='held'", "state='waiting'", "only a waiting run can be held")
+    }
+
+    /// Releases a held run: it waits in the same place.
+    pub(crate) fn release(&self, id: i64) -> Result<RunRow, Failure> {
+        self.change(id, "state='waiting'", "state='held'", "only a held run can be released")
+    }
+
+    /// Marks a waiting, held or running run stopped; the caller then stops
+    /// the engine.
+    pub(crate) fn stop(&self, id: i64) -> Result<RunRow, Failure> {
+        let set = format!("state='stopped', position=NULL, finished={NOW}");
+        self.change(id, &set, "state IN ('waiting', 'held', 'running')", "only a waiting, held or running run can be stopped")
+    }
+
+    /// Deletes a run that is not locked, and its result file; the caller
+    /// then stops the engine.
+    pub(crate) fn delete(&self, id: i64) -> Result<(), Failure> {
+        let db = self.connect()?;
+        if db.execute("DELETE FROM runs WHERE id=? AND NOT locked", [id])? == 0 {
+            self.state(&db, id)?;
+            return Err(Failure::conflict(Error::new(format!("run {id} is locked: unlock it to delete it"), "id")));
         }
+        remove(&self.file(id));
+        Ok(())
+    }
+
+    /// Moves a waiting or held run to place `to` of the queue (1 is the
+    /// first; a place past the end is the end). The queue's runs keep the
+    /// positions they had among them.
+    pub(crate) fn move_to(&self, id: i64, to: u32) -> Result<RunRow, Failure> {
+        let mut db = self.connect()?;
+        let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let queue: Vec<(i64, i64)> = tx
+            .prepare("SELECT id, position FROM runs WHERE state IN ('waiting', 'held') ORDER BY position")?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let Some(from) = queue.iter().position(|&(run, _)| run == id) else {
+            drop(tx);
+            return self.changed(&db, id, 0, "only a waiting or held run can move");
+        };
+        let mut order: Vec<i64> = queue.iter().map(|&(run, _)| run).collect();
+        order.remove(from);
+        order.insert((to.max(1) as usize - 1).min(order.len()), id);
+        for (run, &(_, position)) in order.iter().zip(&queue) {
+            tx.execute("UPDATE runs SET position=? WHERE id=?", [position, *run])?;
+        }
+        tx.commit()?;
+        self.get(id)
+    }
+
+    /// Pauses or resumes the queue.
+    pub(crate) fn pause(&self, paused: bool) -> Result<(), Failure> {
+        self.connect()?.execute("UPDATE queue SET paused=?", [paused])?;
+        Ok(())
+    }
+
+    /// The run left running, in its place: back to waiting after a clean
+    /// shutdown; held at start, when the server died while running it.
+    pub(crate) fn interrupted(&self, to: &str) -> Result<(), Failure> {
+        self.connect()?.execute("UPDATE runs SET state=?, started=NULL WHERE state='running'", [to])?;
+        Ok(())
+    }
+
+    /// Takes the first waiting run by position, unless the queue is paused.
+    pub(crate) fn claim(&self) -> Result<Option<Claimed>, Failure> {
+        let sql = format!(
+            "UPDATE runs SET state='running', started={NOW}
+             WHERE id=(SELECT id FROM runs WHERE state='waiting' ORDER BY position LIMIT 1) AND NOT (SELECT paused FROM queue)
+             RETURNING id, market, schedule, strategy"
+        );
+        let claimed = self.connect()?.query_row(&sql, [], |row| {
+            Ok(Claimed {
+                id: row.get(0)?,
+                market: row.get::<_, String>(1)?.parse().expect("a stored market"),
+                schedule: serde_json::from_str(&row.get::<_, String>(2)?).expect("a stored schedule"),
+                strategy: row.get(3)?,
+            })
+        });
+        Ok(claimed.optional()?)
+    }
+
+    /// Records the end of run `id` while it is still running: its outcome,
+    /// or its error. Gives whether the run was still running.
+    pub(crate) fn finish(&self, id: i64, end: Result<&Outcome, &Error>) -> Result<bool, Failure> {
+        let (state, outcome, error) = match end {
+            Ok(outcome) => ("complete", Some(json(outcome)), None),
+            Err(error) => ("failed", None, Some(json(error))),
+        };
+        let sql = format!("UPDATE runs SET state=?, outcome=?, error=?, position=NULL, finished={NOW} WHERE id=? AND state='running'");
+        Ok(self.connect()?.execute(&sql, (state, outcome, error, id))? == 1)
+    }
+
+    /// `bt save`: adds the result file `result` as a complete run. The file
+    /// is copied under a temporary name, the row added, the copy renamed and
+    /// only then the row committed, so a complete row always has its file.
+    pub(crate) fn save(&self, name: &str, saved: &engine::commands::Saved, result: &Path) -> Result<RunRow, Failure> {
+        let temporary = self.runs.join(format!(".save-{}.tmp", std::process::id()));
+        std::fs::copy(result, &temporary).map_err(|e| Failure::io(Error::new(format!("cannot copy the result file: {e}"), temporary.display())))?;
+        let added = (|| -> Result<i64, Failure> {
+            let mut db = self.connect()?;
+            let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let outcome = Outcome::from(saved);
+            let sql = format!(
+                "INSERT INTO runs(name, market, schedule, strategy, state, created, finished, outcome)
+                 VALUES(?, ?, ?, ?, 'complete', {NOW}, {NOW}, ?) RETURNING id"
+            );
+            let values = (name, saved.market.id(), json(&saved.schedule), saved.strategy.canonical(), json(&outcome));
+            let id: i64 = tx.query_row(&sql, values, |row| row.get(0))?;
+            let file = self.file(id);
+            std::fs::rename(&temporary, &file).map_err(|e| Failure::io(Error::new(format!("cannot add the result file: {e}"), file.display())))?;
+            tx.commit().inspect_err(|_| remove(&file))?;
+            Ok(id)
+        })();
+        remove(&temporary);
+        self.get(added?)
+    }
+
+    /// Changes run `id` with one update guarded by the states it starts
+    /// from.
+    fn change(&self, id: i64, set: &str, from: &str, refusal: &str) -> Result<RunRow, Failure> {
+        let db = self.connect()?;
+        let changed = db.execute(&format!("UPDATE runs SET {set} WHERE id=? AND {from}"), [id])?;
+        self.changed(&db, id, changed, refusal)
+    }
+
+    /// The row after a guarded update; when the update changed nothing, 404
+    /// for an unknown run, else 409 with `refusal` and the run's state.
+    fn changed(&self, db: &Connection, id: i64, changed: usize, refusal: &str) -> Result<RunRow, Failure> {
+        if changed == 0 {
+            let state = self.state(db, id)?;
+            return Err(Failure::conflict(Error::new(format!("{refusal}: run {id} is {state}"), "id")));
+        }
+        self.get(id)
+    }
+}
+
+/// 404 for an unknown `what` (a run or a variable).
+pub(crate) fn missing(what: &str, id: i64) -> Failure {
+    Failure::unknown(Error::new(format!("there is no {what} {id}"), "id"))
+}
+
+fn json(value: &impl Serialize) -> String {
+    serde_json::to_string(value).expect("a value serializes")
+}
+
+/// Removes a file that may not exist.
+pub(crate) fn remove(path: &Path) {
+    let _ = std::fs::remove_file(path);
+}
+
+impl From<&engine::commands::Saved> for Outcome {
+    /// A result added by `bt save`: its wall time is not known.
+    fn from(saved: &engine::commands::Saved) -> Outcome {
+        let (headline, as_of, program) = (saved.headline.clone(), saved.as_of.clone(), saved.program.clone());
+        Outcome { headline, generation: saved.generation, as_of, program, seconds: None }
     }
 }
 
@@ -195,7 +407,8 @@ fn run_row(row: &Row<'_>, strategy: bool) -> rusqlite::Result<RunRow> {
         name: row.get("name")?,
         market: market.parse().expect("a stored market"),
         schedule: serde_json::from_str(&row.get::<_, String>("schedule")?).expect("a stored schedule"),
-        state: State::parse(&row.get::<_, String>("state")?),
+        state: State::deserialize(IntoDeserializer::<serde::de::value::Error>::into_deserializer(row.get::<_, String>("state")?))
+            .expect("a stored state"),
         locked: row.get("locked")?,
         created: row.get("created")?,
         started: row.get("started")?,

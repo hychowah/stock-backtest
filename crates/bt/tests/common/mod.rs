@@ -148,6 +148,19 @@ impl Server {
         (response.status().as_u16(), reply)
     }
 
+    /// Sends a change from the website's own origin.
+    pub fn change(&self, method: &str, path: &str, body: Value) -> (u16, Value) {
+        self.send(method, path, Some(&body), Some(&self.url))
+    }
+
+    /// Sends a change from the website's own origin, which must succeed;
+    /// its JSON reply.
+    pub fn ok(&self, method: &str, path: &str, body: Value) -> Value {
+        let (status, reply) = self.change(method, path, body);
+        assert_eq!(status, 200, "{method} {path}: {reply}");
+        reply
+    }
+
     /// GET `path`, which must answer 200; its JSON reply.
     pub fn get(&self, path: &str) -> Value {
         let (status, reply) = self.send("GET", path, None, None);
@@ -158,6 +171,12 @@ impl Server {
     /// Sends SIGTERM and waits; whether the server exited with success.
     pub fn terminate(mut self) -> bool {
         self.stop()
+    }
+
+    /// Kills the server outright, as a crash would end it.
+    pub fn kill(mut self) {
+        self.child.kill().unwrap();
+        self.child.wait().unwrap();
     }
 
     fn stop(&mut self) -> bool {

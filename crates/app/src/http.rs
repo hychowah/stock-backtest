@@ -5,12 +5,24 @@
 //!
 //! | Route | Request | Reply |
 //! |---|---|---|
-//! | `GET /api/runs` | | [`RunsReply`]: the pause and every run without its strategy |
+//! | `GET /api/runs` | | [`RunsReply`](crate::RunsReply): the pause and every run without its strategy |
+//! | `POST /api/runs` | [`AddRun`](crate::AddRun) | the new waiting run |
+//! | `GET /api/runs/{id}` | | the [`RunRow`](crate::RunRow) with its canonical strategy |
+//! | `PATCH /api/runs/{id}` | [`EditRun`](crate::EditRun): name, locked, and a waiting or held run's settings | the run |
+//! | `DELETE /api/runs/{id}` | | `{}`; 409 when locked; a running run is stopped |
+//! | `POST /api/runs/{id}/hold`, `release`, `stop` | | the run |
+//! | `POST /api/runs/{id}/move` | [`MoveRun`](crate::MoveRun) | the run |
+//! | `PUT /api/queue` | [`Queue`](crate::Queue) | the same |
+//! | `GET /api/variables` | | [`Variable`](crate::Variable)s in dependency order |
+//! | `POST /api/variables` | [`NewVariable`](crate::NewVariable) | the new entry |
+//! | `PUT /api/variables/{id}` | [`NewVariable`](crate::NewVariable) | the entry |
+//! | `DELETE /api/variables/{id}` | | `{}`; 409 when another entry uses it |
 //! | `POST /api/formula` | `FormulaRequest` | `FormulaReply`: `checked`, or a `fault` |
 //!
-//! Every reply is JSON. A refused request gets `{"error": {"message",
-//! "place"}}` with 400 for wrong input, 403 for a change from another
-//! origin, 404 for an unknown id, 409 for a change the run's state does not
+//! Every reply under `/api/` is JSON. A refused request gets `{"error":
+//! {"message", "place"}}` with 400 for wrong input (an id that is not a
+//! number included), 403 for a change from another origin, 404 for an
+//! unknown id or path, 405 for a method a route does not have, 409 for a change the run's state does not
 //! allow (or that lost a race with the worker) and 500 for a failed read or
 //! write of the home's files.
 //!
@@ -22,21 +34,23 @@
 //! A handler does its work, database and engine calls alike, on a blocking
 //! thread ([`blocking`]), so a slow call never holds up the server.
 
-use crate::store::{RunsReply, Store};
+use crate::store::Store;
+use crate::worker::Worker;
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{FromRequest, Request, State};
+use axum::extract::{FromRequest, FromRequestParts, Request};
+use axum::http::request::Parts;
 use axum::http::{Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::any;
 use axum::Json;
 use market_data::Error;
 use market_data::commands::Home;
 use serde::de::DeserializeOwned;
 use std::fs::File;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tower_http::services::ServeDir;
 
 /// What every route handler receives as its state.
@@ -46,8 +60,7 @@ pub struct App {
     pub home: Home,
     /// `data/app.sqlite` and the result files of the runs.
     pub store: Store,
-    /// The home's folder.
-    pub root: PathBuf,
+    pub(crate) worker: Worker,
 }
 
 /// A refused request: its status and the error the reply carries.
@@ -112,6 +125,20 @@ impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for Body<T> {
     }
 }
 
+/// The `{id}` of a route's path; one that is not a number gets 400.
+pub struct Id(pub i64);
+
+impl<S: Send + Sync> FromRequestParts<S> for Id {
+    type Rejection = Failure;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Id, Failure> {
+        let axum::extract::Path(text) = axum::extract::Path::<String>::from_request_parts(parts, state)
+            .await
+            .map_err(|e| Failure::input(Error::new(e.body_text(), "id")))?;
+        text.parse().map(Id).map_err(|_| Failure::input(Error::new(format!("{text:?} is not an id"), "id")))
+    }
+}
+
 /// Runs `work` on a blocking thread. A panic in it becomes a 500 reply.
 pub async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, Failure> + Send + 'static) -> Result<T, Failure> {
     tokio::task::spawn_blocking(work)
@@ -121,19 +148,18 @@ pub async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, Failur
 
 /// The whole router: the API routes of each module, then the static files.
 fn router(app: App) -> Router {
-    let web = ServeDir::new(app.root.join("web"));
+    let web = ServeDir::new(app.home.root().join("web"));
     Router::new()
-        .route("/api/runs", get(runs))
+        .merge(crate::runs::routes())
+        .merge(crate::library::routes())
         // Each route module adds its routes here, with one line:
         // `.merge(crate::MODULE::routes())`, where `routes() -> Router<App>`.
         .merge(crate::formula::routes())
+        .route("/api/{*rest}", any(|| async { Failure::unknown(Error::new("there is no such route", "path")) }))
+        .method_not_allowed_fallback(|| async { Failure { status: StatusCode::METHOD_NOT_ALLOWED, error: Error::new("this route has no such method", "method") } })
         .fallback_service(web)
         .layer(middleware::from_fn(same_origin))
         .with_state(app)
-}
-
-async fn runs(State(app): State<App>) -> Result<Json<RunsReply>, Failure> {
-    blocking(move || app.store.list()).await.map(Json)
 }
 
 /// The origin rule of the module comment.
@@ -151,27 +177,36 @@ async fn same_origin(request: Request, next: Next) -> Response {
     next.run(request).await
 }
 
-/// `bt serve`: takes `data/serve.lock`, opens the database, listens on
-/// `127.0.0.1:port` (0: a free port the system chooses) and calls `ready`
-/// with the address. Serves until Ctrl+C or SIGTERM, then stops accepting
-/// requests, lets the open ones finish and returns.
+/// `bt serve`: takes `data/serve.lock`, opens the database, holds a run
+/// still marked running (the last server died while running it), listens
+/// on `127.0.0.1:port` (0: a free port the system chooses), starts the
+/// worker and calls `ready` with the address. Serves until Ctrl+C or
+/// SIGTERM, then stops accepting requests, lets the open ones finish, stops
+/// the worker, puts the run it interrupted back to waiting and returns.
 pub fn serve(root: &Path, port: u16, ready: impl FnOnce(SocketAddr)) -> Result<(), Error> {
     let _lock = lock(root)?;
     let store = Store::open(root)?;
-    let app = App { home: Home::new(root), store, root: root.to_path_buf() };
+    store.interrupted("held").map_err(|failure| failure.error)?;
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = std::net::TcpListener::bind(address).map_err(|e| Error::new(format!("cannot listen on {address}: {e}"), "port"))?;
+    let address = listener.local_addr().map_err(|e| Error::new(e.to_string(), "port"))?;
+    listener.set_nonblocking(true).map_err(|e| Error::new(e.to_string(), "port"))?;
     let runtime = tokio::runtime::Runtime::new().map_err(|e| Error::new(format!("cannot start the server: {e}"), "server"))?;
-    runtime.block_on(async {
+    let home = Home::new(root);
+    let (worker, thread) = Worker::start(home.clone(), store.clone());
+    let app = App { home, store: store.clone(), worker: worker.clone() };
+    let served = runtime.block_on(async {
         let shutdown = signal()?;
-        let address = SocketAddr::from(([127, 0, 0, 1], port));
-        let listener = tokio::net::TcpListener::bind(address)
-            .await
-            .map_err(|e| Error::new(format!("cannot listen on {address}: {e}"), "port"))?;
-        ready(listener.local_addr().map_err(|e| Error::new(e.to_string(), "port"))?);
+        let listener = tokio::net::TcpListener::from_std(listener).map_err(|e| Error::new(e.to_string(), "port"))?;
+        ready(address);
         axum::serve(listener, router(app))
             .with_graceful_shutdown(shutdown)
             .await
             .map_err(|e| Error::new(format!("the server stopped: {e}"), "server"))
-    })
+    });
+    worker.shutdown();
+    thread.join().expect("the worker ends");
+    served.and(store.interrupted("waiting").map_err(|failure| failure.error))
 }
 
 /// `data/serve.lock`, held while the server runs: one server per home.

@@ -34,6 +34,11 @@ impl Home {
         Home { root: root.into() }
     }
 
+    /// The runtime folder itself.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// `raw/`: the provider cache. The program only reads it.
     pub fn raw(&self) -> PathBuf {
         self.root.join("raw")

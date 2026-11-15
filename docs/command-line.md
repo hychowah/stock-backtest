@@ -276,3 +276,21 @@ variants/pe-40.json  median 0.228  worst 0.172  best 0.351  SPY 0.350  beat  3  
 ```
 
 The folder `loop-best` then holds the tables of `variants/pe-30.json`. Before each new run, remove `loop-out` and `loop-best` or choose other folder names, because `--out` must be new or empty. Change the values in the `for` line, or the strategy, to run other variants. Twenty variants are twenty files in one `bt run`.
+
+## Serving the website
+
+```bash
+bt serve --home HOME_DIR [--port 3000]
+```
+
+`bt serve` serves the website and its API on `127.0.0.1` (port 3000 unless `--port` is given; `--port 0` takes a free port). When it is ready, it prints one line, `{"serving": "http://127.0.0.1:PORT"}`. It keeps the list of runs, the queue and the variable library in `data/app.sqlite` of the home, and runs the queue one run at a time. Each run's result file is `data/runs/<id>.sqlite`. The server starts without prepared data, but adding a run needs it, as `bt run` does. A run added through the website has at most 1,000 trials; `bt run` has no such limit. Only one server runs on a home: a second one stops with "another server is running on this home". Ctrl+C or SIGTERM stops the server, and a run that was in progress waits in the queue again. If the server ends any other way while a run is in progress, the next start holds that run and continues with the rest of the queue: release it to run it again, or delete it.
+
+Scripts do not need the server: they keep using `bt run`, which works beside a running server.
+
+## Adding a result to the website's list
+
+```bash
+bt save RESULT_FILE --name NAME --home HOME_DIR
+```
+
+`bt save` adds one result file of `bt run` to the home's list of runs as a complete run with the name `NAME`, so that it shows in the website with the runs of the queue. The list keeps a copy of the file. The strategy, schedule, market and numbers come from the result file. The reply is the new row of the list, with its `id`. `bt save` works with or without a running server.
