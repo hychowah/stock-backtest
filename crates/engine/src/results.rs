@@ -36,7 +36,7 @@ use crate::statistics::Summary;
 use crate::strategy::Strategy;
 use market_data::Day;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use rusqlite::{Connection, OpenFlags, Row, params};
+use rusqlite::{Connection, OpenFlags, Params, Row, params};
 use serde::Serialize;
 use std::path::Path;
 use ts_rs::TS;
@@ -180,6 +180,8 @@ fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
 /// A finished result file, open for reading. Rows come in key order.
 pub struct ResultFile {
     db: Connection,
+    /// The first and last trial the readers read: all, or one ([`only`](Self::only)).
+    trials: (u32, u32),
 }
 
 /// A trial's summary (`trials`), with its derived excess CAGR and total
@@ -300,13 +302,24 @@ impl ResultFile {
         if db.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0)).map_err(fail)? != VERSION {
             return Err(Error::new("this result file was written by another version of the program: run it again", path.display()));
         }
-        Ok(ResultFile { db })
+        Ok(ResultFile { db, trials: (1, u32::MAX) })
+    }
+
+    /// The same file with its readers limited to trial `trial`, so a reply
+    /// about one trial reads only its rows. Refused, with the place `trial`,
+    /// when the result has no such trial.
+    pub fn only(self, trial: u32) -> Result<ResultFile, Error> {
+        let count = self.rows("SELECT count(*) FROM trials", [], |row| row.get::<_, u32>(0))?[0];
+        if !(1..=count).contains(&trial) {
+            return Err(Error::new(format!("the result has {count} trials"), "trial"));
+        }
+        Ok(ResultFile { trials: (trial, trial), ..self })
     }
 
     /// The run's strategy, read back from its canonical form, and its
     /// schedule.
     pub(crate) fn run(&self) -> Result<(Strategy, Schedule), Error> {
-        let rows = self.rows("SELECT strategy, schedule FROM run", |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        let rows = self.rows("SELECT strategy, schedule FROM run", [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         let (strategy, schedule) = rows.into_iter().next().expect("a result file has one run row");
         let place = format!("{}: run.strategy", self.db.path().unwrap_or_default());
         Ok((Strategy::parse(&strategy).map_err(|e| e.in_file(place))?, serde_json::from_str(&schedule).expect("a stored schedule is JSON")))
@@ -314,7 +327,7 @@ impl ResultFile {
 
     /// The run row's market, prepared generation, as-of time and program.
     pub(crate) fn origin(&self) -> Result<(String, u64, String, String), Error> {
-        let rows = self.rows("SELECT market, generation, as_of, program FROM run", |row| {
+        let rows = self.rows("SELECT market, generation, as_of, program FROM run", [], |row| {
             Ok((row.get(0)?, row.get::<_, i64>(1)? as u64, row.get(2)?, row.get(3)?))
         })?;
         Ok(rows.into_iter().next().expect("a result file has one run row"))
@@ -326,7 +339,7 @@ impl ResultFile {
 
     /// Each trial's summary, with the entries of its periods as its dates.
     pub(crate) fn summaries(&self) -> Result<Vec<Summary>, Error> {
-        let mut trials = self.rows("SELECT * FROM trials ORDER BY trial", |row| {
+        let mut trials = self.rows("SELECT * FROM trials WHERE trial BETWEEN ? AND ? ORDER BY trial", self.range(), |row| {
             Ok(Summary {
                 trial: row.get("trial")?,
                 dates: Vec::new(),
@@ -344,13 +357,13 @@ impl ResultFile {
             })
         })?;
         for period in self.periods()? {
-            trials[period.trial as usize - 1].dates.push(period.entry);
+            trials[(period.trial - self.trials.0) as usize].dates.push(period.entry);
         }
         Ok(trials)
     }
 
     pub fn periods(&self) -> Result<Vec<PeriodRow>, Error> {
-        self.rows("SELECT * FROM periods ORDER BY trial, period", |row| {
+        self.rows("SELECT * FROM periods WHERE trial BETWEEN ? AND ? ORDER BY trial, period", self.range(), |row| {
             Ok(PeriodRow {
                 trial: row.get("trial")?,
                 period: row.get("period")?,
@@ -363,8 +376,8 @@ impl ResultFile {
         })
     }
 
-    pub fn holdings(&self) -> Result<Vec<HoldingRow>, Error> {
-        self.rows("SELECT * FROM holdings ORDER BY trial, period, rank", |row| {
+    pub(crate) fn holdings(&self) -> Result<Vec<HoldingRow>, Error> {
+        self.rows("SELECT * FROM holdings WHERE trial BETWEEN ? AND ? ORDER BY trial, period, rank", self.range(), |row| {
             Ok(HoldingRow {
                 trial: row.get("trial")?,
                 period: row.get("period")?,
@@ -392,7 +405,7 @@ impl ResultFile {
     }
 
     pub fn steps(&self) -> Result<Vec<StepRow>, Error> {
-        self.rows("SELECT * FROM steps ORDER BY trial, period, rank, sleeve, step", |row| {
+        self.rows("SELECT * FROM steps WHERE trial BETWEEN ? AND ? ORDER BY trial, period, rank, sleeve, step", self.range(), |row| {
             Ok(StepRow {
                 trial: row.get("trial")?,
                 period: row.get("period")?,
@@ -405,8 +418,8 @@ impl ResultFile {
         })
     }
 
-    pub fn curve(&self) -> Result<Vec<CurveRow>, Error> {
-        self.rows("SELECT * FROM curve ORDER BY trial, period, day", |row| {
+    pub(crate) fn curve(&self) -> Result<Vec<CurveRow>, Error> {
+        self.rows("SELECT * FROM curve WHERE trial BETWEEN ? AND ? ORDER BY trial, period, day", self.range(), |row| {
             Ok(CurveRow {
                 trial: row.get("trial")?,
                 period: row.get("period")?,
@@ -417,10 +430,15 @@ impl ResultFile {
         })
     }
 
-    fn rows<T>(&self, sql: &str, read: impl FnMut(&Row<'_>) -> rusqlite::Result<T>) -> Result<Vec<T>, Error> {
+    /// The parameters of a reader's `trial BETWEEN ? AND ?`.
+    fn range(&self) -> [u32; 2] {
+        [self.trials.0, self.trials.1]
+    }
+
+    fn rows<T>(&self, sql: &str, params: impl Params, read: impl FnMut(&Row<'_>) -> rusqlite::Result<T>) -> Result<Vec<T>, Error> {
         let fail = |e: rusqlite::Error| Error::new(format!("cannot read the result file: {e}"), self.db.path().unwrap_or_default());
         let mut statement = self.db.prepare(sql).map_err(fail)?;
-        let rows = statement.query_map([], read).map_err(fail)?;
+        let rows = statement.query_map(params, read).map_err(fail)?;
         rows.collect::<rusqlite::Result<Vec<T>>>().map_err(fail)
     }
 }

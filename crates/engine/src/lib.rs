@@ -41,4 +41,3 @@ pub use schedule::{Period, Plan, Schedule, Trial};
 pub use selection::{Pick, select};
 pub use strategy::{Source, Strategy};
 pub use values::DayValues;
-pub use views::Selection;

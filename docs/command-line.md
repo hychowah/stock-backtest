@@ -203,7 +203,7 @@ This writes the `holdings` table only, with one more column for each number sour
 bt explore out/pe-30.sqlite --trial 1 --periods 2-5 --ranks 1-2
 ```
 
-`bt explore` totals one trial over the periods A to B (counted from 1) and the holdings with the ranks A to B. The ranks must be inside the ranks of the strategy. The reply has the window (`start`, `end`), `total_return`, `growth`, `cagr`, their SPY values, `cash_days`, `empty` and `short`. `--trial all` totals all trials of a random run: the reply has `statistics`, named as in the `statistics` table, and `trials`. A fixed or explicit run has trial 1 only.
+`bt explore` totals one trial over the periods A to B (counted from 1) and the holdings with the ranks A to B. The ranks must be inside the ranks of the strategy. The reply has the window (`start`, `end`), `total_return`, `growth`, `cagr`, their SPY values, `cash_days`, `empty` and `short`. `--trial all` totals all trials of a random run: the reply has `statistics` and `trials`, as rows of the `statistics` and `trials` tables, each trial with its `last_exit` and `final_cash_days`. A fixed or explicit run has trial 1 only.
 
 ```bash
 bt screen value.json --market us --home HOME_DIR

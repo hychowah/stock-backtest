@@ -371,7 +371,6 @@ pub struct Selection {
 
 /// The days an exploration covers and what it selects.
 #[derive(Debug, Serialize, TS)]
-#[ts(export)]
 pub struct Window {
     pub start: Day,
     pub end: Day,
@@ -424,28 +423,33 @@ pub struct ExploredTrial {
     pub final_cash_days: Option<i32>,
 }
 
-/// All trials of a random run over the selected periods and ranks.
-#[derive(Debug)]
-pub(crate) struct BatchExploration {
-    /// The shared window.
-    pub window: Window,
-    /// The statistics over the explored trials.
-    pub statistics: Vec<StatisticRow>,
-    pub trials: Vec<ExploredTrial>,
-}
-
-#[derive(Debug)]
-pub(crate) enum Explored {
+/// One trial's exploration, or all trials': the window, the statistics as
+/// the `statistics` table has them, and each trial.
+#[derive(Debug, Serialize, TS)]
+#[serde(untagged)]
+#[ts(export)]
+pub enum ExploreReply {
     Trial(Exploration),
-    All(BatchExploration),
+    All {
+        #[serde(flatten)]
+        window: Window,
+        statistics: Vec<StatisticRow>,
+        trials: Vec<ExploredTrial>,
+    },
 }
 
-/// Explores the result. Fails, naming the setting, when the trial is not in
-/// the result, `all` is asked of a run without random dates, a trial has
-/// fewer periods than the window's last, or the ranks are outside the
+/// Explores the result (`result_exploration`). Fails, naming the setting,
+/// when the periods or the ranks are not `A-B` with 1 ≤ A ≤ B, the trial is
+/// not in the result, `all` is asked of a run without random dates, a trial
+/// has fewer periods than the window's last, or the ranks are outside the
 /// strategy's (one sleeve: its last Rank step's; several: 1 to the sum of
 /// their last Rank steps' sizes).
-pub(crate) fn explore(file: &ResultFile, selection: &Selection) -> Result<Explored, Error> {
+pub fn explore(file: &ResultFile, selection: &Selection) -> Result<ExploreReply, Error> {
+    for (place, (from, to)) in [("periods", selection.periods), ("ranks", selection.ranks)] {
+        if !(1 <= from && from <= to) {
+            return Err(Error::new(format!("{from}-{to} is not a range: use A-B with 1 ≤ A ≤ B, such as 2-5"), place));
+        }
+    }
     let (strategy, schedule) = file.run()?;
     let (trials, periods, holdings) = (file.summaries()?, file.periods()?, file.holdings()?);
     match selection.trial {
@@ -548,7 +552,7 @@ pub(crate) fn explore(file: &ResultFile, selection: &Selection) -> Result<Explor
             rank_to: selection.ranks.1,
             periods: last - first + 1,
         };
-        return Ok(Explored::All(BatchExploration { window, statistics: named(&statistics::statistics(&summaries)), trials: explored }));
+        return Ok(ExploreReply::All { window, statistics: named(&statistics::statistics(&summaries)), trials: explored });
     };
     let (summary, total, chosen) = &found[0];
     let (start, end) = (if first == 1 { summary.start } else { chosen[0].0.entry }, chosen[chosen.len() - 1].0.exit);
@@ -557,7 +561,7 @@ pub(crate) fn explore(file: &ResultFile, selection: &Selection) -> Result<Explor
         // The whole trial: its stored totals.
         [growth, spy_growth, cagr, spy_cagr] = [summary.growth, summary.spy_growth, summary.cagr, summary.spy_cagr];
     }
-    Ok(Explored::Trial(Exploration {
+    Ok(ExploreReply::Trial(Exploration {
         window: Window {
             start,
             end,

@@ -21,8 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run the Rust tests
-        run: cargo test --locked
+      - name: Run the Rust tests, which write the TypeScript types afresh
+        # ts-rs never deletes the file of a removed type: removing the folder
+        # first makes such a file show as deleted in the next step.
+        run: |
+          rm -r web/src/api
+          cargo test --locked
       - name: Check that the committed TypeScript types are the ones the tests generate
         run: |
           changed=$(git status --porcelain -- web/src/api)

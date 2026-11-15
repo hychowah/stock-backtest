@@ -12,7 +12,7 @@ use crate::run::Screened;
 use crate::names::Field;
 use crate::strategy::{self, Source, Step, Test};
 use crate::formula;
-use crate::views::{self, Exploration, ExploredTrial, Explored, JoinedHolding, Selection, SourceValues, StatisticRow, Window};
+use crate::views::{self, ExploreReply, JoinedHolding, Selection, SourceValues};
 use crate::{Error, Plan, Schedule, Strategy};
 use rayon::prelude::*;
 use market_data::commands::Home;
@@ -317,35 +317,9 @@ pub struct ExploreRequest {
     pub selection: Selection,
 }
 
-/// One trial's exploration, or all trials': the window, the statistics as
-/// the `statistics` table has them, and each trial.
-#[derive(Debug, Serialize, TS)]
-#[serde(untagged)]
-#[ts(export)]
-pub enum ExploreReply {
-    Trial(Exploration),
-    All {
-        #[serde(flatten)]
-        window: Window,
-        statistics: Vec<StatisticRow>,
-        trials: Vec<ExploredTrial>,
-    },
-}
-
-/// Explores one result file (`result_exploration`) from its rows alone.
-/// The periods and the ranks are each `A-B` with 1 ≤ A ≤ B.
+/// Explores one result file from its rows alone ([`views::explore`]).
 pub fn explore(request: &ExploreRequest) -> Result<ExploreReply, Error> {
-    let s = &request.selection;
-    for (place, (from, to)) in [("periods", s.periods), ("ranks", s.ranks)] {
-        if !(1 <= from && from <= to) {
-            return Err(Error::new(format!("{from}-{to} is not a range: use A-B with 1 ≤ A ≤ B, such as 2-5"), place));
-        }
-    }
-    let file = ResultFile::open(&request.result)?;
-    Ok(match views::explore(&file, s)? {
-        Explored::Trial(trial) => ExploreReply::Trial(trial),
-        Explored::All(batch) => ExploreReply::All { window: batch.window, statistics: batch.statistics, trials: batch.trials },
-    })
+    views::explore(&ResultFile::open(&request.result)?, &request.selection)
 }
 
 /// `bt screen FILE --market M`.

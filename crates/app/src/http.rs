@@ -18,6 +18,16 @@
 //! | `PUT /api/variables/{id}` | [`NewVariable`](crate::NewVariable) | the entry |
 //! | `DELETE /api/variables/{id}` | | `{}`; 409 when another entry uses it |
 //! | `POST /api/formula` | `FormulaRequest` | `FormulaReply`: `checked`, or a `fault` |
+//! | `GET /api/runs/{id}/trials` | | [`TrialsReply`](crate::results::TrialsReply): the statistics and each trial |
+//! | `GET /api/runs/{id}/periods?trial` | | one trial's `PeriodRow`s |
+//! | `GET /api/runs/{id}/holdings?trial[&period]` | | [`HoldingsReply`](crate::results::HoldingsReply): the holdings with their source values, and their steps |
+//! | `GET /api/runs/{id}/curve[?trial]` | | [`CurveReply`](crate::results::CurveReply): the band, or one trial's growth |
+//! | `GET /api/runs/{id}/sectors` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares and the spread |
+//! | `GET /api/runs/{id}/contributions?trial` | | one trial's `ContributionRow`s |
+//! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` |
+//! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` |
+//! | `POST /api/screen` | [`ScreenBody`](crate::reference::ScreenBody) | `ScreenReply`, as `bt screen` |
+//! | `GET /api/data/status` | | `StatusReply`, as `bt data status` |
 //!
 //! Every reply under `/api/` is JSON. A refused request gets `{"error":
 //! {"message", "place"}}` with 400 for wrong input (an id that is not a
@@ -155,6 +165,8 @@ fn router(app: App) -> Router {
         // Each route module adds its routes here, with one line:
         // `.merge(crate::MODULE::routes())`, where `routes() -> Router<App>`.
         .merge(crate::formula::routes())
+        .merge(crate::results::routes())
+        .merge(crate::reference::routes())
         .route("/api/{*rest}", any(|| async { Failure::unknown(Error::new("there is no such route", "path")) }))
         .method_not_allowed_fallback(|| async { Failure { status: StatusCode::METHOD_NOT_ALLOWED, error: Error::new("this route has no such method", "method") } })
         .fallback_service(web)
