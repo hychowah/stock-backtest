@@ -128,7 +128,10 @@ pub fn update(home: &Home, request: &UpdateRequest, stop: &AtomicBool) -> Result
     };
     let key_file = provider::key_file();
     let client = Provider::new(&provider::address(), &key_file, &halt);
-    let source = Source { provider: &client, raw, end, key_file };
+    // A continued update has the memory of the update it continues: only a
+    // complete update sets `last_success`.
+    let covered = run.record.memory.last_success.as_deref().and_then(|time| DateTime::parse_from_rfc3339(time).ok()).map(plan::last_day);
+    let source = Source { provider: &client, raw, end, covered, key_file };
     let ended = std::thread::scope(|scope| {
         scope.spawn(|| {
             while downloading.load(Ordering::Relaxed) {
@@ -201,6 +204,8 @@ struct Source<'a> {
     provider: &'a Provider<'a>,
     raw: Raw,
     end: NaiveDate,
+    /// The last price day of the last complete update, when there was one.
+    covered: Option<NaiveDate>,
     key_file: PathBuf,
 }
 
@@ -267,7 +272,7 @@ impl Source<'_> {
             (Some(first), Some(last)) => Saved::Rows(plan::date(first), plan::date(last)),
             _ => Saved::Empty,
         };
-        let recent = self.windows(&history, file, plan::windows(saved, self.end, monthly))?;
+        let recent = self.windows(&history, file, plan::windows(saved, self.end, self.covered, monthly))?;
         if history.changes_closes(&recent)? {
             let first = plan::date(history.first().expect("a history with saved closes"));
             let whole = self.windows(&history, file, plan::whole(first, self.end, monthly))?;

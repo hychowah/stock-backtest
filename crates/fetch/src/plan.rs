@@ -129,14 +129,18 @@ pub enum Saved {
 
 /// The windows asked for a history through `end`: a new history from
 /// 1995-01-01; a saved one from its last row less 7 days (not before its
-/// first row); an empty one its last 7 days. Each window is at most ten
-/// calendar years ending 31 December, or one month for the Treasury
-/// (`monthly`), whose long requests return only recent rows.
-pub fn windows(saved: Saved, end: NaiveDate, monthly: bool) -> Vec<(NaiveDate, NaiveDate)> {
+/// first row); an empty one its last 7 days, or from the day after
+/// `covered` when that is earlier. `covered` is the last price day of the
+/// last complete update ([`last_day`] of its time): after a pause of more
+/// than a week, a company that began trading during the pause keeps its
+/// first days. Each window is at most ten calendar years ending 31
+/// December, or one month for the Treasury (`monthly`), whose long requests
+/// return only recent rows.
+pub fn windows(saved: Saved, end: NaiveDate, covered: Option<NaiveDate>, monthly: bool) -> Vec<(NaiveDate, NaiveDate)> {
     let week = TimeDelta::days(7);
     let start = match saved {
         Saved::Missing => FIRST,
-        Saved::Empty => FIRST.max(end - week),
+        Saved::Empty => FIRST.max(covered.map_or(end - week, |day| (end - week).min(day + TimeDelta::days(1)))),
         Saved::Rows(first, last) => first.max(last - week),
     };
     spans(start, end, monthly)
@@ -216,18 +220,32 @@ mod tests {
     fn windows_start_a_week_before_the_last_row_and_split_by_decade_or_month() {
         let end = d("2023-07-07");
         assert_eq!(
-            windows(Saved::Missing, end, false),
+            windows(Saved::Missing, end, None, false),
             [(d("1995-01-01"), d("2004-12-31")), (d("2005-01-01"), d("2014-12-31")), (d("2015-01-01"), end)]
         );
-        assert_eq!(windows(Saved::Empty, end, false), [(d("2023-06-30"), end)]);
-        assert_eq!(windows(Saved::Rows(d("2023-06-28"), d("2023-06-30")), end, false), [(d("2023-06-28"), end)]);
+        assert_eq!(windows(Saved::Rows(d("2023-06-28"), d("2023-06-30")), end, None, false), [(d("2023-06-28"), end)]);
         assert_eq!(
-            windows(Saved::Rows(d("2000-01-03"), d("2023-06-30")), end, true),
+            windows(Saved::Rows(d("2000-01-03"), d("2023-06-30")), end, None, true),
             [(d("2023-06-23"), d("2023-06-30")), (d("2023-07-01"), end)]
         );
-        assert_eq!(windows(Saved::Rows(d("2000-01-03"), d("2023-07-20")), end, false), []);
+        assert_eq!(windows(Saved::Rows(d("2000-01-03"), d("2023-07-20")), end, None, false), []);
         assert_eq!(whole(d("1990-05-01"), d("1999-03-01"), false), [(d("1990-05-01"), d("1999-03-01"))]);
         assert_eq!(date(day(end)), end);
+    }
+
+    /// An empty history: the last 7 days, or from the day after the last
+    /// complete update's last price day when that is earlier.
+    #[test]
+    fn an_empty_history_starts_after_the_last_complete_update_or_a_week_back() {
+        let covered = |at: &str| Some(last_day(time(at)));
+        let empty = |end: &str, covered| windows(Saved::Empty, d(end), covered, false);
+        assert_eq!(empty("2023-07-07", None), [(d("2023-06-30"), d("2023-07-07"))]);
+        // Within a week, the last 7 days.
+        assert_eq!(empty("2023-07-09", covered("2023-07-06T23:07:41.512903+00:00")), [(d("2023-07-02"), d("2023-07-09"))]);
+        // After a longer pause, from the day after the covered day.
+        assert_eq!(empty("2026-11-06", covered("2026-10-21T23:30:00+00:00")), [(d("2026-10-22"), d("2026-11-06"))]);
+        // A covered day after the update's own last day.
+        assert_eq!(empty("2023-07-09", covered("2026-11-15T10:00:00+00:00")), [(d("2023-07-02"), d("2023-07-09"))]);
     }
 
     #[test]
