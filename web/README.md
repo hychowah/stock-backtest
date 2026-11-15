@@ -37,6 +37,11 @@ The checks do not depend on timing:
   page read at once with `reread(page)`, or loads the page after the change.
 - A function that `expect.poll` calls must not throw: the poll would end with
   that error. Wait for the result with `home.finished(id)` or `home.idle()`.
+- A worker's `bt serve` has a private `HOME` with a made-up key and a local
+  `BT_PROVIDER` (`home.provider`, a TCP port that closes or holds every
+  connection), so the update that the page starts never reaches the real
+  provider. An update that is not stopped prepares the home at the time now:
+  `home.prepare()` puts the fixture's time back.
 - The long run lasts about 40 s on a quiet machine with a debug `bt`; a
   check ends it with Stop test.
 

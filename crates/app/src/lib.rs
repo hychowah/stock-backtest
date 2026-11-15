@@ -65,6 +65,10 @@
 //! | `bt save` | one result file, then one short `app.sqlite` transaction | the result file |
 //! | `bt run`, `bt export` | only their `--out` folder | prepared data |
 //! | `bt data prepare` | prepared data, under its own lock | raw data |
+//! | `bt data update`, started by `bt serve` or a terminal | raw data, prepared data, `data/update.json`, under `data/update.lock` | the provider |
+//!
+//! The server starts an update in its own process group, so stopping the
+//! server leaves a running update to finish.
 //!
 //! `bt save` copies the result file to a temporary name in `data/runs/`,
 //! adds the row, renames the file and then commits, so a complete row always
@@ -90,6 +94,7 @@ mod reference;
 mod results;
 mod runs;
 mod store;
+mod update;
 mod worker;
 
 pub use http::serve;

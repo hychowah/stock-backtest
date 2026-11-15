@@ -31,6 +31,8 @@
 //! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` prints it |
 //! | `POST /api/screen` | [`ScreenBody`](crate::reference::ScreenBody) | `ScreenReply`, as `bt screen` prints it |
 //! | `GET /api/data/status` | | `StatusReply`, as `bt data status` prints it |
+//! | `POST /api/data/update` | | the `UpdateStatus`, once the record names the new `bt data update` process; 409 when an update runs; 500 when the process ends without that |
+//! | `POST /api/data/stop` | | the `UpdateStatus`; the update stops after its requests in flight; 409 when no update runs |
 //!
 //! A reply of one run is a `RunRow` with the run's canonical strategy file
 //! and the description of its steps: what each reads, and the unit and
@@ -47,8 +49,10 @@
 //! data), 403 for a change from another origin, 404 for an unknown id,
 //! market or path, 405 for a method a route does not have, 409 for a change
 //! the run's state does not allow (or that lost a race with the worker, or a
-//! result asked of a run that is not complete) and 500 for a failed read or
-//! write of the home's files.
+//! result asked of a run that is not complete; a start of the update while one
+//! runs, a stop while none runs) and 500 for a failed read or
+//! write of the home's files (or an update process that ends before it
+//! records its start).
 //!
 //! The origin rule, as today's website has it: a request other than GET
 //! whose `Origin` header is not `http://<Host>` gets 403. A page of another
@@ -181,6 +185,7 @@ fn router(app: App) -> Router {
         .merge(crate::formula::routes())
         .merge(crate::results::routes())
         .merge(crate::reference::routes())
+        .merge(crate::update::routes())
         .route("/api/{*rest}", any(|| async { Failure::unknown(Error::new("there is no such route", "path")) }))
         .method_not_allowed_fallback(|| async { Failure { status: StatusCode::METHOD_NOT_ALLOWED, error: Error::new("this route has no such method", "method") } })
         .fallback_service(web)

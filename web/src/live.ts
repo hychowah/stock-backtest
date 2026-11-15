@@ -1,7 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
 import type { RunsReply } from "./api/RunsReply.ts";
+import type { StatusReply } from "./api/StatusReply.ts";
 import type { Variable } from "./api/Variable.ts";
 import { ApiFailure, client } from "./client.ts";
+import { statusInterval } from "./data/update.ts";
 import { asFailure } from "./read.ts";
 
 /** The server state that several workspaces share.
@@ -13,9 +15,12 @@ import { asFailure } from "./read.ts";
  *  a failure back to its caller, which shows it beside the control.
  *  useLibrary(): the variable library, read at start and after each change
  *  sent with changeLibrary(change), which works as act() does.
+ *  useDataStatus(): the data status for the data page, read every second
+ *  while an update runs or stops and every 5 s otherwise; changeData(change)
+ *  sends one update action, then reads the status again, as act() does.
  *  lastResult: the result last opened, the target of the nav's Result review.
  *
- *  Both lists are read while at least one view watches them; a failed read
+ *  Each list is read while at least one view watches it; a failed read
  *  keeps the last list and sets `failure` (status 0: the server does not
  *  answer) until a read succeeds. */
 
@@ -86,6 +91,7 @@ class SharedList<T> {
 const busy = (reply: RunsReply | null) => reply?.runs.some((run) => run.state === "waiting" || run.state === "running") ?? false;
 const runs = new SharedList<RunsReply>(client.runs, (reply) => (busy(reply) ? 2000 : 15000));
 const library = new SharedList<Variable[]>(client.variables, () => null);
+const dataStatus = new SharedList<StatusReply>(client.dataStatus, (reply) => statusInterval(reply?.update.state));
 
 globalThis.document?.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void runs.refresh();
@@ -119,6 +125,19 @@ export function useLibrary(): Shared<Variable[]> {
  *  `changeLibrary(() => client.addVariable(entry))`, then reads it again. */
 export function changeLibrary<R>(change: () => Promise<R>): Promise<R> {
   return library.change(change);
+}
+
+/** The data status (the markets and the update), kept current as the comment
+ *  at the top says. */
+export function useDataStatus(): Shared<StatusReply> {
+  return useShared(dataStatus);
+}
+
+/** Sends one update action, such as `changeData(client.startUpdate)`, then
+ *  reads the status again. It returns the action's reply or throws its
+ *  ApiFailure. */
+export function changeData<R>(change: () => Promise<R>): Promise<R> {
+  return dataStatus.change(change);
 }
 
 /** The id of the result last opened in this page, or null. The shell sets it

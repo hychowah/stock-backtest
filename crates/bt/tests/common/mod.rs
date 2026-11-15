@@ -113,25 +113,47 @@ pub fn schedule(settings: &Value) -> Vec<String> {
     args
 }
 
+/// The provider address of a test server that has no fake to talk to: the
+/// port refuses connections.
+pub const NO_PROVIDER: &str = "http://127.0.0.1:1";
+
 /// A `bt serve` child process of a home, on a free port that the system
 /// chooses. Dropping it stops it with SIGTERM.
 pub struct Server {
     child: Child,
     /// `http://127.0.0.1:PORT`.
     pub url: String,
+    /// The server's `HOME`, private to it. A server starts `bt data update`
+    /// with its own environment, so this folder (never the real home, with
+    /// its real key) is where that update reads a made-up key, at
+    /// `.grok/secrets/fmp_api_key`.
+    pub user: tempfile::TempDir,
 }
 
-/// Starts `bt serve` on `home` and waits until it says it is ready.
+/// Starts `bt serve` on `home` and waits until it says it is ready. The
+/// server can reach no provider: see [`serve_with`].
 pub fn serve(home: &Path) -> Server {
+    serve_with(home, NO_PROVIDER)
+}
+
+/// Starts `bt serve` on `home` with `provider` as its `BT_PROVIDER`. Every
+/// test server has a private `HOME` and a local `BT_PROVIDER`, whatever the
+/// test does: a POST to `/api/data/update` starts `bt data update` with the
+/// server's environment, which would otherwise send the real key to the real
+/// provider.
+pub fn serve_with(home: &Path, provider: &str) -> Server {
+    let user = tempfile::tempdir().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_bt"))
         .args(["serve", "--port", "0", "--home", path(home)])
+        .env("HOME", user.path())
+        .env("BT_PROVIDER", provider)
         .stdout(Stdio::piped())
         .spawn()
         .expect("start bt serve");
     let mut line = String::new();
     BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
     let ready: Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("bt serve did not start: {line}"));
-    Server { child, url: ready["serving"].as_str().unwrap().to_string() }
+    Server { child, url: ready["serving"].as_str().unwrap().to_string(), user }
 }
 
 impl Server {

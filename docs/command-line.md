@@ -291,7 +291,7 @@ It needs the account's key in `~/.grok/secrets/fmp_api_key`, and a home whose `r
 
 `--as-of TIME` (RFC 3339) replaces the current time: it sets the last price day, the Hong Kong date of the report check and the as-of time of the prepared data.
 
-One update runs on a home at a time: a second one stops with "an update is already running". Ctrl+C, SIGTERM or the file `data/update.stop` stops an update: the requests in flight end, the saved files stay, and the data is not prepared. To continue, run the command again before the last price day changes (at 22:00 UTC): it does not ask again for the files that the stopped update saved. After that time, the command starts a new update. A stop while the data is prepared lets preparation finish.
+One update runs on a home at a time: a second one stops with "an update is already running". Ctrl+C, SIGTERM or the file `data/update.stop` (which the website's Stop update button writes) stops an update: the requests in flight end, the saved files stay, and the data is not prepared. To continue, run the command again before the last price day changes (at 22:00 UTC): it does not ask again for the files that the stopped update saved. After that time, the command starts a new update. A stop while the data is prepared lets preparation finish.
 
 A saved price, rate or calendar file that cannot be read is asked again whole and replaced. A saved statements file that cannot be read fails its item, because the earlier report variants that it holds cannot be asked again.
 

@@ -203,10 +203,10 @@ impl UpdateLock {
     }
 }
 
-/// Whether an update holds the lock. Takes it shared for an instant when it
-/// is free, so probes never conflict with each other, and a starting update
-/// waits for the instant to pass.
-fn running(home: &Home) -> bool {
+/// Whether an update holds the lock of this home. Takes it shared for an
+/// instant when it is free and never waits, so probes never conflict with each
+/// other, and a starting update waits for the instant to pass.
+pub fn lock_held(home: &Home) -> bool {
     let Ok(file) = File::open(path(home, "update.lock")) else { return false };
     matches!(file.try_lock_shared(), Err(TryLockError::WouldBlock))
 }
@@ -215,7 +215,7 @@ fn running(home: &Home) -> bool {
 /// no update runs.
 pub fn request_stop(home: &Home) -> Result<(), Error> {
     let stop = path(home, "update.stop");
-    if !running(home) {
+    if !lock_held(home) {
         return Err(Error::new("no update is running", stop.display()));
     }
     File::create(&stop).map(drop).map_err(|e| Error::new(format!("cannot write the stop request: {e}"), stop.display()))
@@ -251,7 +251,7 @@ pub fn status(home: &Home) -> UpdateStatus {
     };
     let Ok(record) = UpdateRecord::read(home) else { return failed };
     let mut record = record.unwrap_or_default();
-    if unfinished(&record) && !running(home) {
+    if unfinished(&record) && !lock_held(home) {
         let Ok(again) = UpdateRecord::read(home) else { return failed };
         record = again.unwrap_or_default();
         if unfinished(&record) {

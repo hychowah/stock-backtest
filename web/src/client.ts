@@ -20,6 +20,7 @@ import type { ScreenReply } from "./api/ScreenReply.ts";
 import type { SectorsReply } from "./api/SectorsReply.ts";
 import type { StatusReply } from "./api/StatusReply.ts";
 import type { TrialsReply } from "./api/TrialsReply.ts";
+import type { UpdateStatus } from "./api/UpdateStatus.ts";
 import type { Variable } from "./api/Variable.ts";
 
 /** A request that `bt serve` refused, or that it did not answer. */
@@ -136,4 +137,9 @@ export const client = {
   screen: (body: ScreenBody) => send<ScreenReply>("POST", "/api/screen", body),
   /** What prepared data each market has. */
   dataStatus: () => get<StatusReply>("/api/data/status"),
+  /** Starts `bt data update`; the reply is the update's status once it has
+   *  started. 409 when an update runs, 500 when the process ends at once. */
+  startUpdate: () => send<UpdateStatus>("POST", "/api/data/update"),
+  /** Asks the running update to stop; 409 when none runs. */
+  stopUpdate: () => send<UpdateStatus>("POST", "/api/data/stop"),
 };

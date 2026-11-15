@@ -3,6 +3,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type Server as TcpServer, type Socket } from "node:net";
 import { createInterface } from "node:readline";
 import type { AddRun } from "../src/api/AddRun.ts";
 import type { RunRow } from "../src/api/RunRow.ts";
@@ -48,12 +49,32 @@ export function canonical(strategy: StrategyFile): StrategyFile {
   }
 }
 
+/** The data provider of one worker's server: a local TCP port that never
+ *  gives a reply, so no update of a check can save a raw file: the home's
+ *  `raw/` is a link to the tracked `fixtures/fictional/raw`, and a check that
+ *  needs replies must use a copy.
+ *  `bt serve` takes its address as `BT_PROVIDER`; the update that the page
+ *  starts is its child and has the same environment. */
+export type Provider = {
+  /** What it does with a connection: `close` it at once (the client sees no
+   *  reply and tries again, three times in all), or `hold` it open. */
+  mode: "close" | "hold";
+  /** Closes the connections held so far. */
+  release(): void;
+};
+
 /** One fictional home served by `bt serve`, for one worker. */
 export type Home = {
   /** `http://127.0.0.1:PORT`, also the tests' baseURL. */
   url: string;
   /** The home folder: `raw` and `web` are links, `data/` is its own. */
   dir: string;
+  /** The provider of the home's server. */
+  provider: Provider;
+  /** Prepares the home again at the fixture's as-of time. An update that
+   *  is not stopped prepares the home at the time now, which moves the last
+   *  session that the other checks read. */
+  prepare(): void;
   /** Sends a request as the website does (with its Origin); returns the
    *  JSON reply, or throws with the status and the server's message. */
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
@@ -76,11 +97,44 @@ export type Home = {
 
 type Server = { url: string; stop: () => Promise<void> };
 
+/** Listens on a free local port as the worker's provider. */
+async function listen(): Promise<{ address: string; provider: Provider; stop: () => Promise<void> }> {
+  const held = new Set<Socket>();
+  const provider: Provider = {
+    mode: "close",
+    release: () => {
+      for (const socket of held) socket.destroy();
+      held.clear();
+    },
+  };
+  const tcp: TcpServer = createServer((socket) => {
+    socket.on("error", () => {});
+    if (provider.mode === "hold") held.add(socket);
+    else socket.destroy();
+  });
+  await new Promise<void>((resolve) => tcp.listen(0, "127.0.0.1", resolve));
+  const port = (tcp.address() as { port: number }).port;
+  return {
+    address: `http://127.0.0.1:${port}`,
+    provider,
+    stop: () => {
+      provider.release();
+      return new Promise<void>((resolve) => tcp.close(() => resolve()));
+    },
+  };
+}
+
 /** Starts `bt serve --port 0` on `home` and reads its `{"serving": url}`
  *  line. A server that does not start is stopped (if it runs) before the
- *  error is thrown. */
-async function serve(home: string): Promise<Server> {
-  const child = spawn(BT, ["serve", "--port", "0", "--home", home], { stdio: ["ignore", "pipe", "inherit"] });
+ *  error is thrown.
+ *
+ *  The server never sees the real provider or the real key, whatever a
+ *  check does: a click on Update data starts `bt data update` with the
+ *  server's environment. `HOME` is a private folder that holds a made-up
+ *  key, and `BT_PROVIDER` is the local `provider`. */
+async function serve(home: string, user: string, provider: string): Promise<Server> {
+  const env = { ...process.env, HOME: user, BT_PROVIDER: provider };
+  const child = spawn(BT, ["serve", "--port", "0", "--home", home], { stdio: ["ignore", "pipe", "inherit"], env });
   const ended = new Promise<void>((resolve) => {
     child.once("exit", () => resolve());
     child.once("error", () => resolve());
@@ -118,13 +172,19 @@ export const test = base.extend<{}, { home: Home }>({
       if (!existsSync(join(root, "web/dist/index.html"))) throw new Error("web/dist is missing: run npm run build");
       const dir = mkdtempSync(join(tmpdir(), "bt-web-"));
       let server: Server | undefined;
+      let listener: Awaited<ReturnType<typeof listen>> | undefined;
       try {
         const home = join(dir, "home");
         mkdirSync(home);
+        // A link to the tracked fixture: no check saves a raw file through it (the provider gives no reply); a check that needs replies must use a copy.
         symlinkSync(join(root, "fixtures/fictional/raw"), join(home, "raw"));
         symlinkSync(join(root, "web/dist"), join(home, "web"));
         execFileSync(BT, ["data", "prepare", "--as-of", AS_OF, "--home", home], { stdio: "ignore" });
-        server = await serve(home);
+        const user = join(dir, "user");
+        mkdirSync(join(user, ".grok/secrets"), { recursive: true });
+        writeFileSync(join(user, ".grok/secrets/fmp_api_key"), "made-up-key-for-the-browser-checks\n");
+        listener = await listen();
+        server = await serve(home, user, listener.address);
         const url = server.url;
         const api = async <T,>(method: string, path: string, body?: unknown): Promise<T> => {
           const response = await fetch(url + path, {
@@ -140,6 +200,8 @@ export const test = base.extend<{}, { home: Home }>({
         await use({
           url,
           dir: home,
+          provider: listener.provider,
+          prepare: () => void execFileSync(BT, ["data", "prepare", "--as-of", AS_OF, "--home", home], { stdio: "ignore" }),
           api,
           addLongRun: (name) => api<RunRow>("POST", "/api/runs", { name, market: "us", schedule: LONG_RUN, strategy } satisfies AddRun),
           reset: async () => {
@@ -175,6 +237,7 @@ export const test = base.extend<{}, { home: Home }>({
         });
       } finally {
         await server?.stop();
+        await listener?.stop();
         rmSync(dir, { recursive: true, force: true });
       }
     },

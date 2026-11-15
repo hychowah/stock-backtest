@@ -1,3 +1,4 @@
+import type { ApiError } from "./api/ApiError.ts";
 import type { Market } from "./api/Market.ts";
 import type { RunRow } from "./api/RunRow.ts";
 import type { Schedule } from "./api/Schedule.ts";
@@ -74,12 +75,14 @@ export const kindWords = (schedule: Schedule) => (schedule.trials === undefined 
 /** A row's window: `2021-07-01 → 2023-06-28`. */
 export const windowWords = (schedule: Schedule) => `${schedule.start} → ${schedule.end}`;
 
-/** The note under a failed run's state: the server's message, then its place
- *  in words. */
-export function failureNote(run: RunRow): string {
-  if (!run.error) return "";
-  return run.error.place ? `${run.error.message} (${placeInWords(run.error.place)})` : run.error.message;
+/** The server's message, then its place in words, as the note under a failed
+ *  run's state and the failures of the data update show it. */
+export function errorNote(error: ApiError): string {
+  return error.place ? `${error.message} (${placeInWords(error.place)})` : error.message;
 }
+
+/** The note under a failed run's state. */
+export const failureNote = (run: RunRow) => (run.error ? errorNote(run.error) : "");
 
 /** The time a complete run was saved: when it finished (a result added by
  *  `bt save` has no start, but it has a finish), else when it was created. */
