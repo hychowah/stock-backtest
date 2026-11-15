@@ -62,6 +62,9 @@ data/logs/
 target/
 web/dist/
 
+# Browser check output.
+web/test-results/
+
 # Disposable API experiments, response memoization and benchmark caches.
 tmp/
 

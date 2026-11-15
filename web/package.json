@@ -4,10 +4,16 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node build.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "preact": "^11.2.0"
   }
 }

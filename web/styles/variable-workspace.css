@@ -1,0 +1,45 @@
+.variable-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}#scalar-explanation-content pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:420px;overflow:auto}
+
+#strategy-heading,#scalar-evidence-summary{overflow-wrap:anywhere}#scalar-explanation-content ul,#scalar-explanation-content ol{padding-left:20px}#scalar-explanation-content details{margin:8px 0}#scalar-explanation-content summary{cursor:pointer;min-height:32px}
+
+#scalar-evidence-view,#scalar-explanation,#scalar-explanation-content{min-width:0;max-width:100%;overflow-wrap:anywhere}#scalar-explanation-content p,#scalar-explanation-content li{white-space:normal;overflow-wrap:anywhere}.variable-evidence-samples{display:grid;gap:12px}.variable-evidence-sample{min-width:0;padding:12px;border:1px solid #dce5df;border-radius:7px}.variable-evidence-sample h4{margin:0 0 8px;overflow-wrap:anywhere}.variable-evidence-sample dl{display:flex;gap:8px 20px;flex-wrap:wrap;margin:0}.variable-evidence-sample dl div{min-width:90px}.variable-evidence-sample dt{font-size:12px;color:#536762}.variable-evidence-sample dd{margin:0;font-weight:600}.variable-evidence-sample ul{margin:8px 0}.variable-evidence-sample ol{margin:8px 0;font-size:13px}
+
+/* The variable window: name, typed formula, its check and how it was read.
+   Its top stays fixed, so a new check line or picture grows it downward only. */
+#variable-dialog{width:min(860px,calc(100vw - 32px));margin:12dvh auto auto;max-height:calc(88dvh - 14px);border:1px solid #cbd9cf;border-radius:12px;padding:20px;color:#173d32;background:#fbfcf8;box-sizing:border-box}
+#variable-dialog::backdrop{background:#102e25aa}
+#variable-dialog button:focus-visible{outline:3px solid #267d63;outline-offset:2px}
+.variable-dialog-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.variable-dialog-head h2{margin:0}
+.variable-head-actions{display:flex;gap:8px}
+.variable-form{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 14px;margin:18px 0 0}
+.variable-form>label{padding-top:10px;font-weight:600}
+.variable-form input,.variable-form textarea{width:100%;box-sizing:border-box;padding:8px;border:1px solid #b8cbc0;border-radius:5px;font:inherit}
+.variable-form textarea{font-size:16px;line-height:1.5;resize:vertical}
+.variable-check,.variable-picture{grid-column:2}
+.variable-check{min-height:36px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:14px;color:#536762;overflow-wrap:anywhere}
+.variable-check[data-state=ready]{color:#13755a;font-weight:600}
+.variable-check[data-state=error]{color:#a93830;font-weight:600}
+.variable-check label{font-weight:400;color:#173d32}
+.variable-check select{margin-left:4px}
+#variable-fixes{display:flex;flex-wrap:wrap;gap:6px}
+.variable-picture{font-family:Georgia,"Times New Roman",serif;font-size:19px;line-height:1.4;overflow-x:auto;padding:4px 0}
+.variable-picture:empty{display:none}
+.variable-picture-fraction{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 4px}
+.variable-picture-fraction>span{padding:2px 10px}
+.variable-picture-fraction>span+span{border-top:2px solid #496454}
+.variable-picture small{font:12px system-ui,sans-serif;color:#536762}
+.variable-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:16px 0 0;padding-top:12px;border-top:1px solid #dce5df}
+#variable-apply{min-height:44px;padding:10px 22px;font-weight:600;margin-left:auto}
+#variable-message{margin:6px 0;overflow-wrap:anywhere}
+#variable-inputs summary{cursor:pointer;font-size:14px;color:#536762;padding:6px 0}
+#variable-input-list h3{margin:12px 0 6px;font-size:13px}
+#variable-input-list div{display:flex;flex-wrap:wrap;gap:6px}
+#variable-input-list button{font-size:13px;padding:5px 9px}
+@media(max-width:680px){
+  #variable-dialog{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0;padding:14px}
+  .variable-form{grid-template-columns:minmax(0,1fr);gap:4px}
+  .variable-form>label{padding-top:8px}
+  .variable-check,.variable-picture{grid-column:1}
+  #variable-apply{flex:1 1 100%}
+}

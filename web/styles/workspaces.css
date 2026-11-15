@@ -1,0 +1,151 @@
+/* Mounted task areas share the existing owners and controls. */
+:root{background:#f5f6f2;color:#243831}
+/* The fixed status bar is 64px tall; keep content and scrolled-to rows above it. */
+html{scroll-padding-bottom:78px}
+body{padding-bottom:78px}
+main{max-width:1680px;margin-left:208px;margin-right:auto;padding:25px 32px 35px}
+#workspace-nav{position:fixed;inset:0 auto 0 0;width:208px;padding:32px 18px;background:#172e26;color:#c7d5c3;display:flex;flex-direction:column;gap:8px;z-index:6}
+#workspace-nav>a,#workspace-nav>button{border:0;background:none;text-align:left;color:inherit;border-radius:7px;text-decoration:none;padding:12px 14px;font-size:13px;line-height:1.5;min-height:44px}
+#workspace-nav>button[aria-current=page]{background:#314d3b;color:#f3f7e8}
+#workspace-nav>a:hover,#workspace-nav>button:hover{background:#294534}
+#workspace-nav .workspace-brand{font-family:Georgia,serif;font-size:30px;letter-spacing:1px;color:#eef4df;margin-bottom:27px;line-height:1.1}
+.workspace-brand small{display:block;font:9px Arial,sans-serif;letter-spacing:1.5px;text-transform:uppercase;margin-top:8px;color:#a2b59c}
+#workspace-queue-count{float:right;font-size:10px;color:#e2eccf;background:#496149;border-radius:3px;padding:2px 5px}
+main>header{padding-bottom:15px;font-size:11px;align-items:center}
+main>header .eyebrow{font-size:10px;letter-spacing:1px}
+main>header .pill{font-size:10px}
+.panel{box-shadow:none;border-color:#dfe5d8;border-radius:10px}
+/* Builder: controls first. Each section shows one help line; the other
+   explanations wait in its closed How this works disclosure. */
+#workspace-builder>.panel:first-of-type{margin-top:0;padding-top:18px;padding-bottom:18px}
+#strategy-form h2{margin:0}
+/* The builder buttons stay on the row of the heading, also during a held edit. */
+@media(min-width:601px){#strategy-form>.toolbar>:first-child{flex-basis:200px}}
+#strategy-form select{border:1px solid #ccd5d0;border-radius:5px;background:#fff;padding:9px 6px}
+.section-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px}
+.section-heading .hint{margin:0}
+/* A schedule row aligns its field labels at the top, so an open disclosure cannot
+   move them. A control without a label line starts one line lower. */
+.builder-options,.schedule-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px;margin-top:12px}
+.schedule-row{align-items:flex-start}
+#calendar-controls,#calendar-interval,#random-controls,#auto-run-controls{display:contents}
+.builder-options label,.schedule-row label{flex:0 1 170px;min-width:0;font-size:12px;line-height:15px;color:#536762}
+.builder-options label{flex-basis:250px}
+.schedule-row label.wide{flex-basis:290px}
+.schedule-row label.narrow{flex-basis:110px}
+.builder-options select,.schedule-row label>select,.schedule-row label>input{display:block;width:100%;margin-top:5px}
+.builder-options label.check,.schedule-row label.check{flex:none;display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;color:#192b31}
+.schedule-row label.check{margin-top:20px}
+label.check>input{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-color:#20775e}
+#auto-run-note{flex:1 1 220px;display:flex;align-items:center;min-height:44px}
+#auto-run-note:empty{display:none}
+#legacy-pool-note{flex-basis:100%}
+.random-advanced{flex:1 1 300px;min-width:0;margin-top:20px;font-size:13px;color:#536762}
+.random-advanced>summary{cursor:pointer;padding:12px 0}
+.random-advanced>.schedule-row{margin-top:0}
+.how-it-works{font-size:13px;color:#536762}
+.how-it-works>summary{width:fit-content;min-height:36px;padding:9px 0;cursor:pointer}
+.how-it-works>.hint{max-width:960px;margin:4px 0 10px}
+/* Latest picks: the picks table starts in the first screen. Its facts share the
+   heading row, and the notes of the displayed result follow the table. */
+#screen-status{margin-bottom:0}
+#latest-view{padding-top:18px}
+#latest-view>.toolbar>h2{flex:0 1 auto;margin:0}
+#latest-view .latest-facts{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:4px 24px;margin:0}
+#latest-view .latest-facts>span{border:0;padding:0}
+#latest-view .latest-facts strong{display:inline;margin:0 0 0 7px;font-size:15px;font-weight:600}
+#latest-view th{white-space:nowrap}
+/* Runs: the queue panel and the Saved backtests rows join into one card. */
+#workspace-runs>.backtest-queue{margin:0;padding-bottom:8px;border-bottom:0;border-radius:10px 10px 0 0}
+#workspace-runs>.backtest-queue>.hint{margin:6px 0 0}
+#workspace-runs>.saved-backtests{margin-top:0;padding-top:14px;border-top:0;border-radius:0 0 10px 10px}
+#saved-status{margin:0 0 4px}
+#workspace-review{padding-top:25px}
+.workspace-review-layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:24px;align-items:start}
+.workspace-review-main{min-width:0}
+.workspace-review-heading{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 15px;align-items:flex-end;margin-bottom:21px}
+.workspace-review-heading>div:first-child{flex:1 1 480px;min-width:0}
+.workspace-review-heading h1{font-size:28px;line-height:1.2;letter-spacing:-.5px;margin:8px 0;overflow-wrap:anywhere}
+.workspace-review-heading p{font-size:12px;margin:0}
+/* The tab row stays at the top of the window while Result review scrolls. It is
+   opaque, and a control that gets focus scrolls into view below it. */
+#workspace-review-tabs{position:sticky;top:0;z-index:4;display:flex;gap:28px;margin:-12px 0 24px;padding-top:12px;background:#f5f6f2;border-bottom:1px solid #d7dfcf}
+html:has(#workspace-review:not([hidden])){scroll-padding-top:66px}
+/* The area below the tab row is at least a window tall, so the row can stay at
+   the top of the window while a tab loads its content. */
+#workspace-review:not([data-section=settings]) #custom-view,#workspace-review[data-section=settings] #workspace-settings{min-height:100vh}
+#workspace-review-tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:0 0 13px;background:none;color:#6b7862;font-size:13px}
+#workspace-review-tabs button[aria-current=page]{border-bottom-color:#285e49;color:#285e49;font-weight:650}
+/* Result review: the headline of the original result, then the main chart and
+   its table. Explore and the notes follow them. A headline is a grid of cells,
+   each a small label above its value; Details of a saved row shows the same cells. */
+.headline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px;margin:0 0 20px}
+.headline:has(>:nth-child(5)){grid-template-columns:repeat(3,minmax(0,1fr))}
+.headline>div{display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-width:0}
+.headline dt{font-size:12px;line-height:1.3;color:#617172}
+.headline dd{margin:0;font-size:24px;font-weight:500;line-height:1.2;color:#244f43;overflow-wrap:anywhere}
+#workspace-headline{padding:15px 18px;background:#fff;border:1px solid #dfe5d8;border-radius:10px}
+#workspace-headline:empty{display:none}
+#workspace-headline [data-tone=up] dd{color:#13755a}
+#workspace-headline [data-tone=down] dd{color:#a93830}
+#workspace-recorded-notice{margin:0 0 20px}
+#custom-view{border:0;padding:0;background:none;margin-top:0}
+#custom-view>h2{display:none}
+#schedule-message{font-size:12px}
+#schedule-message:empty{display:none}
+.review-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;margin-bottom:12px}
+.review-heading h3{margin:0}
+#robustness-scope{margin:0 0 12px}
+#schedule-period-pages{margin-top:10px}
+#schedule-download-returns,#schedule-download-holdings{margin-top:12px}
+#result-explorer{margin-top:24px}
+#result-explorer:not([open]){padding-top:6px;padding-bottom:6px}
+#result-explorer>summary{padding:11px 0}
+#workspace-recorded-context{margin-top:10px}
+#workspace-settings{position:sticky;top:18px;max-height:calc(100vh - 110px);overflow:auto;margin:0;padding:20px 17px;background:#eff2e8;scrollbar-gutter:stable}
+#workspace-settings h2{font-size:14px;margin:10px 0 17px}
+#workspace-settings .eyebrow{font-size:10px;letter-spacing:1px}
+#workspace-settings dl{margin:0}
+#workspace-settings dl>div{padding:8px 0;border-bottom:1px solid #dce3d2}
+#workspace-settings dt{font-size:10px;color:#7b8970;margin-bottom:4px}
+#workspace-settings dd{font-size:12px;color:#385333;margin:0;overflow-wrap:anywhere;line-height:1.6}
+#workspace-settings .hint{font-size:10px;line-height:1.7}
+#workspace-settings summary{font-size:11px;color:#5c6b54;cursor:pointer;padding:14px 0 0}
+.workspace-phone-settings{display:none}
+#workspace-evidence>.panel{margin-top:15px}
+#schedule-stock-table{min-width:850px;font-size:12px}
+#schedule-stock-table td,#schedule-stock-table th{padding:12px 11px}
+#schedule-stock-table td:nth-child(2),#schedule-stock-table th:nth-child(2){min-width:160px;text-align:left}
+#schedule-stock-table td:nth-child(3),#schedule-stock-table th:nth-child(3){text-align:left}
+.holding-company{display:block;font-size:11px;font-weight:400;color:#7e8b74;margin-top:5px}
+.holding-details{text-align:left;min-width:90px}
+.holding-details[open]{width:min(360px,50vw)}
+.holding-details summary{font-size:11px;cursor:pointer}
+.holding-details dl{min-width:180px;margin:8px 0;font-size:11px}
+.holding-details dl>div{padding:6px 0;border-bottom:1px solid #e5eadd}
+.holding-details dt{font-size:10px;color:#7e8b74}
+.holding-details dd{margin:3px 0 0;overflow-wrap:anywhere}
+.holding-details button{font-size:11px;min-height:33px}
+.holding-details .step-trail{margin:8px 0;padding-left:18px;font-size:11px;line-height:1.6;overflow-wrap:break-word}
+#workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;background:#e9f0e4;border-top:1px solid #a9bda8;box-shadow:0 -8px 20px #172e2624;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
+#workspace-statusbar button{font-size:12px;min-height:40px}
+#workspace-run-open{flex:1;border:0;background:none;text-align:left;padding:5px 0;min-width:0}
+#workspace-run-state{display:block;font-size:12px;font-weight:600;color:#1c3a2f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:850px}
+/* The dot before the state: grey when idle, green when a test runs, amber when the queue is paused or a test stops. */
+#workspace-run-state::before{content:'';display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:50%;background:#9aa797}
+#workspace-run-state[data-state=running]::before{background:#20775e}
+#workspace-run-state[data-state=attention]::before{background:#c98a1a}
+#workspace-run-detail{display:block;font-size:10px;line-height:1.5;color:#536762;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:850px;margin-top:4px;padding-left:16px}
+#workspace-waiting{font-size:11px;color:#536762;white-space:nowrap}
+#workspace-queue-open{background:#193e36;border-color:#193e36;color:#fff;white-space:nowrap}
+#workspace-queue-tray{position:fixed;inset:auto 18px 78px auto;width:min(680px,calc(100% - 36px));max-height:75vh;overflow:auto;border:1px solid #dbe4d0;border-radius:12px;padding:15px;box-shadow:0 12px 50px #193a2630;color:inherit}
+#workspace-queue-tray::backdrop{background:#18352424}
+.workspace-tray-close{display:block;margin-left:auto;font-size:12px;min-height:36px}
+#workspace-queue-tray .backtest-queue{border:0;margin:0;padding:15px 5px 5px}
+#workspace-queue-tray .backtest-queue>p.hint{font-size:11px}
+@media(min-width:1900px){main{margin-right:20px;padding-left:42px;padding-right:42px}}
+@media(min-width:1400px){#workspace-headline:has(>:nth-child(5)){grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:1200px){main{padding-left:23px;padding-right:23px}.workspace-review-layout{grid-template-columns:minmax(0,1fr) 235px;gap:18px}#workspace-settings{padding:17px 14px}.workspace-review-heading{align-items:flex-start;flex-wrap:wrap}.workspace-review-main .latest-facts{gap:14px}.workspace-review-main .latest-facts strong{font-size:23px}}
+@media(max-width:1000px){.workspace-review-layout{display:block}.workspace-review-main{display:contents}#workspace-settings{display:none;position:static;max-height:none;margin-top:18px}#workspace-review[data-section=settings] #workspace-settings{display:block}.workspace-phone-settings{display:block}}
+@media(max-width:850px){main{margin-left:0;padding:20px}#workspace-nav{position:static;width:auto;display:flex;flex-direction:row;flex-wrap:wrap;padding:9px 14px;gap:4px}#workspace-nav .workspace-brand{display:none}#workspace-nav>a,#workspace-nav>button{padding:9px 11px;font-size:12px}#workspace-statusbar{left:0;padding:9px 18px}#workspace-queue-count{margin-left:7px}#workspace-nav>a:last-child{margin-left:auto}}
+@media(max-width:600px){main{padding:18px 14px}.builder-options label:not(.check),.schedule-row label:not(.check){flex:1 1 140px}.schedule-row label.check,.random-advanced{margin-top:0}#auto-run-note{min-height:0}.how-it-works>summary{min-height:44px;padding:13px 0}#workspace-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.strategy-actions #queue-name{flex:1 1 100%}#workspace-nav>a,#workspace-nav>button{font-size:11px;text-align:center;padding:8px 5px}#workspace-nav>a:last-child{margin-left:0}#workspace-statusbar{padding:8px 14px;gap:12px}#workspace-waiting{display:none}#workspace-statusbar button{font-size:11px}#workspace-run-state{font-size:11px}#workspace-run-detail{font-size:9px}#workspace-review{padding-top:20px}.workspace-review-heading h1{font-size:24px}#workspace-review-tabs{gap:23px}#workspace-review-tabs button{font-size:12px}#workspace-queue-tray{inset:auto 10px 75px;width:calc(100% - 20px);max-height:78vh;padding:12px}#workspace-settings{padding:18px}.headline,.headline:has(>:nth-child(5)){grid-template-columns:repeat(2,minmax(0,1fr))}#workspace-headline{padding:14px}#workspace-headline dd{font-size:21px}}
