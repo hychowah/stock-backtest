@@ -39,6 +39,7 @@ use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, 
 use rusqlite::{Connection, OpenFlags, Params, Row, params};
 use serde::Serialize;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use ts_rs::TS;
 
 /// The layout written and read.
@@ -66,20 +67,22 @@ CREATE TABLE curve(trial INTEGER, period INTEGER, day TEXT, portfolio, spy,
 
 /// Writes `run`, made on `schedule`, to a new file at `path`: first under a
 /// temporary name in the same folder, then renamed, so `path` holds a whole
-/// result or nothing.
-pub(crate) fn write(path: &Path, schedule: &Schedule, run: &Run) -> Result<(), Error> {
+/// result or nothing. `stop` is read before each period's rows; once it is
+/// set, the temporary file is removed and the result is `false`.
+pub(crate) fn write(path: &Path, schedule: &Schedule, run: &Run, stop: &AtomicBool) -> Result<bool, Error> {
     let name = path.file_name().expect("a result file name").to_string_lossy();
     let temporary = path.with_file_name(format!(".{name}.tmp"));
-    let written = fill(&temporary, schedule, run).map_err(|e| e.to_string()).and_then(|()| {
-        std::fs::rename(&temporary, path).map_err(|e| e.to_string())
+    let written = fill(&temporary, schedule, run, stop).map_err(|e| e.to_string()).and_then(|whole| {
+        if whole { std::fs::rename(&temporary, path).map_err(|e| e.to_string()).map(|()| true) } else { Ok(false) }
     });
-    if written.is_err() {
+    if written != Ok(true) {
         let _ = std::fs::remove_file(&temporary);
     }
     written.map_err(|e| Error::new(format!("cannot write the result file: {e}"), path.display()))
 }
 
-fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
+/// Writes the file; `false` when `stop` was set before it was whole.
+fn fill(path: &Path, schedule: &Schedule, run: &Run, stop: &AtomicBool) -> rusqlite::Result<bool> {
     let _ = std::fs::remove_file(path);
     let mut db = Connection::open(path)?;
     // The file is not a result until it is renamed, so a crash may lose it:
@@ -127,6 +130,9 @@ fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
                 s.short_periods
             ])?;
             for (period, number) in trial.periods.iter().zip(1u32..) {
+                if stop.load(Ordering::Relaxed) {
+                    return Ok(false);
+                }
                 let key = (s.trial, number);
                 periods.execute(params![
                     key.0,
@@ -174,7 +180,7 @@ fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
         }
     }
     tx.commit()?;
-    db.close().map_err(|(_, e)| e)
+    db.close().map_err(|(_, e)| e).map(|()| true)
 }
 
 /// A finished result file, open for reading. Rows come in key order.

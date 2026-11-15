@@ -101,8 +101,10 @@ pub struct Headline {
 /// result file is whole or absent.
 ///
 /// `stop` lets another thread end the run: it is read at the start of each
-/// entry day's work and once before writing. Once it is set, the run
-/// returns an error and writes no result file.
+/// entry day's work, once before writing, and before each period's rows
+/// while a result file is written. Once it is set, the run returns an error,
+/// and the result file being written is removed; a file of the batch written
+/// whole before it stays.
 pub fn run(home: &Home, request: &RunRequest, stop: &AtomicBool) -> Result<RunReply, Error> {
     let started = Instant::now();
     let schedule = request.schedule.drawn();
@@ -116,14 +118,17 @@ pub fn run(home: &Home, request: &RunRequest, stop: &AtomicBool) -> Result<RunRe
     let plan = Plan::new(&data, &schedule)?;
     let strategies: Vec<&Strategy> = request.runs.iter().map(|t| &t.strategy).collect();
     let runs = crate::run::run(&data, &plan, &strategies, stop).map_err(|(at, e)| e.in_file(&request.runs[at].name))?;
-    let runs = runs.filter(|_| !stop.load(Ordering::Relaxed)).ok_or_else(|| Error::new("the run was stopped", "stop"))?;
+    let stopped = || Error::new("the run was stopped", "stop");
+    let runs = runs.filter(|_| !stop.load(Ordering::Relaxed)).ok_or_else(stopped)?;
     for folder in request.runs.iter().filter_map(|t| t.result.parent()) {
         std::fs::create_dir_all(folder).map_err(|e| Error::new(format!("cannot create the result folder: {e}"), folder.display()))?;
     }
     // Each file is written alone, so writing them in parallel changes no byte.
-    let written: Vec<Result<(), Error>> =
-        request.runs.par_iter().zip(&runs).map(|(target, run)| results::write(&target.result, &schedule, run)).collect();
-    written.into_iter().collect::<Result<Vec<()>, Error>>()?;
+    let written: Vec<Result<bool, Error>> =
+        request.runs.par_iter().zip(&runs).map(|(target, run)| results::write(&target.result, &schedule, run, stop)).collect();
+    if written.into_iter().collect::<Result<Vec<bool>, Error>>()?.contains(&false) {
+        return Err(stopped());
+    }
     let replies = request
         .runs
         .iter()

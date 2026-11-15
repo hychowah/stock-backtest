@@ -18,7 +18,9 @@
 //!   second.
 //! - **Stop.** Stop and delete write their state first, then set the flag
 //!   of the run if it is the running one. The engine reads the flag at the
-//!   start of each entry day's work and once before it writes. The claim
+//!   start of each entry day's work, once before it writes, and before each
+//!   period's rows while it writes the result file, whose temporary file it
+//!   then removes. The claim
 //!   and the record of the running run's flag happen under one lock, so a
 //!   stop that comes right after a claim still finds the flag.
 //! - **Shutdown.** The server sets the running run's flag, wakes the worker
