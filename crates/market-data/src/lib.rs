@@ -1,8 +1,10 @@
 //! Market data: preparation of the raw provider cache into the prepared
 //! store, and the read interface the engine uses ([`MarketData`]).
 //!
-//! Only this crate opens store files. The `data` commands live in
-//! [`commands`]; the store layout and its publish rules in the private `store` module.
+//! Only this crate opens store and raw files. The `data` commands live in
+//! [`commands`]; the raw cache's files in [`raw`]; the home's update files in
+//! [`updates`]; the store layout and its publish rules in the private `store`
+//! module.
 
 mod annual;
 pub mod builtins;
@@ -14,11 +16,12 @@ mod holding;
 mod market;
 pub mod parameters;
 mod prices;
-mod raw;
+pub mod raw;
 mod reports;
 mod screen;
 mod series;
 mod store;
+pub mod updates;
 mod valuation;
 
 pub use companies::{Companies, CompanyId};

@@ -1,5 +1,6 @@
 //! Company reports: the annual anchors that books value a company from, and
-//! the report a book selects on a day. The only reader of `metrics.jsonl`.
+//! the report a book selects on a day. The reader of `metrics.jsonl` for
+//! preparation.
 //!
 //! US, from the annual key metrics of `metrics.jsonl`:
 //! - The last record of a symbol wins, but the symbol keeps the position of

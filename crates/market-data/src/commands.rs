@@ -11,6 +11,7 @@ use crate::reports::{self, ReportColumns, ReportRows, Reported};
 use crate::screen::{self, Columns, DayScreen};
 use crate::series::{self, Series};
 use crate::store::{GenerationWriter, Lock};
+use crate::updates::{self, UpdateStatus};
 use crate::valuation::{self, SumRows, ValuationColumns};
 use crate::{Day, Denial, Error, Market, MarketData, PROGRAM, Screen};
 use chrono::{DateTime, FixedOffset};
@@ -21,9 +22,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// The runtime folder: the paths of its parts. Commands read raw provider
-/// files below [`raw`](Self::raw) and keep prepared data below
-/// [`prepared`](Self::prepared).
+/// The runtime folder: the paths of its parts. Commands keep raw provider
+/// files below [`raw`](Self::raw), prepared data below
+/// [`prepared`](Self::prepared) and the update's files in `data/`
+/// ([`crate::updates`]).
 #[derive(Debug, Clone)]
 pub struct Home {
     root: PathBuf,
@@ -39,7 +41,7 @@ impl Home {
         &self.root
     }
 
-    /// `raw/`: the provider cache. The program only reads it.
+    /// `raw/`: the provider cache ([`crate::raw`]).
     pub fn raw(&self) -> PathBuf {
         self.root.join("raw")
     }
@@ -85,7 +87,8 @@ pub struct PreparedMarket {
 pub fn prepare(home: &Home, request: &PrepareRequest) -> Result<PrepareReply, Error> {
     let lock = Lock::take(home)?;
     let mut markets = Vec::new();
-    for market in Market::ALL.into_iter().filter(|&m| raw_present(home, m)) {
+    let raw = Raw::new(home.raw());
+    for market in Market::ALL.into_iter().filter(|&m| raw.present(m)) {
         let started = Instant::now();
         let mut generation = lock.begin(market)?;
         let (companies, sessions) = build(home, market, &request.as_of, &mut generation)?;
@@ -186,22 +189,14 @@ fn company(
     Ok(CompanyParts { prices, reports, annual, sums })
 }
 
-/// Whether the market has raw data: its universe file exists. The US files
-/// are at the top of `raw/`, the others in `raw/markets/<market>/`.
-fn raw_present(home: &Home, market: Market) -> bool {
-    let dir = match market {
-        Market::Us => home.raw(),
-        _ => home.raw().join("markets").join(market.id()),
-    };
-    dir.join("universe.json").is_file()
-}
-
-/// What prepared data each market has (`bt data status`).
+/// What prepared data each market has, and the update's state (`bt data
+/// status`).
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct StatusReply {
     /// One entry per market: `us`, `hk`, then `jp`.
     pub markets: Vec<MarketStatus>,
+    pub update: UpdateStatus,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -228,13 +223,15 @@ pub struct Prepared {
     pub last_session: Option<String>,
 }
 
-/// Reports each market's raw data and current generation. Does not fail.
+/// Reports each market's raw data and current generation, and the update's
+/// state ([`updates::status`]). Does not fail.
 pub fn status(home: &Home) -> StatusReply {
+    let raw = Raw::new(home.raw());
     let markets = Market::ALL
         .into_iter()
         .map(|market| MarketStatus {
             market,
-            raw: raw_present(home, market),
+            raw: raw.present(market),
             prepared: MarketData::open(home, market).ok().map(|data| {
                 let (m, sessions) = (data.manifest(), data.sessions());
                 Prepared {
@@ -249,7 +246,7 @@ pub fn status(home: &Home) -> StatusReply {
             }),
         })
         .collect();
-    StatusReply { markets }
+    StatusReply { markets, update: updates::status(home) }
 }
 
 /// `bt data export --market M --out DIR [--days FILE]`.

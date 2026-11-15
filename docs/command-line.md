@@ -12,7 +12,7 @@ A run needs a home: a folder that holds the raw provider files (`raw/`) and the 
 bt data status --home HOME_DIR
 ```
 
-For each market (`us`, `hk`, `jp`), the reply shows whether raw data exists and the prepared generation: `as_of`, `first_session`, `last_session` and `companies`. A run window must end on or before `last_session`. `bt data status`, `bt run`, `bt screen` and `bt catalog` read the home. `bt check`, `bt export tables`, `bt export holdings` and `bt explore` need no home.
+For each market (`us`, `hk`, `jp`), the reply shows whether raw data exists and the prepared generation: `as_of`, `first_session`, `last_session` and `companies`. The reply also has `update`, the state of the data update: `state` is `idle` (no update has run), `running`, `stopping`, `stopped`, `interrupted`, `failed`, `partial` or `complete`; `progress` holds the last update's stage, counts, failed items and times, or is null; `last_success` is the finish time of the last complete update, or null. A run window must end on or before `last_session`. `bt data status`, `bt run`, `bt screen` and `bt catalog` read the home. `bt check`, `bt export tables`, `bt export holdings` and `bt explore` need no home.
 
 ## A strategy file
 

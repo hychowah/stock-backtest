@@ -1,6 +1,6 @@
 //! Calendar days.
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use ts_rs::TS;
 
@@ -94,6 +94,13 @@ impl fmt::Display for Day {
 impl Serialize for Day {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Day {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Day, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Day::parse(&text).ok_or_else(|| serde::de::Error::custom(format!("not an ISO day: {text:?}")))
     }
 }
 

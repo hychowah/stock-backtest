@@ -1,12 +1,32 @@
-//! The raw provider cache (`raw/`): where each file lives, and reading its
-//! JSON, numbers, dates and dated rows exactly as the oracle's Python does.
-//! The program only reads `raw/`.
+//! The raw provider cache (`raw/`), the one owner of its files for reading
+//! and writing: where each file lives ([`Raw`]), how a file is replaced
+//! ([`replace`]), JSON as Python reads and writes it ([`PyJson`]), the typed
+//! files an update changes ([`Universe`], [`History`], [`Statements`],
+//! [`KeyMetrics`]), and below, preparation's reader.
 //!
-//! JSON is read with `serde_json`. On the forms that the raw cache holds, it
-//! gives Python's `json.loads` values: integers beyond 2^53 and beyond 64 bits
-//! round to the nearest binary64 as Python's `float(int)` does, and a repeated
-//! key keeps its last value. Numbers are JSON numbers, and dates are
-//! `YYYY-MM-DD`, alone or followed by a time.
+//! No raw file is changed in place: each is replaced whole, so a `cp -al`
+//! copy of `raw/` stays a private copy.
+//!
+//! # Errors of the typed files
+//!
+//! - [`ItemError`]: `load` of a history or statements file, `admit`,
+//!   `changes_closes`, `check_whole` and `apply` of a reply. The file stays
+//!   as it was and the item counts as failed.
+//! - [`Error`]: `save`, [`replace`], [`Universe::load`] and
+//!   [`KeyMetrics::load`]. It ends the update's downloads.
+//!
+//! A failure's `place` is the file's full path; the update shortens it when
+//! it names an item. The typed files read numbers as [`PyJson::number`]
+//! does (text numbers and booleans count), unlike preparation's reader
+//! below.
+//!
+//! # Preparation's reader
+//!
+//! Preparation reads JSON with `serde_json`. On the forms that the raw cache
+//! holds, it gives Python's `json.loads` values: integers beyond 2^53 and
+//! beyond 64 bits round to the nearest binary64 as Python's `float(int)`
+//! does, and a repeated key keeps its last value. Numbers are JSON numbers,
+//! and dates are `YYYY-MM-DD`, alone or followed by a time.
 //!
 //! Forms that no raw file holds are not ported and differ from the oracle:
 //! - `NaN`, `Infinity`, numbers beyond the binary64 range, lone surrogates
@@ -21,26 +41,47 @@
 //!   absent; a report's code is compared in capitals).
 //! - A SPY file must be a list (Python also reads rows wrapped in an object).
 
+mod history;
+mod key_metrics;
+mod pyjson;
+mod statements;
+mod universe;
+
+pub use history::{History, HistoryFile, Window};
+pub use key_metrics::KeyMetrics;
+pub use pyjson::{Int, Object, PyJson};
+pub use statements::{StatementKind, Statements};
+pub use universe::{Listing, Universe};
+
 use crate::{Day, Error, Market};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
-use std::io;
+use std::fmt;
+use std::fs::{self, File};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tables::Cell;
 
-/// The paths of the raw files that preparation reads.
-pub(crate) struct Raw {
+/// The paths of the raw files.
+#[derive(Debug, Clone)]
+pub struct Raw {
     root: PathBuf,
 }
 
 impl Raw {
-    pub(crate) fn new(root: PathBuf) -> Raw {
+    /// The paths below `root`, a home's `raw/`.
+    pub fn new(root: PathBuf) -> Raw {
         Raw { root }
+    }
+
+    /// Whether the market has raw data: its company list exists.
+    pub fn present(&self, market: Market) -> bool {
+        self.universe(market).is_file()
     }
 
     /// The market's saved company list: US `universe.json`, the others
     /// `markets/<market>/universe.json`.
-    pub(crate) fn universe(&self, market: Market) -> PathBuf {
+    pub fn universe(&self, market: Market) -> PathBuf {
         match market {
             Market::Us => self.root.join("universe.json"),
             _ => self.root.join("markets").join(market.id()).join("universe.json"),
@@ -48,38 +89,45 @@ impl Raw {
     }
 
     /// A foreign market's index calendar, `markets/<market>/calendar.json`.
-    pub(crate) fn calendar(&self, market: Market) -> PathBuf {
+    pub fn calendar(&self, market: Market) -> PathBuf {
         self.root.join("markets").join(market.id()).join("calendar.json")
     }
 
     /// The dividend-adjusted price file of a company, `px/<symbol>.json`.
-    pub(crate) fn prices(&self, symbol: &str) -> PathBuf {
+    pub fn prices(&self, symbol: &str) -> PathBuf {
         self.root.join("px").join(file_name(symbol))
     }
 
     /// The unadjusted (native) price file of a Hong Kong or Tokyo company,
     /// `px-full/<symbol>.json`.
-    pub(crate) fn native(&self, symbol: &str) -> PathBuf {
+    pub fn native(&self, symbol: &str) -> PathBuf {
         self.root.join("px-full").join(file_name(symbol))
     }
 
     /// A company's saved annual statements of one endpoint, such as
     /// `financial-inputs/income-statement/<symbol>.json`.
-    pub(crate) fn statement(&self, endpoint: &str, symbol: &str) -> PathBuf {
+    pub fn statement(&self, endpoint: &str, symbol: &str) -> PathBuf {
         self.root.join("financial-inputs").join(endpoint).join(file_name(symbol))
     }
 
-    pub(crate) fn spy(&self) -> PathBuf {
+    /// The SPY dividend-adjusted prices, `spy-div.json`.
+    pub fn spy(&self) -> PathBuf {
         self.root.join("spy-div.json")
     }
 
-    pub(crate) fn treasury(&self) -> PathBuf {
+    /// The Treasury rates, `treasury.json`.
+    pub fn treasury(&self) -> PathBuf {
         self.root.join("treasury.json")
     }
 
     /// The US annual key metrics, one JSON record per line.
-    pub(crate) fn metrics(&self) -> PathBuf {
+    pub fn metrics(&self) -> PathBuf {
         self.root.join("metrics.jsonl")
+    }
+
+    /// The daily US dollar rate of one currency, `fx/USD<currency>.json`.
+    pub fn fx_rate(&self, currency: &str) -> PathBuf {
+        self.root.join("fx").join(format!("USD{currency}.json"))
     }
 
     /// The FX files `fx/USD<currency>.json`, as (currency, path) in path order.
@@ -103,6 +151,61 @@ impl Raw {
         }
         files.sort_by(|a, b| a.1.cmp(&b.1));
         Ok(files)
+    }
+}
+
+/// Replaces the file at `path` with `bytes`: writes `<name>.tmp` beside it
+/// (creating the folder), syncs it, renames it over `path` and syncs the
+/// folder. A crash leaves the old file or the new one, never a mix, and a
+/// hard link to the old file keeps the old bytes. A failure names the file.
+pub fn replace(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+    let folder = path.parent().expect("a raw file is in a folder");
+    let mut name = path.file_name().expect("a file name").to_owned();
+    name.push(".tmp");
+    let temporary = folder.join(name);
+    let write = || -> io::Result<()> {
+        fs::create_dir_all(folder)?;
+        let mut file = File::create(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)?;
+        File::open(folder)?.sync_all()
+    };
+    write().map_err(|e| Error::new(format!("cannot replace the file: {e}"), path.display()))
+}
+
+/// Why one item of an update failed. Its file stays as it was; `place` is
+/// the file and `message` says what happened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemError {
+    pub message: String,
+    pub place: String,
+}
+
+impl ItemError {
+    fn new(message: impl Into<String>, path: &Path) -> ItemError {
+        ItemError { message: message.into(), place: path.display().to_string() }
+    }
+}
+
+impl From<ItemError> for Error {
+    fn from(e: ItemError) -> Error {
+        Error { message: e.message, place: e.place }
+    }
+}
+
+impl fmt::Display for ItemError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.place, self.message)
+    }
+}
+
+/// A saved file's bytes, or `None` when it does not exist.
+fn read_file(path: &Path) -> io::Result<Option<Vec<u8>>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
@@ -151,7 +254,12 @@ pub(crate) fn number(value: Option<&Value>) -> Option<f64> {
 /// `date` of a dated row). Other values are `None`.
 pub(crate) fn parse_day(value: Option<&Value>) -> Option<Day> {
     let Some(Value::String(text)) = value else { return None };
-    Day::parse(text.char_indices().nth(10).map_or(text.as_str(), |(i, _)| &text[..i]))
+    day_prefix(text)
+}
+
+/// The day of a text's first ten characters, read as `YYYY-MM-DD`.
+fn day_prefix(text: &str) -> Option<Day> {
+    Day::parse(text.char_indices().nth(10).map_or(text, |(i, _)| &text[..i]))
 }
 
 /// Why a field of a dated row has no value: the oracle's reason texts.

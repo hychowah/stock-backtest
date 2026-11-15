@@ -1,11 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
 
 /// Why a command or a request was refused: `{"error": {"message", "place"}}`,
 /// where `place` names the input, file or folder at fault. Commands check
 /// their inputs once, at the start.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, rename = "ApiError")] // TypeScript's own `Error` keeps its name.
 pub struct Error {
     /// What went wrong and, where the user can act, what to do.

@@ -51,6 +51,12 @@ legacy_rank      statements ([symbol, report yield] in pool order); ranks
 sqlite_real      value, stored. A value written to a REAL lane of an entry
                  sheet and read back.
 csv_number       value, text. The ECMAScript spelling of a CSV number.
+pyjson           text; written and sorted, or both null when refused. A raw
+                 file's JSON: written is json.dumps(json.loads(text)) and
+                 sorted the same with sort_keys=True. Refused: what
+                 json.loads or json.dumps(allow_nan=False) rejects, a lone
+                 surrogate, and an integer beyond the binary64 range.
+                 Or left, right, equal: Python's == of the two values read.
 """
 from datetime import date, timedelta
 import json
@@ -254,10 +260,50 @@ def csv_number():
     return 'backtest.application.result_exports.number', [dict(value=v, text=result_exports.number(v)) for v in values]
 
 
+def binary64(value):
+    """Raises OverflowError for an integer beyond the binary64 range."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        float(value)
+    for item in value.values() if isinstance(value, dict) else value if isinstance(value, list) else ():
+        binary64(item)
+
+
+def pyjson():
+    texts = ['12345678901234567890123', '-98765432109876543210', '9007199254740993',
+             '[18446744073709551616, -9223372036854775809, 9223372036854775807]', '-0', '0', '-0.0', '0.0', '-0e5',
+             '1E400', '-1e400', '1e-400', '-1e-400', '1' + '0' * 308, '1' + '0' * 309, '973012718181.53125',
+             '7.1202363472230444e-307', '1e16', '9999999999999998.0', '1234567890123456.7', '0.0001', '0.00001',
+             '0.00012345', '123456789012345678', '123456789012345678.0', '5e-324', '1.7976931348623157e308',
+             '1e22', '1e100', '2.5', '100.0', '1.5e300', '-1.5e-7', '0.1', '1E+2', '4.35e-05',
+             r'"\"\\\/\b\f\n\r\t"', r'"\u0000\u001f\u007f\u0080\u00e9\u00E9"', '"é  ~"', '"😀"',
+             r'"\ud83d\ude00"', r'"\uD83D\uDE00x"', '{"a": 1, "b": 2, "a": 3}', '{"a": {"x": 1, "x": [2]}, "b": [{"y": 0, "y": null}]}',
+             ' [ 1 ,2,\t{} ,[ ] ]\r\n', '{"k":true,"l":false,"m":null}', '[]', '{}', '""',
+             '{"b": {"d": 1, "c": [{"z": 1, "y": 2}]}, "a": "é", "B": 0, "à": 1, "😀": 2, "￿": 3}',
+             r'"\ud800"', r'"\udc00x"', r'"\ud800\u0041"', 'NaN', 'Infinity', '-Infinity', '﻿[]', '[1,]', '01',
+             '"a\tb"', '[1] 2', '1.', '.5', '-', 'tru', '"\\x"']
+    cases = []
+    for text in texts:
+        try:
+            value = json.loads(text)
+            written, ordered = json.dumps(value, allow_nan=False), json.dumps(value, sort_keys=True, allow_nan=False)
+            json.dumps(value, ensure_ascii=False).encode('utf-8')  # a lone surrogate has no UTF-8
+            binary64(value)
+        except (ValueError, UnicodeEncodeError, OverflowError):
+            written = ordered = None
+        cases.append(dict(text=text, written=written, sorted=ordered))
+    pairs = [('1', '1.0'), ('9007199254740993', '9007199254740992.0'), ('9007199254740992', '9007199254740992.0'),
+             ('1' + '0' * 300, '1e300'), (str(int(1e300)), '1e300'), ('-12345678901234567168', '-1.2345678901234567e19'), ('1' + '0' * 22, '1e22'), ('true', '1'), ('false', '0.0'), ('0', '-0.0'),
+             ('"1"', '1'), ('null', 'false'), ('[1, 2]', '[2, 1]'), ('{"a": 1, "b": [2.0]}', '{"b": [2], "a": 1.0}'),
+             ('{"a": 1}', '{"a": 1, "b": null}'), ('{"a": 1, "a": 2}', '{"a": 2}'), ('-12345678901234567890', '-1.2345678901234567e19'),
+             ('[]', '{}'), ('"é"', r'"\u00e9"')]
+    cases += [dict(left=left, right=right, equal=json.loads(left) == json.loads(right)) for left, right in pairs]
+    return 'json.loads and json.dumps (allow_nan=False, sort_keys for sorted), as the raw cache is written', cases
+
+
 BEHAVIORS = dict(random_choice=random_choice, float_sum=float_sum, statistics=statistics_, percentile=percentile,
                  threshold=threshold, canonical=canonical, cagr=cagr, peg=peg, annual_cagr=annual_cagr,
                  selection_order=selection_order, legacy_rank=legacy_rank, sqlite_real=sqlite_real,
-                 csv_number=csv_number)
+                 csv_number=csv_number, pyjson=pyjson)
 
 
 def neutral(value):

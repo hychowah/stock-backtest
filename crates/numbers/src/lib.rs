@@ -188,6 +188,36 @@ pub fn canonical(stored: f64, scale: i32) -> Option<f64> {
     value.is_finite().then_some(value)
 }
 
+/// `repr(x)` of a finite float, as Python writes it (and `json.dumps` too):
+/// [`repr`]'s digits in positional form when the decimal point falls from 4
+/// places left of the first digit through 16 places right of it (`0.0001`,
+/// `1234567890123456.0`, with `.0` after a whole number), otherwise as one
+/// digit, the rest after a point, and a signed exponent of at least two
+/// digits (`1e-05`, `1.5e+16`). `-0.0` keeps its sign.
+pub fn float_repr(x: f64) -> String {
+    let (digits, exponent) = repr(x);
+    let (sign, digits) = match digits.strip_prefix('-') {
+        Some(digits) => ("-", digits),
+        None => ("", digits.as_str()),
+    };
+    let count = digits.len() as i32;
+    // The decimal point's place after the first digit: x = 0.DIGITS * 10 ** point.
+    let point = exponent + count;
+    if point <= -4 || point > 16 {
+        let (first, rest) = digits.split_at(1);
+        let rest = if rest.is_empty() { String::new() } else { format!(".{rest}") };
+        let e = point - 1;
+        format!("{sign}{first}{rest}e{}{:02}", if e < 0 { '-' } else { '+' }, e.unsigned_abs())
+    } else if point <= 0 {
+        format!("{sign}0.{}{digits}", "0".repeat(point.unsigned_abs() as usize))
+    } else if point >= count {
+        format!("{sign}{digits}{}.0", "0".repeat((point - count) as usize))
+    } else {
+        let (whole, fraction) = digits.split_at(point as usize);
+        format!("{sign}{whole}.{fraction}")
+    }
+}
+
 /// `repr(x)` of a finite float as signed integer digits and a decimal
 /// exponent: the shortest decimal that reads back to `x`, and of those the
 /// closest to `x`.

@@ -18,6 +18,7 @@ fn status_on_an_empty_home_reports_no_raw_data_and_nothing_prepared() {
         assert_eq!(market["raw"], json!(false));
         assert_eq!(market["prepared"], Value::Null);
     }
+    assert_eq!(reply["update"], json!({"state": "idle", "progress": null, "last_success": null}));
     let wrong = Command::new(env!("CARGO_BIN_EXE_bt")).args(["data", "status", "--nonsense"]).output().unwrap();
     assert_eq!(wrong.status.code(), Some(1));
     let reply: Value = serde_json::from_slice(&wrong.stdout).unwrap();
