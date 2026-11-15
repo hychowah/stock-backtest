@@ -79,7 +79,7 @@ A strategy with several sleeves runs each sleeve on all candidates. The picks jo
 }
 ```
 
-- A variable name must not be a name of the catalog or another variable's name. A formula can use the variables above it.
+- A variable name must not be a name of the catalog or another variable's name. A formula can use the variables above it. A name that holds operators, such as `Revenue / 2`, also reads as that variable inside formula text, so a file in which other formula text would print as that name (`Revenue/2` beside a variable `Revenue / 2`) is refused at that step or variable: rename the variable, or use it by its name.
 - A formula has a unit, and `display` must be a display of that unit (`units` in the catalog). Without `display`, the default display of the unit applies. The default of a ratio is `percent`: in `Revenue / Net income`, the threshold `"5"` means 5%, which is the ratio 0.05. Write `"display": "multiple"` for a plain ratio.
 - A name inside a formula reads the quantity in its own unit: dollars in whole dollars and a ratio as a fraction. The same name as a whole step reads the built-in in its display. `ROE` as a step with `"15"` means 15%. In the step `ROE * 2`, ROE is 0.15 and the step is in percent, so `"30"` means 30%: `bt check` shows `stored` 15.0 for the first and 0.3 for the second.
 - A step can also hold formula text directly. It is shown in the default display of its unit, and only a variable can choose another display.

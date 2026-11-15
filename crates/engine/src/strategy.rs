@@ -567,6 +567,56 @@ impl Reader {
     }
 
     fn strategy(&self, text: &str) -> Result<Strategy, Error> {
+        let (variables, sleeves) = self.read(text)?;
+        let used = used(&sleeves, &variables);
+        let canonical = canonical(&sleeves, &used);
+        self.reads_back(&canonical, &used, &sleeves)?;
+        Ok(Strategy { variables, used, sleeves, canonical })
+    }
+
+    /// Refuses a strategy whose canonical form would read back with another
+    /// meaning. A formula's printed text can hold the name of a variable
+    /// whose name holds operators, such as `Revenue / 2`, and then reads as
+    /// that variable. So the canonical form is read again, and each variable
+    /// that the steps read and each step is compared with its first reading:
+    /// the same text, display, name, unit and picture (the tree, with each
+    /// variable in its place).
+    fn reads_back(&self, canonical: &str, used: &[Arc<Formula>], sleeves: &[Sleeve]) -> Result<(), Error> {
+        // Each variable and step: its place, its printed text and its source.
+        let items = |variables: &[Arc<Formula>], sleeves: &[Sleeve]| -> Vec<(String, String, Source)> {
+            let named = variables.iter().map(|v| (format!("variables.{:?}", v.name().unwrap_or_default()), v.text().to_string(), Source::Formula(v.clone())));
+            let steps = sleeves.iter().enumerate().flat_map(|(s, sleeve)| sleeve.steps.iter().enumerate().map(move |(n, step)| (s, n, step)));
+            named.chain(steps.map(|(s, n, step)| (format!("sleeves[{}].steps[{}]", s + 1, n + 1), written(step.source(), variables), step.source().clone()))).collect()
+        };
+        let (again, failed) = match self.read(canonical) {
+            Ok((variables, sleeves)) => (items(&variables, &sleeves), None),
+            Err(error) => (Vec::new(), Some(error.place)),
+        };
+        let same = |a: &Source, b: &Source| match (a, b) {
+            (Source::Formula(a), Source::Formula(b)) => a == b && a.unit() == b.unit() && a.picture() == b.picture(),
+            _ => a == b,
+        };
+        for (k, (place, text, source)) in items(used, sleeves).iter().enumerate() {
+            let changed = match &failed {
+                Some(at) => at.strip_prefix(place.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with([',', '.'])),
+                None => !same(source, &again[k].2),
+            };
+            if changed {
+                // The variable whose name the printed text holds, other than the item itself.
+                let own = match source {
+                    Source::Formula(f) => f.name(),
+                    _ => None,
+                };
+                let read = used.iter().filter_map(|v| v.name()).find(|&n| Some(n) != own && names::key(text).contains(&names::key(n)));
+                let name = read.map_or("whose name holds an operator".to_string(), |n| format!("{n:?}"));
+                return self.fail(place, format!("written in the canonical form, this formula would read the variable {name}: rename the variable, or use it by its name"));
+            }
+        }
+        failed.map_or(Ok(()), |at| self.fail(&at, "the canonical form does not read back: rename the variables whose names hold operators"))
+    }
+
+    /// Reads the variables and sleeves of one strategy text.
+    fn read(&self, text: &str) -> Result<(Vec<Arc<Formula>>, Vec<Sleeve>), Error> {
         let root: &RawValue = match serde_json::from_str(text) {
             Ok(root) => root,
             Err(e) => return self.fail("", format!("is not JSON (line {}, column {})", e.line(), e.column())),
@@ -610,9 +660,7 @@ impl Reader {
             }
             sleeves.push(Sleeve { name, steps });
         }
-        let used = used(&sleeves, &variables);
-        let canonical = canonical(&sleeves, &used);
-        Ok(Strategy { variables, used, sleeves, canonical })
+        Ok((variables, sleeves))
     }
 
     /// The file's variables in file order, each read with the ones above it.

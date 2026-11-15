@@ -258,3 +258,27 @@ fn the_highest_rank_of_several_sleeves_saturates_instead_of_overflowing() {
     let strategy = Strategy::parse(&format!(r#"{{"sleeves": [{}, {}]}}"#, sleeve("A"), sleeve("B"))).unwrap();
     assert_eq!(strategy.ranks(), (1, u32::MAX));
 }
+
+#[test]
+fn a_formula_that_would_read_a_variable_in_the_canonical_form_is_refused() {
+    let file = |rank: &str| {
+        let variables = r#"{"Revenue / 2": {"formula": "Revenue / Total assets"}}"#;
+        let steps = format!(r#"{{"filter": "Revenue / 2", "op": ">", "value": "1"}}, {{"rank": "{rank}", "order": "highest", "from": 1, "to": 3}}"#);
+        format!(r#"{{"variables": {variables}, "sleeves": [{{"steps": [{steps}]}}]}}"#)
+    };
+    // As itself, and inside other formula text, the variable reads back as the same.
+    for rank in ["Revenue / 2", "Revenue / 2 * 3"] {
+        let strategy = Strategy::parse(&file(rank)).unwrap();
+        assert_eq!(Strategy::parse(strategy.canonical()).unwrap().canonical(), strategy.canonical());
+    }
+    // The arithmetic would print as the variable's name.
+    let error = Strategy::parse(&file("Revenue/2")).unwrap_err();
+    assert_eq!(error.place, "sleeves[1].steps[2]");
+    assert!(error.message.contains(r#"the variable "Revenue / 2": rename the variable"#), "{}", error.message);
+    // The variable would move to another place in the same text.
+    let moved = r#"{"variables": {"Revenue / Revenue": {"formula": "Total assets"}},
+        "sleeves": [{"steps": [{"rank": "Revenue / (Revenue / Revenue)", "order": "highest", "from": 1, "to": 3}]}]}"#;
+    let error = Strategy::parse(moved).unwrap_err();
+    assert_eq!(error.place, "sleeves[1].steps[1]");
+    assert!(error.message.contains(r#"the variable "Revenue / Revenue""#), "{}", error.message);
+}
