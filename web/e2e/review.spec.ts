@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { AddRun } from "../src/api/AddRun.ts";
 import type { CurveReply } from "../src/api/CurveReply.ts";
@@ -9,7 +9,7 @@ import type { TrialsReply } from "../src/api/TrialsReply.ts";
 import { toCsv } from "../src/csv.ts";
 import { headlineCells } from "../src/describe.ts";
 import { percent } from "../src/format.ts";
-import { expect, test, type Home } from "./fixture.ts";
+import { expect, reread, test, type Home } from "./fixture.ts";
 
 const RANK = { sleeves: [{ steps: [{ rank: "EBITDA yield", order: "highest" as const, from: 1, to: 3 }] }] };
 const WINDOW = { start: "2021-07-01", end: "2023-06-28", every: "3m" };
@@ -21,24 +21,27 @@ const FUTURE = {
 const add = (home: Home, name: string, schedule: AddRun["schedule"], strategy: AddRun["strategy"] = RANK) =>
   home.api<RunRow>("POST", "/api/runs", { name, market: "us", schedule, strategy } satisfies AddRun);
 
-async function finished(home: Home, id: number): Promise<RunRow> {
-  for (let i = 0; i < 200; i++) {
-    const run = await home.api<RunRow>("GET", `/api/runs/${id}`);
-    if (run.state === "complete" || run.state === "failed") return run;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`run ${id} did not finish`);
-}
-
 let random: RunRow;
 let fixed: RunRow;
 
 test.beforeAll(async ({ home }) => {
-  random = await finished(home, (await add(home, "Random test", { ...WINDOW, trials: 12, seed: 7 })).id);
-  fixed = await finished(home, (await add(home, "Fixed test", WINDOW)).id);
+  await home.reset();
+  random = await home.finished((await add(home, "Random test", { ...WINDOW, trials: 12, seed: 7 })).id);
+  fixed = await home.finished((await add(home, "Fixed test", WINDOW)).id);
 });
 
 const open = (page: Page, id: number) => page.goto(`/#/results/${id}`);
+
+/** Moves the mouse over a chart, at `fraction` of its width and the middle of
+ *  its height, until its readout says `text`. The chart may move while the
+ *  rest of the page arrives, and a move to where it was misses it: each try
+ *  measures it again. */
+const hoverChart = (page: Page, chart: string, fraction: number, readout: Locator, text: string) =>
+  expect(async () => {
+    const box = (await page.locator(chart).boundingBox())!;
+    await page.locator(chart).hover({ position: { x: box.width * fraction, y: box.height * 0.5 } });
+    await expect(readout).toContainText(text, { timeout: 1000 });
+  }).toPass({ timeout: 30_000 });
 
 test("a result opens by its address, and #/results shows the last one opened", async ({ page }) => {
   await page.goto("/#/results");
@@ -82,11 +85,9 @@ test("the curve is a band for random dates and a line for a fixed schedule, with
   await expect(page.locator("#curve-trial")).toHaveCount(0);
   const readout = page.locator("#curve-all-readout");
   await expect(readout).toContainText(band[band.length - 1]!.day);
-  const box = (await page.locator("#curve-all-chart").boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
-  await expect(readout).toContainText("Median trial");
+  await hoverChart(page, "#curve-all-chart", 0.5, readout, "Median trial");
   await expect(readout).not.toContainText(band[band.length - 1]!.day);
-  await page.mouse.move(box.x - 10, box.y - 10);
+  await page.mouse.move(1, 1);
   await expect(readout).toContainText(band[band.length - 1]!.day);
 
   await open(page, fixed.id);
@@ -96,9 +97,7 @@ test("the curve is a band for random dates and a line for a fixed schedule, with
   await expect(page.locator("#curve-trial-chart path[stroke]")).toHaveCount(2);
   const line = page.locator("#curve-trial-readout");
   await expect(line).toContainText(growth[growth.length - 1]!.day);
-  const fixedBox = (await page.locator("#curve-trial-chart").boundingBox())!;
-  await page.mouse.move(fixedBox.x + fixedBox.width * 0.3, fixedBox.y + fixedBox.height * 0.5);
-  await expect(line).toContainText("Strategy");
+  await hoverChart(page, "#curve-trial-chart", 0.3, line, "Strategy");
   await expect(line).not.toContainText(growth[growth.length - 1]!.day);
 });
 
@@ -167,7 +166,7 @@ test("each tab remembers its scroll position", async ({ page }) => {
       const box = (await page.locator(`#workspace-review-tabs >> text=${name}`).boundingBox())!;
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", section, { timeout: 1000 });
-    }).toPass();
+    }).toPass({ timeout: 30_000 });
   // The place where the reader leaves Overview is the one that must come back: the page
   // may grow a little above it while its last reads arrive, and the browser then shifts it.
   await page.evaluate(() => {
@@ -181,7 +180,7 @@ test("each tab remembers its scroll position", async ({ page }) => {
   const left = await page.evaluate(() => (window as unknown as { left: number }).left);
   expect(left).toBeGreaterThanOrEqual(900);
   await show("Overview", "overview");
-  await expect.poll(() => page.evaluate(() => Math.round(scrollY)), { timeout: 10_000 }).toBe(left);
+  await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(left);
 });
 
 test("Explore of one trial equals the route, with the strategy's ranks as defaults", async ({ page, home }) => {
@@ -246,7 +245,7 @@ test("a rename in the run list changes the title and keeps the open Explore and 
   await expect(page.locator("#explore-status")).toHaveText("Summary across all saved trials. No backtest was run.");
   await home.api("PATCH", `/api/runs/${random.id}`, { name: "Renamed test" });
   // The run list is read again when the page becomes visible (as after a change in Runs & saved).
-  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await reread(page);
   await expect(page.locator("#workspace-result-title")).toHaveText("Renamed test");
   await expect(page.locator("#result-explorer")).toHaveAttribute("open", "");
   await expect(page.locator("#robustness-measure")).toHaveValue("excess_cagr");
@@ -274,10 +273,10 @@ test("a waiting, held, failed, running and stopped run show their state, and a f
   await expect(page.locator("#workspace-parameters")).toContainText("Random dates");
 
   await home.api("PUT", "/api/queue", { paused: false });
-  await expect(page.locator("#workspace-headline > div").first().locator("dt")).toHaveText("Median strategy CAGR", { timeout: 20_000 });
+  await expect(page.locator("#workspace-headline > div").first().locator("dt")).toHaveText("Median strategy CAGR");
   await expect(page.locator("#workspace-run-message")).toHaveCount(0);
 
-  const failed = await finished(home, failing.id);
+  const failed = await home.finished(failing.id);
   expect(failed.state).toBe("failed");
   await open(page, failing.id);
   await expect(page.locator("#workspace-run-error")).toContainText(failed.error!.message);

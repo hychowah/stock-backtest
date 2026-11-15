@@ -20,20 +20,6 @@ function addCase(home: Home, folder: string, name: string): Promise<RunRow> {
 
 const list = (home: Home) => home.api<RunsReply>("GET", "/api/runs");
 
-/** Leaves the home with no run and a queue that is not paused. */
-async function reset(home: Home) {
-  await home.api("PUT", "/api/queue", { paused: false });
-  for (const run of (await list(home)).runs) {
-    if (run.locked) await home.api("PATCH", `/api/runs/${run.id}`, { locked: false });
-    await home.api("DELETE", `/api/runs/${run.id}`);
-  }
-}
-
-/** Waits until every run has ended. */
-async function finished(home: Home) {
-  await expect.poll(async () => (await list(home)).runs.filter((run) => run.state === "waiting" || run.state === "running").length, { timeout: 30_000 }).toBe(0);
-}
-
 const named = (name: string) => new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 const queueRow = (page: Page, name: string) => page.locator("#queue-list > li").filter({ has: page.locator(".run-name", { hasText: named(name) }) });
 const savedRow = (page: Page, name: string) => page.locator("#saved-list > li").filter({ has: page.locator(".run-name", { hasText: named(name) }) });
@@ -43,7 +29,7 @@ const details = async (row: Locator) => {
   return row;
 };
 
-test.beforeEach(async ({ home }) => reset(home));
+test.beforeEach(({ home }) => home.reset());
 
 test("with no run, both lists say so, and the queue pauses and resumes", async ({ page, home }) => {
   await page.goto("/#/runs");
@@ -113,7 +99,7 @@ test("the queue's controls: move, hold and release, delete, resume", async ({ pa
   await page.locator("#queue-pause").click();
   await expect(page.locator("#queue-pause")).toHaveText("Pause queue");
   await expect(page.locator("#queue-status")).toHaveText("Queue resumed.");
-  await expect(page.locator("#queue-list")).toHaveText("No test is waiting or running. Select Add to queue in Build strategy.", { timeout: 30_000 });
+  await expect(page.locator("#queue-list")).toHaveText("No test is waiting or running. Select Add to queue in Build strategy.");
   await expect(page.locator("#saved-list > li")).toHaveCount(2);
   const done = (await list(home)).runs.filter((run) => run.state === "complete");
   expect(done.map((run) => run.id).sort()).toEqual([a.id, c.id].sort());
@@ -138,16 +124,16 @@ test("a long run shows its time since start growing, and Stop test stops it", as
   await page.goto("/#/runs");
   await expect(queueRow(page, "Long one").locator(".queue-state")).toHaveText("Waiting");
   await page.locator("#queue-pause").click();
+  // The seconds in "Running for 1 min 5 sec", or -1 for other text (a function that expect.poll calls must not throw).
   const seconds = async () => {
     const parts = /^Running for (?:(\d+) min )?(\d+) sec$/.exec((await queueRow(page, "Long one").locator(".queue-progress").textContent()) ?? "");
-    if (!parts) throw new Error("no running time yet");
-    return Number(parts[1] ?? 0) * 60 + Number(parts[2]);
+    return parts ? Number(parts[1] ?? 0) * 60 + Number(parts[2]) : -1;
   };
   await home.whileRunning(run.id, async () => {
     await expect(queueRow(page, "Long one").locator(".queue-state")).toHaveText("Running");
     await expect(queueRow(page, "Long one")).toHaveAttribute("data-state", "running");
-    await expect.poll(() => seconds().catch(() => -1)).toBeGreaterThanOrEqual(0);
-    const first = await seconds();
+    let first = -1;
+    await expect.poll(async () => (first = await seconds())).toBeGreaterThanOrEqual(0);
     await expect.poll(seconds).toBeGreaterThan(first);
     await details(queueRow(page, "Long one"));
     await expect(queueRow(page, "Long one").getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
@@ -165,7 +151,7 @@ test("the saved table: the numbers of the server, sorting, Details, rename, lock
   const fixed = await addCase(home, "builtins/us-built-ins-months", "Ranks 1–10 fixed");
   const random = await addCase(home, "formulas/us-random", "Ranks 1–6 random");
   const third = await addCase(home, "builtins/us-built-ins-weeks", "Weekly");
-  await finished(home);
+  await home.idle();
   await page.goto("/#/runs");
   await expect(page.locator("#saved-list > li")).toHaveCount(3);
 
@@ -262,7 +248,7 @@ test("the market switch counts the runs and shows one market's rows; another mar
   await addCase(home, "builtins/us-built-ins-months", "US one");
   await addCase(home, "builtins/hk-sleeves", "HK one");
   await addCase(home, "builtins/hk-fields-dates", "HK two");
-  await finished(home);
+  await home.idle();
   await page.goto("/#/runs");
   const button = (market: string) => page.locator(`#run-markets button[data-market="${market}"]`);
   await expect(page.locator("#run-markets button")).toHaveText(["All 3", "US 1", "Hong Kong 2", "Tokyo 0"]);
@@ -286,7 +272,7 @@ test("the market switch counts the runs and shows one market's rows; another mar
 test("Compare shows the settings that differ first, then the same ones, with the numbers of the server", async ({ page, home }) => {
   const fixed = await addCase(home, "builtins/us-built-ins-months", "Fixed sleeves");
   const random = await addCase(home, "formulas/us-random", "Random formula");
-  await finished(home);
+  await home.idle();
   await page.goto("/#/runs");
   await page.locator(`#saved-tick-${fixed.id}`).check();
   await page.locator(`#saved-tick-${random.id}`).check();
@@ -336,7 +322,7 @@ test("Compare shows the settings that differ first, then the same ones, with the
 
 test("Tune in a saved row copies the run's settings to Build strategy", async ({ page, home }) => {
   await addCase(home, "builtins/hk-sleeves", "Two sleeves in Hong Kong");
-  await finished(home);
+  await home.idle();
   await page.goto("/#/runs");
   const row = await details(savedRow(page, "Two sleeves in Hong Kong"));
   await row.getByRole("button", { name: "Tune", exact: true }).click();

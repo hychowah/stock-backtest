@@ -3,10 +3,7 @@ import type { RunRow } from "../src/api/RunRow.ts";
 import type { RunsReply } from "../src/api/RunsReply.ts";
 import type { Variable } from "../src/api/Variable.ts";
 import { type Draft, defaultDraft } from "../src/draft.ts";
-import { expect as base, test } from "./fixture.ts";
-
-// A slow machine delays the server's checks and replies: wait longer than the default.
-const expect = base.configure({ timeout: 15_000 });
+import { expect, test } from "./fixture.ts";
 
 // The library belongs to the worker's home, so each check uses names of its own.
 let count = 0;
@@ -43,10 +40,12 @@ async function addToQueue(page: Page, api: <T>(method: string, path: string) => 
   await page.click("#mode-backtest");
   await page.fill("#queue-name", name);
   await page.click("#queue-add");
-  await expect(page.locator("#queue-add-status")).toContainText("Test added to the queue.", { timeout: 30_000 });
+  await expect(page.locator("#queue-add-status")).toContainText("Test added to the queue.");
   const list = await api<RunsReply>("GET", "/api/runs");
   return api<RunRow>("GET", `/api/runs/${list.runs.find((row) => row.name === name)!.id}`);
 }
+
+test.beforeAll(({ home }) => home.reset());
 
 test.beforeEach(async ({ home }) => {
   // Runs added here wait, so that nothing runs beside the checks.
@@ -100,6 +99,8 @@ test("a saved entry is listed under My variables, favourites first, and a step t
 
   await page.click("#filter-search-1");
   const mine = page.locator('#filter-options-1 [role=group][aria-label="My variables"] [role=option] > span');
+  // The list shows the library as the page last read it: wait until it holds both entries.
+  await expect.poll(() => mine.allTextContents()).toEqual(expect.arrayContaining([`★ ${cover}`, plain]));
   const names = await mine.allTextContents();
   const starred = names.filter((name) => name.startsWith("★ "));
   expect(starred).toContain(`★ ${cover}`);

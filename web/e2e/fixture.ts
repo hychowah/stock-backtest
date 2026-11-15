@@ -1,12 +1,15 @@
-import { expect, test as base } from "@playwright/test";
+import { expect, type Page, test as base } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { AddRun } from "../src/api/AddRun.ts";
 import type { RunRow } from "../src/api/RunRow.ts";
+import type { RunsReply } from "../src/api/RunsReply.ts";
 import type { Schedule } from "../src/api/Schedule.ts";
+import type { StrategyFile } from "../src/api/StrategyFile.ts";
+import type { Variable } from "../src/api/Variable.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
 /** The `bt` that `cargo build -p bt` (or `cargo test`) builds. */
@@ -14,13 +17,36 @@ const BT = join(root, "target/debug/bt");
 /** The as-of time of the fictional fixture's expected tables. */
 const AS_OF = "2023-06-30T07:30:00+00:00";
 
-/** The schedule of the long run: 1,000 weekly trials over seven and a half
- *  years of the fictional US data. It must run long enough for a check to see
- *  it running and its time since start grow, after the page's next read of
- *  the run list (every 2 s while a run waits or runs). Enlarge it (a longer
- *  window or a shorter interval) if a check fails because the run ended
- *  before the page showed it running. */
+/** The schedule of the long run: 1,000 weekly trials (the most a run may
+ *  have) over seven and a half years of the fictional US data, ranks 1 to 50:
+ *  about 40 s with a debug `bt` on a quiet machine. A check stops it as soon
+ *  as it has seen it running and its time since start grow, so it only has to
+ *  outlast the page's next read of the run list (every 2 s while a run waits
+ *  or runs) and a slow machine's delays. Enlarge the window or shorten the
+ *  interval, or rank more, if a check fails because the run ended before the
+ *  page showed it running. */
 const LONG_RUN: Schedule = { start: "2016-01-04", end: "2023-06-28", every: "1w", trials: 1000 };
+
+/** How long a short run may take to end (ms): far above what a quiet machine
+ *  needs, because a wait that ends as soon as the run has ended costs nothing. */
+const RUN_TIMEOUT = 90_000;
+
+/** Makes the page read the run list now, as it does when it becomes visible.
+ *  Use it after a change made through the API: the page learns of it at its
+ *  next read, which is up to 15 s away when no run waits or runs. */
+export const reread = (page: Page) => page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+
+/** The canonical form that `bt check` prints for a strategy file. */
+export function canonical(strategy: StrategyFile): StrategyFile {
+  const dir = mkdtempSync(join(tmpdir(), "bt-check-"));
+  try {
+    writeFileSync(join(dir, "strategy.json"), JSON.stringify(strategy));
+    const reply = JSON.parse(execFileSync(BT, ["check", join(dir, "strategy.json")], { encoding: "utf8" })) as { files: { canonical: string }[] };
+    return JSON.parse(reply.files[0]!.canonical) as StrategyFile;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** One fictional home served by `bt serve`, for one worker. */
 export type Home = {
@@ -34,6 +60,14 @@ export type Home = {
   /** Adds the long run (LONG_RUN, ranked by EBITDA yield) under `name`;
    *  it waits, or runs at once when the queue is not paused. */
   addLongRun(name: string): Promise<RunRow>;
+  /** Leaves the home with no run and no variable, and a queue that is not
+   *  paused. The home lives as long as its worker, so a file that needs
+   *  a clean list calls it first. */
+  reset(): Promise<void>;
+  /** Waits until run `id` is complete or failed, and returns it. */
+  finished(id: number): Promise<RunRow>;
+  /** Waits until no run waits or runs. */
+  idle(): Promise<void>;
   /** Runs `shown`, the checks that the page shows run `id` waiting or
    *  running. When they fail because the run already ended, the error names
    *  LONG_RUN to enlarge. */
@@ -102,12 +136,32 @@ export const test = base.extend<{}, { home: Home }>({
           if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${reply.error?.message} (${reply.error?.place})`);
           return reply;
         };
-        const strategy = { sleeves: [{ steps: [{ rank: "EBITDA yield", order: "highest" as const, from: 1, to: 5 }] }] };
+        const strategy = { sleeves: [{ steps: [{ rank: "EBITDA yield", order: "highest" as const, from: 1, to: 50 }] }] };
         await use({
           url,
           dir: home,
           api,
           addLongRun: (name) => api<RunRow>("POST", "/api/runs", { name, market: "us", schedule: LONG_RUN, strategy } satisfies AddRun),
+          reset: async () => {
+            // Paused, so that no deleted run is followed by another start.
+            await api("PUT", "/api/queue", { paused: true });
+            for (const run of (await api<RunsReply>("GET", "/api/runs")).runs) {
+              if (run.locked) await api("PATCH", `/api/runs/${run.id}`, { locked: false });
+              await api("DELETE", `/api/runs/${run.id}`);
+            }
+            for (const variable of (await api<Variable[]>("GET", "/api/variables")).reverse()) await api("DELETE", `/api/variables/${variable.id}`);
+            await api("PUT", "/api/queue", { paused: false });
+          },
+          finished: async (id) => {
+            await expect
+              .poll(async () => (await api<RunRow>("GET", `/api/runs/${id}`)).state, { timeout: RUN_TIMEOUT, message: `run ${id} ends` })
+              .toMatch(/^(complete|failed)$/);
+            return api<RunRow>("GET", `/api/runs/${id}`);
+          },
+          idle: async () => {
+            const active = async () => (await api<RunsReply>("GET", "/api/runs")).runs.filter((run) => run.state === "waiting" || run.state === "running").length;
+            await expect.poll(active, { timeout: RUN_TIMEOUT, message: "every run has ended" }).toBe(0);
+          },
           whileRunning: async (id, shown) => {
             try {
               await shown();
@@ -124,7 +178,7 @@ export const test = base.extend<{}, { home: Home }>({
         rmSync(dir, { recursive: true, force: true });
       }
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 120_000 },
   ],
   baseURL: async ({ home }, use) => use(home.url),
 });

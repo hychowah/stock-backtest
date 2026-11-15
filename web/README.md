@@ -17,11 +17,27 @@ Run these in `web/`:
 
 `npx playwright test` runs `e2e/*.spec.ts` in Chromium. It needs
 `npm run build`, `cargo build -p bt` (from the repository root), and once
-the browser itself: `npx playwright install chromium`. Each
-worker makes its own home from the fictional data in a temporary folder
-(`TMPDIR`), prepares it and starts `bt serve --port 0` on it
-(`e2e/fixture.ts`). A long run (`addLongRun`) writes about 0.5 GB there
-while it runs, so set `TMPDIR` to a larger folder if `/tmp` is small.
+the browser itself: `npx playwright install chromium`. CI runs these steps
+after `cargo test`, in the `rust` job. Each worker makes its own home from
+the fictional data in a temporary folder (`TMPDIR`), prepares it and starts
+`bt serve --port 0` on it (`e2e/fixture.ts`). A long run (`addLongRun`) writes
+up to 0.5 GB there while it runs, so set `TMPDIR` to a larger folder if `/tmp`
+is small.
+
+The checks do not depend on timing:
+
+- An assertion waits up to 30 s and returns as soon as it holds; a test may
+  take 120 s (`playwright.config.ts`). Nothing is retried.
+- A home lives as long as its worker, so a spec file that needs a clean home starts
+  with `home.reset()` (no run, no variable, queue not paused) and does not use
+  what another file left.
+- The page reads the run list every 2 s while a run waits or runs and every
+  15 s otherwise. A check that changes the server through the API makes the
+  page read at once with `reread(page)`, or loads the page after the change.
+- A function that `expect.poll` calls must not throw: the poll would end with
+  that error. Wait for the result with `home.finished(id)` or `home.idle()`.
+- The long run lasts about 40 s on a quiet machine with a debug `bt`; a
+  check ends it with Stop test.
 
 ## Serving a home's website
 

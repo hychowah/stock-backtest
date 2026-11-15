@@ -57,6 +57,21 @@ jobs:
           python3 proof/convert_proof.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 \
             --out "$RUNNER_TEMP/convert-proof" $inputs
 
+      - name: Run the browser checks of the website against the built bt
+        # `cargo test` has built target/debug/bt, which the checks start.
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run build
+          npx playwright test
+      - name: Keep the traces of a failed browser check
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-check-results
+          path: web/test-results
+
   web:
     runs-on: ubuntu-latest
     defaults:

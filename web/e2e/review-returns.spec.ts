@@ -20,19 +20,16 @@ const schedule = (name: string) => {
 
 async function added(home: Home, name: string, kind: string): Promise<RunRow> {
   const { id } = await home.api<RunRow>("POST", "/api/runs", { name, market: "us", schedule: schedule(kind), strategy: strategy(kind) });
-  for (let i = 0; i < 200; i++) {
-    const run = await home.api<RunRow>("GET", `/api/runs/${id}`);
-    if (run.state === "complete") return run;
-    if (run.state === "failed") throw new Error(run.error?.message);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`run ${id} did not finish`);
+  const run = await home.finished(id);
+  if (run.state === "failed") throw new Error(run.error?.message);
+  return run;
 }
 
 let random: RunRow;
 let fixed: RunRow;
 
 test.beforeAll(async ({ home }) => {
+  await home.reset();
   random = await added(home, "Random sectors", "formulas/us-random");
   fixed = await added(home, "Fixed sleeves", "builtins/us-built-ins-months");
 });
@@ -259,6 +256,9 @@ test("the period and holding files are the replies as CSV", async ({ page, home 
     if (trial === 2) await page.locator("#schedule-trial-choice").selectOption("2");
     const periods = await home.api<PeriodRow[]>("GET", `/api/runs/${run.id}/periods?trial=${trial}`);
     const holdings = await holdingsOf(home, run, trial);
+    // The files are made from what the page shows: wait for the chosen trial's table.
+    await expect(page.locator("#schedule-rows tr")).toHaveCount(periods.length);
+    await expect(page.locator("#schedule-rows tr").first()).toContainText(periods[0]!.entry);
     await expect(page.locator("#schedule-download-holdings")).toBeVisible();
     await expect(page.locator("#schedule-download-returns")).toBeVisible();
     const returns = page.waitForEvent("download");
@@ -294,13 +294,20 @@ test("only the latest press of an inspect button counts, and none counts after t
     await route.continue();
   });
   const press = (trial: number) => page.locator(`#sector-trials button[data-sector-inspect="${trial}"]`).click();
+  // Lets a held reply through, and waits until the page has had its turn to read it: the reply
+  // has been received whole, and two frames have been drawn.
+  const released = async (release: () => void, query: string) => {
+    const response = page.waitForResponse((reply) => reply.url().includes("/sectors?") && reply.url().includes(query));
+    release();
+    await (await response).finished();
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  };
   // Trial 1, then trial 2: the reply of trial 1 comes while Selection is still shown and is
   // ignored; the reply of trial 2 opens Returns.
   await press(1);
   await press(2);
   await expect.poll(() => held.length).toBe(2);
-  held[0]!();
-  await page.waitForTimeout(300);
+  await released(held[0]!, "trial=1");
   await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", "selection");
   held[1]!();
   await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", "returns");
@@ -312,8 +319,7 @@ test("only the latest press of an inspect button counts, and none counts after t
   await press(3);
   await expect.poll(() => held.length).toBe(1);
   await page.locator("#workspace-review-tabs >> text=Overview").click();
-  held[0]!();
-  await page.waitForTimeout(300);
+  await released(held[0]!, "trial=3");
   await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", "overview");
   await page.unroute("**/api/runs/*/sectors?trial=*");
 });
@@ -323,10 +329,10 @@ test("the holdings of a period are read for the table and the whole trial only f
   page.on("request", (request) => request.url().includes("/holdings") && reads.push(new URL(request.url()).search));
   await open(page, fixed.id, "Returns");
   await expect(page.locator("#schedule-stock-body tr").first()).toBeVisible();
-  expect(reads).toEqual(["?trial=1&period=1"]);
+  await expect.poll(() => reads).toEqual(["?trial=1&period=1"]);
   await page.locator("#schedule-period").selectOption("2");
   await expect(page.locator("#schedule-stock-body tr").first()).toContainText((await holdingsOf(home, fixed, 1, 2)).holdings[0]!.symbol);
-  expect(reads).toEqual(["?trial=1&period=1", "?trial=1&period=2"]);
+  await expect.poll(() => reads).toEqual(["?trial=1&period=1", "?trial=1&period=2"]);
   await page.route("**/api/runs/*/holdings?trial=1", (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { message: "The result could not be read.", place: "" } }) }));
   await page.locator("#schedule-download-holdings").click();
   await expect(page.locator("#schedule-download-holdings + .warning")).toHaveText("The result could not be read.");
@@ -344,7 +350,7 @@ test("Tune this strategy opens Build strategy with the run's market and sleeves"
 test("cash shows as a segment of each trial's bar, as the average under the mix, and as a full bar for an empty period", async ({ page, home }) => {
   const { start, end, interval } = JSON.parse(readFileSync(new URL("builtins/jp-built-ins-months/run.json", cases), "utf8"));
   const { id } = await home.api<RunRow>("POST", "/api/runs", { name: "Cash run", market: "jp", schedule: { start, end, every: interval, trials: 3, seed: 6 }, strategy: strategy("builtins/jp-built-ins-months") });
-  for (let i = 0; i < 200 && (await home.api<RunRow>("GET", `/api/runs/${id}`)).state !== "complete"; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+  expect((await home.finished(id)).state).toBe("complete");
   const reply = await home.api<Extract<SectorsReply, { trials: unknown }>>("GET", `/api/runs/${id}/sectors`);
   expect(reply.cash.some((each) => each.cash > 0)).toBe(true);
   await open(page, id, "Selection");

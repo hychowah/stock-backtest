@@ -1,29 +1,10 @@
 import type { Locator, Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { AddRun } from "../src/api/AddRun.ts";
 import type { RunRow } from "../src/api/RunRow.ts";
 import type { RunsReply } from "../src/api/RunsReply.ts";
 import type { StatusReply } from "../src/api/StatusReply.ts";
 import type { StrategyFile } from "../src/api/StrategyFile.ts";
-import { expect, test } from "./fixture.ts";
-
-const web = new URL("..", import.meta.url).pathname;
-const BT = join(web, "../target/debug/bt");
-
-/** The canonical form that `bt check` prints for a strategy file. */
-function canonical(strategy: StrategyFile): StrategyFile {
-  const dir = mkdtempSync(join(tmpdir(), "bt-check-"));
-  try {
-    writeFileSync(join(dir, "strategy.json"), JSON.stringify(strategy));
-    const reply = JSON.parse(execFileSync(BT, ["check", join(dir, "strategy.json")], { encoding: "utf8" })) as { files: { canonical: string }[] };
-    return JSON.parse(reply.files[0]!.canonical) as StrategyFile;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+import { canonical, expect, test } from "./fixture.ts";
 
 /** A row of the queue panel by the run's name, with its Details open. */
 async function queueRow(page: Page, name: string): Promise<Locator> {
@@ -42,10 +23,30 @@ const named = async (api: <T>(method: string, path: string) => Promise<T>, name:
   return api<RunRow>("GET", `/api/runs/${row.id}`);
 };
 
+test.beforeAll(({ home }) => home.reset());
+
 test.beforeEach(async ({ home }) => {
   // Runs added here wait, so that nothing runs beside the checks.
   await home.api("PUT", "/api/queue", { paused: true });
 });
+
+/** Counts the animations the page starts (`Element.animate`): an animation
+ *  that ends before a check looks for it (the longest lasts 700 ms) is still
+ *  counted, and a page that starts none shows 0 for as long as the check
+ *  waits. Install it before the action. */
+const countAnimations = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as { started?: number };
+    if (w.started === undefined) {
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function (...args) {
+        w.started = (w.started ?? 0) + 1;
+        return animate.apply(this, args);
+      };
+    }
+    w.started = 0;
+  });
+const animationsStarted = (page: Page) => page.evaluate(() => (window as unknown as { started: number }).started);
 
 test("two sleeves are built in the page, and Add to queue stores what bt check prints", async ({ page, home }) => {
   await home.api("POST", "/api/variables", { name: "Cheap", formula: "1 / P/E", display: "percent", favourite: true });
@@ -61,6 +62,7 @@ test("two sleeves are built in the page, and Add to queue stores what bt check p
   await page.click("#add-filter");
   await expect(page.locator("#filter-search-new")).toBeFocused();
   await page.keyboard.type("sector");
+  await expect(page.locator("#filter-options-new [role=option]").first()).toContainText("Sector");
   await page.keyboard.press("Enter");
   await expect(page.locator("#strategy-steps .step-name")).toHaveText(["Step 1 · Filter", "Step 2 · Filter", "Step 3 · Filter", "Step 4 · Rank"]);
   const value = page.locator("#strategy-steps select[id^=step-value]");
@@ -70,14 +72,18 @@ test("two sleeves are built in the page, and Add to queue stores what bt check p
 
   // A Rank goes last; My variables lists the library's favourites marked ★.
   await page.click("#add-rank");
+  await expect(page.locator("#filter-search-new")).toBeFocused();
   await page.keyboard.type("cheap");
   const cheap = page.locator('#filter-options-new [role=group][aria-label="My variables"] [role=option]');
   await expect(cheap).toHaveText(["★ CheapSaved variable"]);
   await cheap.dispatchEvent("mousedown");
+  // The new step is drawn before its controls are the last ones.
+  await expect(page.locator("#strategy-steps .step-name")).toHaveText(["Step 1 · Filter", "Step 2 · Filter", "Step 3 · Filter", "Step 4 · Rank", "Step 5 · Rank"]);
   await page.locator("#strategy-steps select[id^=step-direction]").last().selectOption("lowest");
   await page.locator("#strategy-steps input[id^=step-rank_to]").last().fill("3");
 
   await page.locator("#sleeve-tabs button").first().click();
+  await expect(page.locator('#sleeve-tabs button[aria-pressed="true"]')).toHaveText("Sleeve 1");
   await page.fill("#sleeve-name", "Value");
   await expect(page.locator("#strategy-heading")).toHaveText("Sleeves Value + Technology");
   await page.fill("#queue-name", "Two sleeves");
@@ -139,6 +145,7 @@ test("the picker reopens with the keyboard, and a refusal shows under the button
   await expect(source).toHaveValue("Market cap in dollars");
   await expect(page.locator("#step-value-2")).toBeFocused();
   await page.click("#add-filter");
+  await expect(page.locator("#filter-search-new")).toBeFocused();
   await page.keyboard.type("P/E");
   await expect(page.locator("#filter-options-new [role=option]").first()).toHaveText("P/E");
   await page.keyboard.press("Enter");
@@ -152,21 +159,22 @@ test("moving a step slides the rows, and nothing moves under reduced motion", as
   await page.goto("/");
   const sources = page.locator("#strategy-steps [role=combobox]");
   await expect.poll(() => values(sources)).toEqual(["Market cap", "Enterprise value", "EBITDA yield"]);
+  await countAnimations(page);
   await page.click("#step-up-3");
   await expect.poll(() => values(sources)).toEqual(["Market cap", "EBITDA yield", "Enterprise value"]);
-  expect(await page.evaluate(() => document.getAnimations().length)).toBeGreaterThan(0);
+  expect(await animationsStarted(page)).toBeGreaterThan(0);
   await expect(page.locator("#step-up-3")).toBeFocused();
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+  await countAnimations(page);
   await page.click("#step-up-3");
   await expect.poll(() => values(sources)).toEqual(["EBITDA yield", "Market cap", "Enterprise value"]);
-  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  expect(await animationsStarted(page)).toBe(0);
   // At the top, Up is disabled, so focus moves to Down.
   await expect(page.locator("#step-down-3")).toBeFocused();
   await page.click("#step-remove-3");
   await expect.poll(() => values(sources)).toEqual(["Market cap", "Enterprise value"]);
-  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  expect(await animationsStarted(page)).toBe(0);
 });
 
 test("a reload keeps the draft, and Reset strategy brings back the default steps", async ({ page }) => {

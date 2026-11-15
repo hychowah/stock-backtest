@@ -1,12 +1,16 @@
 import type { StatusReply } from "../src/api/StatusReply.ts";
 import { expect, test } from "./fixture.ts";
 
-/** The seconds in the status bar's "Running for 1 min 5 sec". */
+/** The seconds in the status bar's "Running for 1 min 5 sec", or -1 for any
+ *  other text. (A function that `expect.poll` calls must not throw: the poll
+ *  would end with that error instead of reading again.) */
 const seconds = (text: string | null) => {
   const parts = /^Running for (?:(\d+) hr )?(?:(\d+) min )?(\d+) sec$/.exec(text ?? "");
-  if (!parts) throw new Error(`not a running time: ${text}`);
+  if (!parts) return -1;
   return Number(parts[1] ?? 0) * 3600 + Number(parts[2] ?? 0) * 60 + Number(parts[3]);
 };
+
+test.beforeAll(({ home }) => home.reset());
 
 test("the status bar shows a long run waiting, then running, then idle after Stop", async ({ page, home }) => {
   const state = page.locator("#workspace-run-state");
@@ -26,7 +30,9 @@ test("the status bar shows a long run waiting, then running, then idle after Sto
     await expect(state).toHaveText("Running · Long run");
     await expect(state).toHaveAttribute("data-state", "running");
     await expect(waiting).toHaveText("0 waiting");
-    const first = seconds(await detail.textContent());
+    // The time since start is read again until it is a time, and then until it has grown.
+    let first = -1;
+    await expect.poll(async () => (first = seconds(await detail.textContent()))).toBeGreaterThanOrEqual(0);
     await expect.poll(async () => seconds(await detail.textContent())).toBeGreaterThan(first);
   });
 
