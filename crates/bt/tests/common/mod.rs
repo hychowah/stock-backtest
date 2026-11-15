@@ -2,6 +2,8 @@
 //! uses only some of them.
 #![allow(dead_code)]
 
+pub mod provider;
+
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
