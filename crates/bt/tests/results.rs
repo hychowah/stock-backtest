@@ -3,7 +3,8 @@
 //! file, which the proof tests compare with the oracle's; explore, catalog,
 //! screen and data status answer what the `bt` commands print, the
 //! statistics with SPY's total return beside them; one trial's sector
-//! weights by period give that trial's sector shares.
+//! weights by period give that trial's sector shares, and their counts the
+//! period's holdings; each trial's cash share is its empty periods' share.
 
 mod common;
 
@@ -140,7 +141,7 @@ fn one_trials_sector_weights_by_period_average_to_its_sector_shares() {
     let server = serve(&home);
     bt_ok(&["save", path(&out.join("sleeves.sqlite")), "--name", "sleeves", "--home", home_arg]);
     let all = server.get("/api/runs/1/sectors");
-    assert_eq!(all.as_object().unwrap().keys().collect::<Vec<_>>(), ["spread", "trials"]);
+    assert_eq!(all.as_object().unwrap().keys().collect::<Vec<_>>(), ["cash", "mean_cash", "spread", "trials"]);
     for trial in 1..=2 {
         let periods = server.get(&format!("/api/runs/1/periods?trial={trial}")).as_array().unwrap().len() as f64;
         let weights = server.get(&format!("/api/runs/1/sectors?trial={trial}"))["weights"].as_array().unwrap().clone();
@@ -182,5 +183,57 @@ fn the_trials_replies_give_spys_total_return_and_the_exported_statistics_do_not(
         assert_eq!([value("min"), value("median"), value("max")], [returns[0], returns[1], returns[2]].map(Value::from));
         assert_eq!(reply.as_array().unwrap().iter().filter(|s| spy(s)).count(), 10);
     }
+    assert!(server.terminate());
+}
+
+/// A server on a prepared home whose run 1 is `bt run` of a fictional case's
+/// strategy file on `schedule`.
+fn served(dir: &Path, case: &str, schedule: &[&str]) -> common::Server {
+    let home = prepared(dir);
+    let strategy = dir.join("case.json");
+    std::fs::copy(fixtures().join(format!("cases/builtins/{case}/strategy.json")), &strategy).unwrap();
+    let out = dir.join("out");
+    bt_ok(&[&["run", path(&strategy)][..], schedule, &["--out", path(&out), "--home", path(&home)]].concat());
+    let server = serve(&home);
+    bt_ok(&["save", path(&out.join("case.sqlite")), "--name", case, "--home", path(&home)]);
+    server
+}
+
+#[test]
+fn a_periods_sector_counts_add_up_to_its_holdings_and_give_the_weights() {
+    let dir = tempfile::tempdir().unwrap();
+    let schedule = ["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--trials", "2", "--seed", "852"];
+    let server = served(dir.path(), "hk-sleeves", &schedule);
+    for trial in 1..=2 {
+        let weights = server.get(&format!("/api/runs/1/sectors?trial={trial}"))["weights"].as_array().unwrap().clone();
+        for period in server.get(&format!("/api/runs/1/periods?trial={trial}")).as_array().unwrap() {
+            let names = period["names"].as_u64().unwrap();
+            let held: Vec<&Value> = weights.iter().filter(|w| w["period"] == period["period"]).collect();
+            assert_eq!(held.iter().map(|w| w["count"].as_u64().unwrap()).sum::<u64>(), names, "{period}");
+            for w in held {
+                assert_eq!(w["weight"].as_f64().unwrap(), w["count"].as_f64().unwrap() / names as f64, "{w}");
+            }
+        }
+    }
+    assert!(server.terminate());
+}
+
+#[test]
+fn each_trials_cash_is_the_share_of_its_periods_that_hold_no_stock() {
+    let dir = tempfile::tempdir().unwrap();
+    // Trial 2 of this schedule holds no stock in one of its four periods.
+    let schedule = ["--market", "jp", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--trials", "3", "--seed", "6"];
+    let server = served(dir.path(), "jp-built-ins-months", &schedule);
+    let (sectors, trials) = (server.get("/api/runs/1/sectors"), server.get("/api/runs/1/trials"));
+    let expected: Vec<Value> = trials["trials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| json!({"trial": t["trial"], "cash": t["empty_periods"].as_f64().unwrap() / t["periods"].as_f64().unwrap()}))
+        .collect();
+    assert_eq!(sectors["cash"].as_array().unwrap(), &expected);
+    assert!(expected.iter().any(|t| t["cash"].as_f64().unwrap() > 0.0), "{expected:?}");
+    let mean = expected.iter().map(|t| t["cash"].as_f64().unwrap()).sum::<f64>() / 3.0;
+    assert_eq!(sectors["mean_cash"].as_f64().unwrap(), mean);
     assert!(server.terminate());
 }

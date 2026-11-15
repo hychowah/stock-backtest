@@ -2,12 +2,14 @@
 //! views. Their rows are those of `bt export tables`, without `case`, except
 //! that the holdings are those of `bt export holdings` (with their `source:`
 //! fields), the sector spread is the `sectors` rows of trial `all` without
-//! that trial, an attribution lists its top holdings, one trial's sectors
-//! are the weights of each period ([`views::sector_weights`]), and the
-//! statistics over the trials (of `trials` and of `explore` of all trials)
-//! also hold `spy_total_return` ([`views::add_spy_total_return`]). The
-//! page writes its CSV files from these rows. A route about one trial reads
-//! only that trial's rows.
+//! that trial, an attribution lists its top holdings, the sectors of all
+//! trials add each trial's cash share and their mean
+//! ([`views::sector_cash`]), one trial's sectors are the holdings and
+//! weights of each period ([`views::sector_weights`]), and the statistics
+//! over the trials (of `trials` and of `explore` of all trials) also hold
+//! `spy_total_return` ([`views::add_spy_total_return`]). The page writes its
+//! CSV files from these rows. A route about one trial reads only that
+//! trial's rows.
 
 use crate::http::{App, Failure, Id, blocking};
 use axum::extract::rejection::QueryRejection;
@@ -17,7 +19,7 @@ use axum::{Json, Router};
 use engine::results::{PeriodRow, ResultFile, StepRow, TrialRow};
 use engine::views::{
     self, Attribution, BandRow, ExploreReply, GrowthRow, JoinedHolding, SectorShare, SectorSpread, SectorWeight, Selection,
-    StatisticRow,
+    StatisticRow, TrialCash,
 };
 use market_data::Error;
 use serde::Serialize;
@@ -62,13 +64,15 @@ pub enum CurveReply {
     Growth(Vec<GrowthRow>),
 }
 
-/// Each trial's sector shares and the spread over all trials, or one
-/// trial's `weights`: each period's weight of each sector it holds.
+/// Each trial's sector shares, the spread over all trials, each trial's
+/// `cash` (its share of periods that hold no stock) and their mean; or one
+/// trial's `weights`: each period's holdings and weight of each sector it
+/// holds.
 #[derive(Debug, Serialize, TS)]
 #[serde(untagged)]
 #[ts(export)]
 pub enum SectorsReply {
-    All { trials: Vec<SectorShare>, spread: Vec<SectorSpread> },
+    All { trials: Vec<SectorShare>, spread: Vec<SectorSpread>, cash: Vec<TrialCash>, mean_cash: f64 },
     Trial { weights: Vec<SectorWeight> },
 }
 
@@ -125,8 +129,8 @@ async fn sectors(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Sec
     read(app, id, trial, move |file| {
         Ok(match trial {
             None => {
-                let trials = views::sectors(&file)?;
-                SectorsReply::All { spread: views::sector_spread(&trials), trials: trials.concat() }
+                let (trials, (cash, mean_cash)) = (views::sectors(&file)?, views::sector_cash(&file)?);
+                SectorsReply::All { spread: views::sector_spread(&trials), trials: trials.concat(), cash, mean_cash }
             }
             Some(_) => SectorsReply::Trial { weights: views::sector_weights(&file)? },
         })

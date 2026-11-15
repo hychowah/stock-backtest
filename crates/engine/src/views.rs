@@ -11,8 +11,9 @@
 //! - [`growth`]: each trial's growth of 1 by day, and [`band`] over the
 //!   trials (`result_curves`).
 //! - [`sectors`]: each trial's sector weights, and [`sector_spread`] over the
-//!   trials (`result_sectors`); [`sector_weights`]: the weights of each
-//!   period, which [`sectors`] totals.
+//!   trials (`result_sectors`); [`sector_weights`]: the holdings and weight
+//!   of each sector in each period, which [`sectors`] totals; and
+//!   [`sector_cash`]: each trial's share of periods in cash, and its mean.
 //! - [`contributions`]: each period's equal-weight attribution
 //!   (`contributions.js`): the top holdings with their contributions, which
 //!   the exported [`ContributionRow`] joins into a text of symbols.
@@ -214,18 +215,41 @@ pub struct SectorShare {
     pub present: u32,
 }
 
-/// One sector's weight in one period: its holdings / the period's holdings.
+/// One sector in one period: its holdings (`count`), and its weight, the
+/// count / the period's holdings.
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct SectorWeight {
     pub period: u32,
     pub sector: String,
+    pub count: u32,
     pub weight: f64,
+}
+
+/// One trial's share of periods that hold no stock (`result_sectors`
+/// `cash`): its empty periods / its periods.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct TrialCash {
+    pub trial: u32,
+    pub cash: f64,
 }
 
 /// Each trial's sectors, in trial order; a trial's in name order.
 pub fn sectors(file: &ResultFile) -> Result<Vec<Vec<SectorShare>>, Error> {
-    weigh(file, |_, _, _| {})
+    weigh(file, |_, _, _, _| {})
+}
+
+/// Each trial's cash share, in trial order, and their mean (every trial is
+/// complete, so every trial counts).
+pub fn sector_cash(file: &ResultFile) -> Result<(Vec<TrialCash>, f64), Error> {
+    let periods = file.periods()?;
+    let trials: Vec<TrialCash> = periods
+        .chunk_by(|a, b| a.trial == b.trial)
+        .map(|t| TrialCash { trial: t[0].trial, cash: t.iter().filter(|p| p.names == 0).count() as f64 / t.len() as f64 })
+        .collect();
+    let mean = numbers::sum(&trials.iter().map(|t| t.cash).collect::<Vec<_>>()) / trials.len() as f64;
+    Ok((trials, mean))
 }
 
 /// The weight of each sector that a period holds, for every period of the
@@ -233,17 +257,18 @@ pub fn sectors(file: &ResultFile) -> Result<Vec<Vec<SectorShare>>, Error> {
 /// from a file limited to one trial ([`ResultFile::only`]).
 pub fn sector_weights(file: &ResultFile) -> Result<Vec<SectorWeight>, Error> {
     let mut weights = Vec::new();
-    weigh(file, |period, sector, weight| {
+    weigh(file, |period, sector, count, weight| {
         if weight > 0.0 {
-            weights.push(SectorWeight { period, sector: sector.to_string(), weight });
+            weights.push(SectorWeight { period, sector: sector.to_string(), count, weight });
         }
     })?;
     Ok(weights)
 }
 
-/// [`sectors`], which also gives `each` the period, the sector and the
-/// weight of each sector held in that period or an earlier one of its trial.
-fn weigh(file: &ResultFile, mut each: impl FnMut(u32, &str, f64)) -> Result<Vec<Vec<SectorShare>>, Error> {
+/// [`sectors`], which also gives `each` the period, the sector, the count and
+/// the weight of each sector held in that period or an earlier one of its
+/// trial.
+fn weigh(file: &ResultFile, mut each: impl FnMut(u32, &str, u32, f64)) -> Result<Vec<Vec<SectorShare>>, Error> {
     let (periods, holdings) = (file.periods()?, file.holdings()?);
     let books = by_period(&periods, &holdings, |h: &HoldingRow| (h.trial, h.period));
     let mut out = Vec::new();
@@ -263,8 +288,9 @@ fn weigh(file: &ResultFile, mut each: impl FnMut(u32, &str, f64)) -> Result<Vec<
                 found.entry(name).or_insert((0.0, if count > 0 { 0.0 } else { f64::INFINITY }, 0.0, 0));
             }
             for (name, (total, minimum, maximum, present)) in &mut found {
-                let weight = counts.get(name).map_or(0.0, |&n| f64::from(n) / f64::from(period.names));
-                each(period.period, name, weight);
+                let count = counts.get(name).copied().unwrap_or(0);
+                let weight = if count == 0 { 0.0 } else { f64::from(count) / f64::from(period.names) };
+                each(period.period, name, count, weight);
                 // Python's min and max keep the first of equal values.
                 *minimum = if weight < *minimum { weight } else { *minimum };
                 *maximum = if weight > *maximum { weight } else { *maximum };

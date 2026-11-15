@@ -2,9 +2,12 @@
 import type { SectorShare } from "./SectorShare.ts";
 import type { SectorSpread } from "./SectorSpread.ts";
 import type { SectorWeight } from "./SectorWeight.ts";
+import type { TrialCash } from "./TrialCash.ts";
 
 /**
- * Each trial's sector shares and the spread over all trials, or one
- * trial's `weights`: each period's weight of each sector it holds.
+ * Each trial's sector shares, the spread over all trials, each trial's
+ * `cash` (its share of periods that hold no stock) and their mean; or one
+ * trial's `weights`: each period's holdings and weight of each sector it
+ * holds.
  */
-export type SectorsReply = { trials: Array<SectorShare>, spread: Array<SectorSpread>, } | { weights: Array<SectorWeight>, };
+export type SectorsReply = { trials: Array<SectorShare>, spread: Array<SectorSpread>, cash: Array<TrialCash>, mean_cash: number, } | { weights: Array<SectorWeight>, };

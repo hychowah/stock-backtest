@@ -25,7 +25,7 @@
 //! | `GET /api/runs/{id}/periods?trial` | | one trial's `PeriodRow`s |
 //! | `GET /api/runs/{id}/holdings?trial[&period]` | | [`HoldingsReply`](crate::results::HoldingsReply): the holdings with their source values, and their steps |
 //! | `GET /api/runs/{id}/curve[?trial]` | | [`CurveReply`](crate::results::CurveReply): `band` over the trials, or one trial's `growth` |
-//! | `GET /api/runs/{id}/sectors[?trial]` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares and the spread, or one trial's `weights` by period |
+//! | `GET /api/runs/{id}/sectors[?trial]` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares, the spread and each trial's `cash` with `mean_cash`, or one trial's `weights` (count and weight) by period |
 //! | `GET /api/runs/{id}/contributions?trial` | | one trial's `Attribution`s: each period's top holdings and totals |
 //! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` prints it, with `spy_total_return` in the statistics of all trials |
 //! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` prints it |
