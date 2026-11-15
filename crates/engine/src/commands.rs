@@ -650,17 +650,12 @@ pub struct CatalogUnit {
 /// The limits of a strategy file and of a formula.
 #[derive(Debug, Serialize)]
 pub struct Limits {
-    /// Steps across all sleeves, and the highest rank.
-    pub steps: usize,
-    pub rank: u32,
     /// Characters of a threshold or a formula constant.
     pub literal: usize,
-    /// Parts and levels of a formula, alone or with what it uses.
-    pub formula_parts: usize,
+    /// Levels of a formula, alone or with what it uses.
     pub formula_levels: usize,
-    /// Variables and measures a formula uses, and the levels of their
-    /// references to each other.
-    pub formula_definitions: usize,
+    /// Levels of references among the variables and measures a formula
+    /// uses.
     pub formula_dependency: usize,
     /// Months `ago` goes back, and yearly values a statistic reads.
     pub ago_months: u64,
@@ -692,12 +687,8 @@ pub fn catalog(home: &Home, request: &CatalogRequest) -> Result<CatalogReply, Er
             .map(|&u| CatalogUnit { unit: u.id(), displays: u.displays(), default: u.default_display() })
             .collect(),
         limits: Limits {
-            steps: strategy::MAX_STEPS,
-            rank: strategy::MAX_RANK,
             literal: strategy::MAX_LITERAL,
-            formula_parts: formula::MAX_NODES,
             formula_levels: formula::MAX_DEPTH,
-            formula_definitions: formula::MAX_DEFINITIONS,
             formula_dependency: formula::MAX_DEPENDENCY,
             ago_months: formula::MAX_MONTHS,
             yearly_values: formula::MAX_YEARLY,

@@ -118,19 +118,9 @@ LIBRARIES = {
     ],
     # Dependency depth: each variable reads the one before it.
     'chain': chain('Level', 8, 'Revenue', '{} * 2'),
-    # Resolved definitions: a formula of 31 of them makes 32 with itself.
-    'many': [[f'Part {n}', f'Revenue + {n} USD', None] for n in range(1, 34)],
-    # Resolved nodes: each variable has 99 nodes, 14 deep.
-    'big': [[f'Big {n}', ' + '.join(['(' + ' + '.join(['Revenue'] * 10) + ')'] * 5), None] for n in range(1, 4)],
     # Expanded depth: Deep 1 is 30 deep, each next one more.
     'deep': [['Deep 1', '-' * 29 + 'Revenue', None], ['Deep 2', '-(Deep 1)', None], ['Deep 3', '-(Deep 2)', None]],
 }
-
-
-def parts(count):
-    """The sum of Part 1 to Part count, in groups of four so that it stays shallow."""
-    names = [f'Part {n}' for n in range(1, count + 1)]
-    return ' + '.join('(' + ' + '.join(names[n:n + 4]) + ')' for n in range(0, count, 4))
 
 
 def cases():
@@ -206,9 +196,7 @@ def cases():
                  '/ 2', 'Revenue , 2', '#', 'Revenue # 2', 'Revenue +* 2', 'Revenue * (', 'Revenue * ()', '(1 + 2',
                  '1 + 2)', '1 2', ',', '-', '--', '- ', 'Revenue -'):
         add(text)
-    # Limits: 256 nodes and 32 levels.
-    add(' + '.join(['1'] * 128))
-    add(' + '.join(['1'] * 129))
+    # Limits: at most 32 levels of nodes; brackets add none.
     add('-' * 31 + 'Revenue')
     add('-' * 32 + 'Revenue')
     add('(' * 60 + 'Revenue' + ')' * 60)
@@ -220,7 +208,6 @@ def cases():
     add('1e400 + ago(Revenue, 0 months)')
     add('ago(average(P/E, 3 years), 200 months)')
     add('ago(Revenue, 0 months) + 1')
-    add(' + '.join(['1'] * 129) + ' + Revenue')
     add('Revenue + 1 + ago(Revenue, 200 months)')
     add('Revenue * Revenue + 1')
     add('(Revenue + 1) * (Basic shares + 1 USD)')
@@ -235,17 +222,6 @@ def cases():
     add('Level8 + 1 USD', 'chain')
     add('Level8 + 1', 'chain')
     add('Level1 + Level8', 'chain')
-    add(parts(31), 'many')
-    add(parts(32), 'many')
-    add(parts(33), 'many')
-    add(parts(32) + ' + 1', 'many')
-    add(parts(33) + ' + 1', 'many')
-    add('Big 1 + Big 2', 'big')
-    add('Big 1 + Big 2 + 1', 'big')
-    add('Big 1 + Big 2 + Big 3', 'big')
-    add('Big 1 + Big 2 + Big 3 + 1', 'big')
-    add('Big 1 + Big 2 + (' + ' + '.join(['1'] * 30) + ')', 'big')
-    add('Big 1 + Big 2 + ' + ' + '.join(['Revenue'] * 30), 'big')
     add('Deep 2', 'deep')
     add('-(Deep 2)', 'deep')
     add('Deep 3', 'deep')

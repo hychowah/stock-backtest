@@ -246,7 +246,6 @@ fn refused_files_name_the_place_and_the_cause() {
             "sleeves[1].steps[2]",
             r#"threshold: "fifteen" is not a decimal number"#,
         ),
-        (one_sleeve(&vec![rank; 51].join(",")), "", "has 51 steps across its sleeves; the most is 50"),
         (
             format!(
                 r#"{{"sleeves": [{{"name": "A", "steps": [{rank}]}}, {{"name": "B", "steps": [{{"filter": "ROE", "op": ">", "value": "15"}}]}}]}}"#
@@ -261,11 +260,6 @@ fn refused_files_name_the_place_and_the_cause() {
             "the threshold must be a JSON string",
         ),
         (one_sleeve(&format!(r#"{rank}, {{"\ud800": 1}}"#)), "sleeves[1].steps[2]", "must be a JSON object"),
-        (
-            one_sleeve(r#"{"rank": "P/B", "order": "lowest", "from": 1, "to": 5001}"#),
-            "sleeves[1].steps[1]",
-            "from and to are whole numbers from 1 to 5000",
-        ),
     ];
     for (json, place, message) in cases {
         let (path, refused) = read("refused.json", &json);
@@ -274,4 +268,7 @@ fn refused_files_name_the_place_and_the_cause() {
         assert_eq!(error.place, if place.is_empty() { file } else { format!("{file}: {place}") });
         assert_eq!(error.message, message);
     }
+    // No ceiling on the steps or on the highest rank.
+    let large = format!(r#"{}, {{"rank": "P/B", "order": "lowest", "from": 1, "to": 5001}}"#, vec![rank; 50].join(","));
+    assert!(read("large.json", &one_sleeve(&large)).1.is_ok());
 }

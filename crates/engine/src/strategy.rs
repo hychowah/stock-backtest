@@ -7,15 +7,14 @@
 //!   {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 50}]}]}
 //! ```
 //!
-//! - A strategy is one or more sleeves of ordered Filter and Rank steps, 50
-//!   steps at most across its sleeves. Each sleeve has a Rank step, and a
-//!   name when there are two or more.
+//! - A strategy is one or more sleeves of ordered Filter and Rank steps.
+//!   Each sleeve has a Rank step, and a name when there are two or more.
 //! - A filter compares its source with `<`, `<=`, `>` or `>=` and a decimal
 //!   threshold (a JSON string, or a JSON number read as its literal text) in
 //!   the source's display unit; Sector and Exchange take `is` or `is not` and
 //!   a text.
 //! - A rank orders by its source, `highest` or `lowest` first, and keeps the
-//!   positions `from` to `to`, whole numbers with 1 ≤ from ≤ to ≤ 5000.
+//!   positions `from` to `to`, whole numbers with 1 ≤ from ≤ to.
 //! - `variables` maps a variable's name to `{"formula": TEXT, "display"?:
 //!   DISPLAY}`. A name is not empty and must not reuse a name of the list
 //!   or another variable's. A formula ([`crate::formula`]) can name
@@ -45,10 +44,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
-/// The most steps a strategy has across its sleeves.
-pub(crate) const MAX_STEPS: usize = 50;
-/// The highest rank a Rank step keeps.
-pub(crate) const MAX_RANK: u32 = 5000;
 /// The longest threshold text, and the longest decimal it expands to
 /// (`definitions.CEILINGS` literal and expanded_literal).
 pub(crate) const MAX_LITERAL: usize = 64;
@@ -538,10 +533,6 @@ impl Reader {
             };
             raw_sleeves.push((place.clone(), name, self.list(sleeve["steps"], &format!("{place}.steps"), "a list of steps")?));
         }
-        let count: usize = raw_sleeves.iter().map(|(_, _, steps)| steps.len()).sum();
-        if count > MAX_STEPS {
-            return self.fail("", format!("has {count} steps across its sleeves; the most is {MAX_STEPS}"));
-        }
         let mut sleeves = Vec::new();
         for (place, name, raw_steps) in raw_sleeves {
             let steps = raw_steps
@@ -646,9 +637,9 @@ impl Reader {
                 "lowest" => Order::Lowest,
                 other => return self.fail(place, format!("{other:?} is not an order: use highest or lowest")),
             };
-            let rank = |key: &str| serde_json::from_str::<u32>(fields[key].get()).ok().filter(|r| (1..=MAX_RANK).contains(r));
+            let rank = |key: &str| serde_json::from_str::<u32>(fields[key].get()).ok().filter(|&r| r >= 1);
             let (Some(from), Some(to)) = (rank("from"), rank("to")) else {
-                return self.fail(place, format!("from and to are whole numbers from 1 to {MAX_RANK}"));
+                return self.fail(place, "from and to are whole numbers from 1");
             };
             if from > to {
                 return self.fail(place, "from is at most to");

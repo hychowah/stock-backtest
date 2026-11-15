@@ -1,13 +1,14 @@
 //! Formulas: the text a strategy file writes for a variable or a step.
 //!
-//! [`Formula::read`] accepts and refuses exactly what the Python product's
-//! formula editor does (`formula_text.from_text`, then the checks of
+//! [`Formula::read`] accepts and refuses what the Python product's formula
+//! editor does (`formula_text.from_text`, then the checks of
 //! `variable_authoring.validate`, catalog 4), with the file's earlier
-//! variables as its saved variables. A caller gets the checked tree
-//! ([`Node`]), its unit and display, and its canonical text: the tree
-//! printed as the product's `to_text` prints it, which reads back to the
-//! same tree. A refusal is a [`Fault`] with the product's error code and the
-//! characters at fault.
+//! variables as its saved variables, except that it sets no ceiling on the
+//! parts of a formula or on the variables and measures it uses. A caller
+//! gets the checked tree ([`Node`]), its unit and display, and its canonical
+//! text: the tree printed as the product's `to_text` prints it, which reads
+//! back to the same tree. A refusal is a [`Fault`] with the product's error
+//! code and the characters at fault.
 
 use crate::names::{self, Kind, NAMES};
 use crate::strategy::{MAX_LITERAL, expand};
@@ -23,8 +24,7 @@ pub struct Formula {
     display: &'static str,
     text: String,
     name: Option<String>,
-    /// Its nodes, and its levels once references are expanded.
-    nodes: usize,
+    /// Its levels once references are expanded.
     expanded: usize,
     /// 1, plus the levels of the definitions it refers to.
     dependency: usize,
@@ -285,7 +285,6 @@ pub struct Measure {
 struct Built {
     tree: Node,
     unit: Unit,
-    nodes: usize,
     expanded: usize,
     dependency: usize,
 }
@@ -351,13 +350,10 @@ impl Measure {
                 "debt_assets" => both(PositiveDiv, m("total_debt"), p("annual.total_assets")),
                 key => unreachable!("no measure {key}"),
             };
-            let mut closure = Closure::default();
-            closure.of(&root.node);
             Built {
                 unit: unit_of(root.dimensions).expect("a measure has a unit"),
-                nodes: root.nodes,
                 expanded: root.expanded,
-                dependency: 1 + closure.dependency,
+                dependency: 1 + dependency(&root.node),
                 tree: root.node,
             }
         })
@@ -428,7 +424,6 @@ struct Part {
     start: usize,
     end: usize,
     dimensions: (i32, i32),
-    nodes: usize,
     depth: usize,
     expanded: usize,
     /// `positive(x)`, which only the bottom of a division takes.
@@ -437,7 +432,7 @@ struct Part {
 
 impl Part {
     fn leaf(node: Node, start: usize, end: usize, unit: Unit) -> Part {
-        Part { node, start, end, dimensions: unit.dimensions(), nodes: 1, depth: 1, expanded: 1, positive: false }
+        Part { node, start, end, dimensions: unit.dimensions(), depth: 1, expanded: 1, positive: false }
     }
 
     fn measure(measure: &'static Measure, start: usize, end: usize) -> Part {
@@ -456,7 +451,6 @@ impl Part {
             start,
             end,
             dimensions: arg.dimensions,
-            nodes: 1 + arg.nodes,
             depth: 1 + arg.depth,
             expanded: 1 + arg.expanded,
             positive: false,
@@ -491,7 +485,6 @@ impl Part {
         };
         let part = Part {
             dimensions,
-            nodes: 1 + left.nodes + right.nodes,
             depth: 1 + left.depth.max(right.depth),
             expanded: 1 + left.expanded.max(right.expanded),
             start,
@@ -503,48 +496,21 @@ impl Part {
     }
 }
 
-/// The definitions a formula refers to, each once, with their nodes and the
-/// deepest level of reference among them.
-#[derive(Default)]
-struct Closure {
-    seen: Vec<*const ()>,
-    nodes: usize,
-    dependency: usize,
-}
-
-impl Closure {
-    fn of(&mut self, node: &Node) {
-        match node {
-            Node::Measure(m) => {
-                let built = m.built();
-                self.add(*m as *const Measure as *const (), built.nodes, built.dependency, &built.tree);
-            }
-            Node::Variable(f) => self.add(Arc::as_ptr(f) as *const (), f.nodes, f.dependency, &f.tree),
-            Node::Neg(arg) | Node::Lookback { arg, .. } | Node::At { arg, .. } => self.of(arg),
-            Node::Binary { left, right, .. } => {
-                self.of(left);
-                self.of(right);
-            }
-            Node::Parameter(_) | Node::Constant { .. } | Node::Annual { .. } => {}
-        }
-    }
-
-    fn add(&mut self, identity: *const (), nodes: usize, dependency: usize, tree: &Node) {
-        self.dependency = self.dependency.max(dependency);
-        if !self.seen.contains(&identity) {
-            self.seen.push(identity);
-            self.nodes += nodes;
-            self.of(tree);
-        }
+/// The deepest level of reference among the definitions `node` refers to;
+/// a definition's level already counts the definitions it refers to.
+fn dependency(node: &Node) -> usize {
+    match node {
+        Node::Measure(m) => m.built().dependency,
+        Node::Variable(f) => f.dependency,
+        Node::Neg(arg) | Node::Lookback { arg, .. } | Node::At { arg, .. } => dependency(arg),
+        Node::Binary { left, right, .. } => dependency(left).max(dependency(right)),
+        Node::Parameter(_) | Node::Constant { .. } | Node::Annual { .. } => 0,
     }
 }
 
-/// The most parts (nodes) of a formula, alone or with the variables and
-/// measures it uses, and the most levels, also counted through them.
-pub(crate) const MAX_NODES: usize = 256;
+/// The most levels of a formula, also counted through the variables and
+/// measures it uses.
 pub(crate) const MAX_DEPTH: usize = 32;
-/// The most variables and measures a formula uses, itself included.
-pub(crate) const MAX_DEFINITIONS: usize = 32;
 /// The most levels of definitions that refer to definitions.
 pub(crate) const MAX_DEPENDENCY: usize = 8;
 /// The most months `ago` goes back, and yearly values a statistic reads.
@@ -1014,21 +980,15 @@ impl Reader {
     }
 
     /// The checks of the tree after reading, in the oracle's order: the
-    /// formula's size, its own checks, the size of what it refers to, its
-    /// units, then its size with what it refers to.
+    /// formula's depth, its own checks, its units, then its depth and levels
+    /// of reference with what it refers to.
     fn check(self, root: Part) -> Result<Formula, Fault> {
         let whole = |message: &str| fault("DEFINITION_LIMIT", 0, self.text.len(), message);
-        if root.nodes > MAX_NODES || root.depth > MAX_DEPTH {
-            return Err(whole("This formula is too large: at most 256 parts and 32 levels."));
+        if root.depth > MAX_DEPTH {
+            return Err(whole("This formula is too deep: at most 32 levels."));
         }
         if let Some(issue) = self.issue {
             return Err(issue);
-        }
-        let mut closure = Closure::default();
-        closure.of(&root.node);
-        let large = |definitions: usize, nodes: usize| definitions > MAX_DEFINITIONS || nodes > MAX_NODES;
-        if large(closure.seen.len(), closure.nodes) {
-            return Err(whole("The variables and measures this formula uses are too large together."));
         }
         if let Some(mismatch) = self.mismatch {
             return Err(mismatch);
@@ -1037,11 +997,9 @@ impl Reader {
             let message = "This formula gives a unit other than a number, US dollars, US dollars per share or shares.";
             return Err(fault("UNSUPPORTED_OUTPUT_UNIT", 0, self.text.len(), message));
         };
-        if large(closure.seen.len() + 1, closure.nodes + root.nodes)
-            || 1 + closure.dependency > MAX_DEPENDENCY
-            || root.expanded > MAX_DEPTH
-        {
-            return Err(whole("This formula and the variables and measures it uses are too large together."));
+        let dependency = 1 + dependency(&root.node);
+        if dependency > MAX_DEPENDENCY || root.expanded > MAX_DEPTH {
+            return Err(whole("This formula and the variables and measures it uses are nested too deeply together."));
         }
         let mut text = String::new();
         write(&root.node, &mut text);
@@ -1050,9 +1008,8 @@ impl Reader {
             unit,
             display: unit.default_display(),
             name: None,
-            nodes: root.nodes,
             expanded: root.expanded,
-            dependency: 1 + closure.dependency,
+            dependency,
             tree: root.node,
         })
     }

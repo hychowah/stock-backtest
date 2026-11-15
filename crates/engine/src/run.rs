@@ -201,7 +201,7 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
 
 /// The ranks a period's holdings can have (`selection.rank_range`): one
 /// sleeve, its last Rank step's; several, 1 to the sum of the sizes of their
-/// last Rank steps.
+/// last Rank steps, at most `u32::MAX`.
 pub(crate) fn rank_range(strategy: &Strategy) -> (u32, u32) {
     let last = |steps: &[Step]| match steps.iter().rev().find(|s| matches!(s, Step::Rank { .. })) {
         Some(&Step::Rank { from, to, .. }) => (from, to),
@@ -209,7 +209,7 @@ pub(crate) fn rank_range(strategy: &Strategy) -> (u32, u32) {
     };
     match strategy.sleeves() {
         [one] => last(&one.steps),
-        several => (1, several.iter().map(|s| last(&s.steps)).map(|(from, to)| to - from + 1).sum()),
+        several => (1, several.iter().map(|s| last(&s.steps)).fold(0, |sum, (from, to)| sum.saturating_add(to - from + 1))),
     }
 }
 

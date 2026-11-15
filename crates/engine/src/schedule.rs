@@ -33,7 +33,7 @@ impl Schedule {
 pub enum Dates {
     /// One trial that trades at every interval from the start.
     Every(Interval),
-    /// `trials` trials (1 to 100), each trading on one random session in
+    /// `trials` trials (at least 1), each trading on one random session in
     /// every interval from the start.
     Random { every: Interval, trials: u32, seed: u32 },
     /// One trial that trades on these sessions, in increasing order.
@@ -106,10 +106,8 @@ impl Plan {
         if end <= start {
             return Err(Error::new("the end must be after the start", "end"));
         }
-        if let Dates::Random { trials, .. } = schedule.dates
-            && !(1..=100).contains(&trials)
-        {
-            return Err(Error::new("choose 1 to 100 trials", "trials"));
+        if let Dates::Random { trials: 0, .. } = schedule.dates {
+            return Err(Error::new("choose at least 1 trial", "trials"));
         }
         let sessions = data.sessions();
         if sessions.last().is_none_or(|&last| end > last) {

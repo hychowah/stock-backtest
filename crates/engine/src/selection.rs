@@ -77,7 +77,7 @@ pub fn rank(rows: &[Row<'_>], order: Order, from: u32, to: u32) -> Vec<(usize, u
             .then(a.symbol.cmp(b.symbol))
     });
     let skip = from as usize - 1;
-    eligible.into_iter().skip(skip).take((to - from + 1) as usize).zip(from..).map(|((i, _), rank)| (i, rank)).collect()
+    eligible.into_iter().skip(skip).zip(from..=to).map(|((i, _), rank)| (i, rank)).collect()
 }
 
 /// `selection.execute` for each sleeve over the candidates whose entry is

@@ -155,9 +155,8 @@ fn refused_settings_name_their_place() {
         (error.place, error.message)
     };
     let year = |dates| refused(Market::Us, "2022-01-01", "2022-12-30", dates);
-    for trials in [0, 101] {
-        assert_eq!(year(random(Interval::Months(6), trials, 7)), ("trials".into(), "choose 1 to 100 trials".into()));
-    }
+    assert_eq!(year(random(Interval::Months(6), 0, 7)), ("trials".into(), "choose at least 1 trial".into()));
+    assert_eq!(plan(Market::Us, "2022-01-01", "2022-12-30", random(Interval::Months(6), 101, 7)).trials().len(), 101);
     let every = year(Dates::Every(Interval::Months(25)));
     assert_eq!(every, ("every".into(), "choose 1 to 104 weeks or 1 to 24 months".into()));
     let (place, message) = year(Dates::Explicit(vec!["2022-03-12".into()]));
