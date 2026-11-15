@@ -83,8 +83,11 @@ export function Build({ visible, setPill }: { visible: boolean; setPill: (text: 
   const [screenError, setScreenError] = useState("");
   const [screening, setScreening] = useState(false);
   const sequence = useRef(0);
+  /** The key of the last screen sent. */
+  const sent = useRef<string | null>(null);
   const screenNow = (body: ScreenBody, bodyKey: string) => {
     const number = ++sequence.current;
+    sent.current = bodyKey;
     setScreening(true);
     client.screen(body).then(
       (reply) => {
@@ -108,10 +111,13 @@ export function Build({ visible, setPill }: { visible: boolean; setPill: (text: 
   }, [key, latest, draft.autoRun, libraryRead]);
   useEffect(() => setPill(screen?.reply.day ?? ""), [screen?.reply.day]);
   const stale = screen !== null && screen.key !== key;
-  const missing = screen === null && !screening;
+  // With auto-run, the current settings that were not sent yet are about to be.
+  const missing = screen === null && !screening && !(draft.autoRun && sent.current !== key);
   const reply = screen?.reply;
   const [from, to] = reply?.description.ranks ?? [0, 0];
-  const shortOf = reply ? reply.picks.length < to - from + 1 : false;
+  // Several sleeves can pick the same stock, so only one sleeve's ranks say
+  // how many picks there should be.
+  const shortOf = reply ? reply.description.sleeves.length === 1 && reply.picks.length < to - from + 1 : false;
   const dataProblem =
     status.state === "failed"
       ? "The prepared data's status could not be read: " + refusal(status.failure)

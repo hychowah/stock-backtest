@@ -310,7 +310,6 @@ function StepRow({ step, number, last, known, loaded, groups, note, onSource, on
         aria-label={`${name} ${label}`}
         type="number"
         min={1}
-        max={5000}
         step={1}
         required
         value={step[end]}

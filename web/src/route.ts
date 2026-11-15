@@ -7,7 +7,7 @@
  *  keeps only the draft (localStorage) and the address.
  *
  *  The shell follows the address: a workspace changes the route with go() or
- *  a link to hrefOf(), never by showing itself. */
+ *  a link to a route's hash (`#/runs`), never by showing itself. */
 export type Route =
   | { view: "build" }
   | { view: "runs" }
@@ -27,7 +27,7 @@ export function parseRoute(hash: string, lastResult: number | null): Route {
 }
 
 /** The hash of a route: `#/build`, `#/runs`, `#/results/<id>` or `#/results`. */
-export function hrefOf(route: Route): string {
+function hashOf(route: Route): string {
   if (route.view === "review") return route.id === null ? "#/results" : `#/results/${route.id}`;
   return `#/${route.view}`;
 }
@@ -37,7 +37,7 @@ export function hrefOf(route: Route): string {
  *  so the shell does what it does for any other visit: it closes the queue
  *  tray and scrolls to the top. */
 export function go(route: Route): void {
-  const hash = hrefOf(route);
+  const hash = hashOf(route);
   if (location.hash === hash) dispatchEvent(new HashChangeEvent("hashchange"));
   else location.hash = hash;
 }

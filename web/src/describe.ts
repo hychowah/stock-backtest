@@ -3,11 +3,12 @@ import type { FileStep } from "./api/FileStep.ts";
 import type { Market } from "./api/Market.ts";
 import type { RunRow } from "./api/RunRow.ts";
 import type { Schedule } from "./api/Schedule.ts";
+import type { StatisticRow } from "./api/StatisticRow.ts";
 import type { StepRow } from "./api/StepRow.ts";
 import type { StrategyFile } from "./api/StrategyFile.ts";
 import type { TrialsReply } from "./api/TrialsReply.ts";
 import type { Display } from "./api/Display.ts";
-import { format, formatTyped, marketName, percent, points, rounded } from "./format.ts";
+import { format, formatTyped, growth, marketName, percent, points } from "./format.ts";
 
 /** A run in words: the one place that writes settings for people. Input:
  *  RunSettings (market, schedule, strategy file and each step's display), made
@@ -15,7 +16,8 @@ import { format, formatTyped, marketName, percent, points, rounded } from "./for
  *  (market; the window, interval, trials and seed; each sleeve's steps, with
  *  thresholds in their display), the headline cells and other measures of a
  *  complete run (from its trials reply), the lines of a holding's or a pick's
- *  step trail, and the default test name.
+ *  step trail, the heading and display of a ranking value, and the default
+ *  test name.
  *  Schedule.every (Nw|Nm) and a trial's dates (ISO days joined by spaces) are
  *  read here and nowhere else. */
 export type RunSettings = {
@@ -67,7 +69,8 @@ export function tradeDays(dates: string): string[] {
   return dates.split(" ").filter(Boolean);
 }
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+/** A count and its word: 1 week, 24 trials. */
+export const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** An interval in words: 1 week, 3 months. */
 export function intervalWords(interval: Interval): string {
@@ -127,10 +130,10 @@ export function settingsLines(settings: RunSettings): Line[] {
   return lines;
 }
 
-/** A statistic of a run's trials by name (`cagr.median`, `beat_spy`), or
- *  null when the reply does not hold it (or holds no number). */
-function statistic(reply: TrialsReply, name: string): number | null {
-  const value = reply.statistics.find((row) => row.statistic === name)?.value;
+/** A statistic of a run's trials by name (`cagr.median`, `valid`), or null
+ *  when the rows do not hold it or it is not a finite number. */
+export function statistic(rows: readonly StatisticRow[], name: string): number | null {
+  const value = rows.find((row) => row.statistic === name)?.value;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
@@ -151,10 +154,10 @@ export function headlineCells(schedule: Schedule, reply: TrialsReply): Cell[] {
       { key: "cagr", label: "Strategy CAGR", text: percent(trial?.cagr) },
       { key: "spy_cagr", label: "SPY CAGR", text: percent(trial?.spy_cagr) },
       { key: "difference", label: "Difference vs SPY", text: points(difference), ...toneOf(difference) },
-      { key: "growth", label: "Growth of $1", text: trial && Number.isFinite(trial.growth) ? "$" + rounded(trial.growth) : "—" },
+      { key: "growth", label: "Growth of $1", text: growth(trial?.growth) },
     ];
   }
-  const stat = (name: string) => statistic(reply, name);
+  const stat = (name: string) => statistic(reply.statistics, name);
   const difference = stat("excess_cagr.median");
   const [beat, valid, incomplete] = [stat("beat_spy"), stat("valid"), stat("incomplete")];
   return [
@@ -171,7 +174,7 @@ export function headlineCells(schedule: Schedule, reply: TrialsReply): Cell[] {
  *  strategy CAGR, its P10 to P90 and standard deviation, the mean difference
  *  to SPY, the worst to best difference, and the number of trials. */
 export function measureLines(reply: TrialsReply): Line[] {
-  const stat = (name: string) => statistic(reply, name);
+  const stat = (name: string) => statistic(reply.statistics, name);
   const range = (low: string, high: string, write: (value: number) => string) => {
     const [a, b] = [stat(low), stat(high)];
     return a === null || b === null ? "—" : write(a) + " to " + write(b);
@@ -188,7 +191,7 @@ export function measureLines(reply: TrialsReply): Line[] {
 }
 
 /** The fields of a holding or a pick that a field step reads. */
-export type TrailItem = { sector: string; exchange: string; market_cap: number; enterprise_value: number };
+type TrailItem = { sector: string; exchange: string; market_cap: number; enterprise_value: number };
 
 /** The step trail of one picking sleeve: its name (when the strategy has
  *  several sleeves) and one line per step. */
@@ -228,6 +231,21 @@ function fieldValue(item: TrailItem, name: string, display: Display): string {
   if (!field) throw new Error(`not a field: ${name}`);
   const value = item[field];
   return typeof value === "string" ? value || "Unknown" : format(value, display);
+}
+
+/** How a holding's or a pick's ranking value is written: the column's
+ *  heading, and the display for the first sleeve that picked it (from 1). */
+export type Ranking = { heading: string; display: (sleeve: number) => Display };
+
+/** The ranking value's heading and display: the display of the last Rank step
+ *  of the sleeve that first picked the stock, and the heading "Ranking value"
+ *  (with the direction when the strategy has one sleeve). */
+export function rankingOf(settings: RunSettings): Ranking {
+  const { strategy, steps } = settings;
+  const last = (sleeve: number) => strategy.sleeves[sleeve - 1]?.steps.findLastIndex(isRank) ?? -1;
+  const only = strategy.sleeves.length === 1 ? strategy.sleeves[0]?.steps[last(1)] : undefined;
+  const heading = only && isRank(only) ? `Ranking value · ${only.order}` : "Ranking value";
+  return { heading, display: (sleeve) => steps[sleeve - 1]?.[last(sleeve)]?.display ?? "number" };
 }
 
 const INTERVAL_NAMES: Record<string, string> = { "1w": "weekly", "1m": "monthly", "3m": "quarterly", "6m": "half-yearly", "24m": "every 2 years" };

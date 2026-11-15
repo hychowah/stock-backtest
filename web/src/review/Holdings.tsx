@@ -7,7 +7,7 @@ import type { StepRow } from "../api/StepRow.ts";
 import { Pie, type Slice } from "../charts/Pie.tsx";
 import { ScrollTable } from "../common/ScrollTable.tsx";
 import { StepTrail } from "../common/StepTrail.tsx";
-import { settingsOf, trailOf } from "../describe.ts";
+import { type Ranking, rankingOf, settingsOf, trailOf } from "../describe.ts";
 import { type Display, format, percent, points, rounded } from "../format.ts";
 import type { Read } from "../read.ts";
 import { useSelection } from "./selection.ts";
@@ -21,7 +21,7 @@ import { useSelection } from "./selection.ts";
 export function Holdings({ run, periods, holdings, attributions }: { run: RunRow; periods: PeriodRow[]; holdings: Read<HoldingsReply>; attributions: Read<Attribution[]> }) {
   const { selection, select } = useSelection();
   const period = periods.find((row) => row.period === selection.period);
-  const rank = rankingOf(run);
+  const rank = rankingOf(settingsOf(run));
   return (
     <div>
       <h3>Explore each rebalance</h3>
@@ -72,7 +72,7 @@ function Table({ run, holdings, period, sector, rank }: { run: RunRow; holdings:
         </thead>
         <tbody id="schedule-stock-body">
           {rows.map((holding) => (
-            <Holding key={holding.rank} run={run} holding={holding} steps={holdings.steps.filter((step) => step.rank === holding.rank)} display={rank.display(holding)} />
+            <Holding key={holding.rank} run={run} holding={holding} steps={holdings.steps.filter((step) => step.rank === holding.rank)} display={rank.display(holding.sleeve)} />
           ))}
           {!rows.length && (
             <tr>
@@ -83,19 +83,6 @@ function Table({ run, holdings, period, sector, rank }: { run: RunRow; holdings:
       </table>
     </ScrollTable>
   );
-}
-
-type Ranking = { heading: string; display: (holding: JoinedHolding) => Display };
-
-/** How the page writes a holding's ranking value: the display of the last
- *  Rank step of the sleeve that first picked it, and the column heading (the
- *  direction too when the strategy has one sleeve). */
-function rankingOf(run: RunRow): Ranking {
-  const { strategy, steps } = settingsOf(run);
-  const last = (sleeve: number) => strategy.sleeves[sleeve - 1]?.steps.findLastIndex((step) => "rank" in step) ?? -1;
-  const only = strategy.sleeves.length === 1 ? strategy.sleeves[0]?.steps[last(1)] : undefined;
-  const heading = only && "rank" in only ? `Ranking value · ${only.order}` : "Ranking value";
-  return { heading, display: (holding) => steps[holding.sleeve - 1]?.[last(holding.sleeve)]?.display ?? "number" };
 }
 
 function Holding({ run, holding, steps, display }: { run: RunRow; holding: JoinedHolding; steps: StepRow[]; display: Display }) {

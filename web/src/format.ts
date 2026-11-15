@@ -15,16 +15,28 @@ export type { Display };
 
 const DASH = "—";
 
+/** Each market's name, and its short name where room is short. */
+const MARKET_NAMES: Record<Market, { name: string; short: string }> = {
+  us: { name: "US", short: "US" },
+  hk: { name: "Hong Kong", short: "Hong Kong" },
+  jp: { name: "Japan · Tokyo", short: "Tokyo" },
+};
+
 /** A market's name: US, Hong Kong, Japan · Tokyo. */
-export function marketName(market: Market): string {
-  return { us: "US", hk: "Hong Kong", jp: "Japan · Tokyo" }[market];
-}
+export const marketName = (market: Market) => MARKET_NAMES[market].name;
+
+/** A market's short name, as the market switch of Runs & saved writes it: US,
+ *  Hong Kong, Tokyo. */
+export const marketShortName = (market: Market) => MARKET_NAMES[market].short;
 
 /** A number with the page's rounding, without grouping: 12.34, 0.0012. */
 export function rounded(value: number): string {
   const size = Math.abs(value);
   return size < 1e-6 ? "0.00" : size < 0.01 ? value.toPrecision(2) : value.toFixed(2);
 }
+
+/** The growth of $1 written as `$1.23`; a dash when it is missing. */
+export const growth = (value: number | null | undefined) => (value == null || !Number.isFinite(value) ? DASH : "$" + rounded(value));
 
 /** Thousands separators in the whole part of a written number. */
 const grouped = (text: string) => text.replace(/^(-?)(\d+)/, (_all, sign: string, whole: string) => sign + whole.replace(/\B(?=(\d{3})+$)/g, ","));

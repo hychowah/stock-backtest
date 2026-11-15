@@ -6,10 +6,11 @@ import { Curve } from "../charts/Curve.tsx";
 import { Distribution, MEASURE_OPTIONS, type Measure } from "../charts/Distribution.tsx";
 import { Download } from "../common/Download.tsx";
 import { ScrollTable } from "../common/ScrollTable.tsx";
-import { format, percent, rounded } from "../format.ts";
+import { statistic } from "../describe.ts";
+import { format, growth, percent } from "../format.ts";
+import { trialChoice } from "./coverage.ts";
 import type { ExploredTrials } from "./Explore.tsx";
 import { useSelection } from "./selection.ts";
-import { statistic } from "./statistics.ts";
 
 /** A difference of fractions in percentage points without the unit, which the
  *  column heading names: -9.39. */
@@ -20,7 +21,7 @@ const DISTRIBUTIONS: [string, string, (v: number | null) => string][] = [
   ["Paired SPY CAGR", "spy_cagr", percent],
   ["CAGR difference (pp)", "excess_cagr", bare],
   ["Total strategy return", "total_return", percent],
-  ["Ending value of $1", "growth", (v) => (v === null ? "—" : "$" + rounded(v))],
+  ["Ending value of $1", "growth", growth],
 ];
 const COLUMNS = ["mean", "median", "p10", "p25", "p75", "p90", "min", "max", "stddev"];
 
@@ -102,7 +103,7 @@ export function Random({ run, trials, explored, measure: [measure, setMeasure] }
         <select id="robustness-trial" value={String(inspect)} onChange={(event) => setInspect(Number(event.currentTarget.value))}>
           {trials.trials.map((trial) => (
             <option key={trial.trial} value={String(trial.trial)}>
-              Trial {trial.trial} · {trial.first_trade ?? "—"} · CAGR {percent(trial.cagr)}
+              {trialChoice(trial)}
             </option>
           ))}
         </select>

@@ -6,10 +6,10 @@ import type { RunRow } from "../api/RunRow.ts";
 import type { TrialsReply } from "../api/TrialsReply.ts";
 import { type SectorBar, SectorBars, sectorColor } from "../charts/Sectors.tsx";
 import { client } from "../client.ts";
+import { statistic } from "../describe.ts";
 import { percent } from "../format.ts";
 import { asFailure, useRead } from "../read.ts";
 import { useSelection } from "./selection.ts";
-import { statistic } from "./statistics.ts";
 
 /** What the sector view covers: `all` trials together, or the one trial that
  *  the shared selection has, period by period. A fixed schedule has one trial

@@ -1,5 +1,8 @@
 import type { TrialRow } from "../api/TrialRow.ts";
-import { rounded } from "../format.ts";
+import { percent, rounded } from "../format.ts";
+
+/** A trial as its option in a choice of trials: `Trial 3 · 2016-01-05 · CAGR 12.34%`. */
+export const trialChoice = (trial: TrialRow) => `Trial ${trial.trial} · ${trial.first_trade ?? "—"} · CAGR ${percent(trial.cagr)}`;
 
 /** The coverage note of one trial: its short and empty periods, what an empty
  *  period holds, how long the strategy held cash before its first trade, and,

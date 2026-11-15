@@ -3,8 +3,8 @@ import type { RunRow } from "./api/RunRow.ts";
 import type { Schedule } from "./api/Schedule.ts";
 import type { State } from "./api/State.ts";
 import type { TrialsReply } from "./api/TrialsReply.ts";
-import { type Line, type RunSettings, headlineCells, measureLines, settingsLines } from "./describe.ts";
-import { placeInWords } from "./format.ts";
+import { type Line, type RunSettings, headlineCells, measureLines, plural, settingsLines } from "./describe.ts";
+import { marketShortName, placeInWords } from "./format.ts";
 
 /** The rules of Runs & saved, with no DOM.
  *
@@ -19,10 +19,8 @@ import { placeInWords } from "./format.ts";
 export type MarketChoice = Market | "";
 
 const MARKETS: Market[] = ["us", "hk", "jp"];
-const CHOICE_WORDS: Record<MarketChoice, string> = { "": "All", us: "US", hk: "Hong Kong", jp: "Tokyo" };
-
 /** A choice as the switch and the empty lists write it: All, US, Hong Kong, Tokyo. */
-export const choiceWords = (choice: MarketChoice) => CHOICE_WORDS[choice];
+export const choiceWords = (choice: MarketChoice) => (choice ? marketShortName(choice) : "All");
 
 /** The runs of the choice. */
 export const inMarket = (runs: readonly RunRow[], choice: MarketChoice) => (choice ? runs.filter((run) => run.market === choice) : [...runs]);
@@ -69,8 +67,6 @@ export const stateWords = (state: State) => STATE_WORDS[state];
 /** The value of a row's `data-state`, which the carried CSS colours: it names
  *  a stopped run `cancelled`. */
 export const rowState = (state: State) => (state === "stopped" ? "cancelled" : state);
-
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** A row's test type: `Random · 24 trials` or `Fixed dates`. */
 export const kindWords = (schedule: Schedule) => (schedule.trials === undefined ? "Fixed dates" : `Random · ${plural(schedule.trials, "trial")}`);

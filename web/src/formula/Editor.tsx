@@ -21,7 +21,7 @@ const CHECK_DELAY = 400;
  *  (null while it loads), whose names the typing list and "All inputs"
  *  offer, the draft's own variables, what the step reads now (null for a new
  *  formula), and what Use, a rename and a delete do to the drafts. */
-export type EditorRequest = {
+type EditorRequest = {
   /** "New filter", or the step's name: "Step 2 · Rank". */
   title: string;
   /** "Add as filter", or "Update step 2". */

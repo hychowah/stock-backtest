@@ -5,10 +5,9 @@ import type { RunRow } from "../api/RunRow.ts";
 import type { TrialRow } from "../api/TrialRow.ts";
 import type { TrialsReply } from "../api/TrialsReply.ts";
 import { client } from "../client.ts";
-import { tradeDays } from "../describe.ts";
+import { statistic, tradeDays } from "../describe.ts";
 import { percent } from "../format.ts";
 import { asFailure, useRead } from "../read.ts";
-import { statistic } from "./statistics.ts";
 
 /** The reply of an Explore of all trials: the trials and statistics of the
  *  selected window and ranks, to show in place of the original ones. */

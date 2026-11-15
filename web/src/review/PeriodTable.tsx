@@ -1,10 +1,31 @@
 import type { PeriodRow } from "../api/PeriodRow.ts";
+import { PeriodBars } from "../charts/PeriodBars.tsx";
 import { ScrollTable } from "../common/ScrollTable.tsx";
 import { percent } from "../format.ts";
+import type { Read } from "../read.ts";
+
+/** Returns by holding period: the read periods of one trial as bars and as a
+ *  table, or why they could not be read. */
+export function PeriodReturns({ periods }: { periods: Read<PeriodRow[]> }) {
+  return (
+    <div>
+      <h3>Returns by holding period</h3>
+      <p class="hint">Green: strategy. Grey: SPY. Each bar is one rebalance period, not an annual return.</p>
+      {periods.state === "done" ? (
+        <>
+          <PeriodBars periods={periods.value} />
+          <PeriodTable periods={periods.value} />
+        </>
+      ) : (
+        periods.state === "failed" && <p class="screen-message warning">{periods.failure.message}</p>
+      )}
+    </div>
+  );
+}
 
 /** One row for each rebalance period of a trial: entry, exit, the number of
  *  stocks held, and the strategy's and SPY's returns. */
-export function PeriodTable({ periods }: { periods: PeriodRow[] }) {
+function PeriodTable({ periods }: { periods: PeriodRow[] }) {
   return (
     <ScrollTable>
       <table>

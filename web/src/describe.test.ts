@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { TrialRow } from "./api/TrialRow.ts";
 import type { TrialsReply } from "./api/TrialsReply.ts";
 import type { RunRow } from "./api/RunRow.ts";
-import { type Cell, defaultName, headlineCells, measureLines, readEvery, type RunSettings, settingsLines, settingsOf, tradeDays, trailOf, writeEvery } from "./describe.ts";
+import { type Cell, defaultName, headlineCells, measureLines, rankingOf, readEvery, type RunSettings, settingsLines, settingsOf, tradeDays, trailOf, writeEvery } from "./describe.ts";
 
 /** One sleeve: a size floor in $ million, then the Rank. */
 const one: RunSettings = {
@@ -180,6 +180,16 @@ test("the default name says the ranks, the last Rank, the interval and the other
 });
 
 const holding = { sector: "Real Estate", exchange: "HKSE", market_cap: 12583039190.255821, enterprise_value: 2783124027.1080284 };
+
+test("a ranking value is written in the display of its sleeve's last Rank; one sleeve also names the direction", () => {
+  const single = rankingOf(one);
+  assert.equal(single.heading, "Ranking value · highest");
+  assert.equal(single.display(1), "percent");
+  const sleeves = rankingOf(two);
+  assert.equal(sleeves.heading, "Ranking value");
+  assert.equal(sleeves.display(1), "percent");
+  assert.equal(sleeves.display(2), "usd");
+});
 
 test("a trail gives each step's value in its display, then its rank or passed", () => {
   const rows = [

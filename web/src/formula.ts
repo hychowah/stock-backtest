@@ -50,7 +50,7 @@ export function shownDisplay(chosen: string | null, checked: CheckedFormula): Di
 
 /** What the editor holds as the step's current source: the source's name or
  *  text, its formula text and its display (null: the unit's default). */
-export type Opened = { source: string; text: string; display: string | null };
+type Opened = { source: string; text: string; display: string | null };
 
 /** What "Edit formula" opens for a step's source: a library entry, a
  *  variable of the draft (`own`), or formula text. */

@@ -2,7 +2,7 @@ import type { StatisticRow } from "../api/StatisticRow.ts";
 import type { TrialRow } from "../api/TrialRow.ts";
 import { evenTicks, histogram, type Histogram, linePath, linearScale, normalCount, type Series } from "../chart.ts";
 import { format } from "../format.ts";
-import { statistic } from "../review/statistics.ts";
+import { statistic } from "../describe.ts";
 import { ScrollChart } from "./ScrollChart.tsx";
 
 /** What the distribution shows: each trial's CAGR or total return (each with

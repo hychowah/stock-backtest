@@ -3,16 +3,14 @@ import type { StrategyFile } from "../api/StrategyFile.ts";
 import { Download } from "../common/Download.tsx";
 import { ScrollTable } from "../common/ScrollTable.tsx";
 import { StepTrail } from "../common/StepTrail.tsx";
-import { type RunSettings, trailOf } from "../describe.ts";
+import { rankingOf, type RunSettings, trailOf } from "../describe.ts";
 import { count, format } from "../format.ts";
 
 /** A latest screen: the strategy sent and the server's reply. */
 export type Screen = { strategy: StrategyFile; reply: ScreenReply };
 
+/** The headings after Rank, Symbol, Company and the ranking value. */
 const HEADS = [
-  "Rank",
-  "Symbol",
-  "Company",
   "Exchange",
   "Sector",
   "Adj. price (USD)",
@@ -38,12 +36,14 @@ function screenSettings(screen: Screen): RunSettings {
 }
 
 /** The latest picks: the screened session, the count and the picks' medians,
- *  the CSV download, and
- *  one row per pick with its step trail under Details. `stale` marks picks
- *  that do not match the current settings. */
+ *  the CSV download, and one row per pick with the value it was ranked on
+ *  (written as the result page's holdings write it) and its step trail under
+ *  Details. `stale` marks picks that do not match the current settings. */
 export function Latest({ screen, stale, hidden }: { screen: Screen | null; stale: boolean; hidden: boolean }) {
   const reply = screen?.reply;
   const settings = screen && screenSettings(screen);
+  const rank = settings && rankingOf(settings);
+  const heads = ["Rank", "Symbol", "Company", rank?.heading ?? "Ranking value", ...HEADS];
   return (
     <section id="latest-view" class="panel" hidden={hidden} data-results-stale={String(stale)}>
       <div class="toolbar">
@@ -72,18 +72,20 @@ export function Latest({ screen, stale, hidden }: { screen: Screen | null; stale
         <table class="stock-table">
           <thead>
             <tr>
-              {HEADS.map((head) => (
+              {heads.map((head) => (
                 <th key={head}>{head}</th>
               ))}
             </tr>
           </thead>
           <tbody id="latest-body">
-            {reply && settings && reply.picks.length ? (
+            {reply && settings && rank && reply.picks.length ? (
               reply.picks.map((pick) => (
                 <tr key={pick.symbol}>
                   <td>{pick.rank}</td>
                   <td>{pick.symbol}</td>
                   <td>{pick.name}</td>
+                  {/* The trail starts with the first sleeve that picked the stock. */}
+                  <td>{format(pick.ranking_value, rank.display(pick.steps[0]?.sleeve ?? 1))}</td>
                   <td>{pick.exchange}</td>
                   <td>{pick.sector || "Unknown"}</td>
                   <td>{format(pick.price, "number")}</td>
@@ -104,7 +106,7 @@ export function Latest({ screen, stale, hidden }: { screen: Screen | null; stale
               ))
             ) : (
               <tr>
-                <td colSpan={HEADS.length}>{reply ? "No stocks match these latest-date filters." : "No latest picks yet."}</td>
+                <td colSpan={heads.length}>{reply ? "No stocks match these latest-date filters." : "No latest picks yet."}</td>
               </tr>
             )}
           </tbody>
