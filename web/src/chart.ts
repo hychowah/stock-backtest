@@ -167,3 +167,16 @@ export function histogram(series: readonly Series[]): Histogram | null {
 export function normalCount(x: number, mean: number, stddev: number, n: number, width: number): number {
   return stddev > 0 ? ((n * width) / (stddev * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * ((x - mean) / stddev) ** 2) : 0;
 }
+
+/** Where each slice of a pie starts and ends, in percent of the circle, from
+ *  the slices' values and the total that they are parts of (the server's
+ *  gains or losses of the period): a slice's angle is its value's part of the
+ *  total. The total is above 0, since the slices are positive parts of it. */
+export function pieArcs(values: readonly number[], total: number): { start: number; end: number }[] {
+  let cursor = 0;
+  return values.map((value) => {
+    const start = cursor;
+    cursor += (value / total) * 100;
+    return { start, end: cursor };
+  });
+}

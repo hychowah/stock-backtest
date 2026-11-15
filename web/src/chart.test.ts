@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bandPath, dayTicks, dayTime, dollarTicks, evenTicks, histogram, linearScale, linePath, logAxis, nearest, normalCount } from "./chart.ts";
+import { bandPath, dayTicks, dayTime, dollarTicks, evenTicks, histogram, linearScale, linePath, logAxis, nearest, normalCount, pieArcs } from "./chart.ts";
 
 test("a linear scale puts its ends at the given places, and a flat range at the start", () => {
   const at = linearScale(-0.1, 0.3, 290, 30);
@@ -82,4 +82,12 @@ test("a normal curve peaks at its mean with the height of a histogram of that ma
   assert.ok(Math.abs(peak - (100 * 0.5) / (2 * Math.sqrt(2 * Math.PI))) < 1e-9);
   assert.ok(normalCount(3, 1, 2, 100, 0.5) < peak);
   assert.equal(normalCount(1, 1, 0, 100, 0.5), 0);
+});
+
+test("pie slices follow one another round the circle, each as wide as its part of the total", () => {
+  const arcs = pieArcs([0.03, 0.01, 0.01], 0.05);
+  [0, 60, 80].forEach((start, i) => assert.ok(Math.abs(arcs[i]!.start - start) < 1e-9));
+  assert.ok(Math.abs(arcs[0]!.end - 60) < 1e-9);
+  assert.ok(Math.abs(arcs[2]!.end - 100) < 1e-9);
+  assert.deepEqual(pieArcs([], 0.05), []);
 });

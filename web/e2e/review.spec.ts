@@ -126,6 +126,12 @@ test("the distribution, the statistics and the trial table show the trials, and 
   await page.locator("#robustness-measure").selectOption("excess_cagr");
   await expect(page.locator("#robustness-chart path[stroke-dasharray]")).toHaveCount(1);
   await expect(page.locator("#robustness-chart-note")).toContainText("Seed 7 · 12 complete trials.");
+  // Total return draws the paired SPY series too, with the server's mean and fitted curve.
+  const spyMean = trials.statistics.find((row) => row.statistic === "spy_total_return.mean")!.value as number;
+  await page.locator("#robustness-measure").selectOption("total_return");
+  await expect(page.locator("#robustness-measure option:checked")).toHaveText("Total return: strategy and SPY");
+  await expect(page.locator("#robustness-chart")).toContainText(`Paired SPY · mean ${percent(spyMean)}`);
+  await expect(page.locator("#robustness-chart path[stroke-dasharray]")).toHaveCount(2);
   const mean = trials.statistics.find((row) => row.statistic === "cagr.mean")!.value as number;
   await expect(page.locator("#robustness-distribution tr").first()).toContainText(percent(mean));
 
@@ -150,20 +156,32 @@ test("the trial table downloads as CSV with the reply's field names", async ({ p
 test("each tab remembers its scroll position", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 500 });
   await open(page, random.id);
+  // The page has its full height once the charts and tables have arrived.
   await expect(page.locator("#robustness-trials tr").first()).toBeVisible();
-  // A pointer click, as a reader makes it: it does not move the page first.
-  const press = async (name: string) => {
-    const box = (await page.locator(`#workspace-review-tabs >> text=${name}`).boundingBox())!;
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  };
+  await expect(page.locator("#curve-all-readout")).not.toBeEmpty();
+  await expect(page.locator("#robustness-chart rect[tabindex]").first()).toBeAttached();
+  // A pointer click, as a reader makes it: it does not move the page first. A click that
+  // a late change of the layout made miss is made again.
+  const show = (name: string, section: string) =>
+    expect(async () => {
+      const box = (await page.locator(`#workspace-review-tabs >> text=${name}`).boundingBox())!;
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", section, { timeout: 1000 });
+    }).toPass();
+  // The place where the reader leaves Overview is the one that must come back: the page
+  // may grow a little above it while its last reads arrive, and the browser then shifts it.
+  await page.evaluate(() => {
+    (window as unknown as { left?: number }).left = undefined;
+    document.addEventListener("click", () => ((window as unknown as { left?: number }).left ??= Math.round(scrollY)), { capture: true, once: true });
+  });
   await page.mouse.move(600, 400);
   await page.mouse.wheel(0, 900);
-  await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(900);
-  await press("Selection");
-  await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", "selection");
-  await press("Overview");
-  await expect(page.locator("#workspace-review")).toHaveAttribute("data-section", "overview");
-  await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBe(900);
+  await expect.poll(() => page.evaluate(() => Math.round(scrollY))).toBeGreaterThanOrEqual(900);
+  await show("Selection", "selection");
+  const left = await page.evaluate(() => (window as unknown as { left: number }).left);
+  expect(left).toBeGreaterThanOrEqual(900);
+  await show("Overview", "overview");
+  await expect.poll(() => page.evaluate(() => Math.round(scrollY)), { timeout: 10_000 }).toBe(left);
 });
 
 test("Explore of one trial equals the route, with the strategy's ranks as defaults", async ({ page, home }) => {
@@ -209,6 +227,10 @@ test("Explore of all trials equals the route and replaces the distribution until
   const mean = route.statistics.find((row) => row.statistic === "cagr.mean")!.value as number;
   await expect(page.locator("#robustness-mean")).toHaveText(percent(mean));
   await expect(page.locator("#robustness-scope")).toContainText(`Explore selection: ${route.start} → ${route.end} · ranks 1–2`);
+  await page.locator("#robustness-measure").selectOption("total_return");
+  const exploredSpy = route.statistics.find((row) => row.statistic === "spy_total_return.mean")!.value as number;
+  await expect(page.locator("#robustness-chart")).toContainText(`Paired SPY · mean ${percent(exploredSpy)}`);
+  await page.locator("#robustness-measure").selectOption("cagr");
   await expect(page.locator("#robustness-trials tr").first()).toContainText(percent(route.trials[0]!.cagr));
   await expect(page.locator("#workspace-headline")).toContainText(percent(original.statistics.find((row) => row.statistic === "cagr.median")!.value as number));
 

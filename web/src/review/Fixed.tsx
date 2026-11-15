@@ -3,10 +3,12 @@ import { PeriodBars } from "../charts/PeriodBars.tsx";
 import { Curve } from "../charts/Curve.tsx";
 import { client } from "../client.ts";
 import { useRead } from "../read.ts";
+import { Downloads } from "./Downloads.tsx";
 import { PeriodTable } from "./PeriodTable.tsx";
 
 /** Overview of a fixed schedule, which has one trial: the value of $1 day by
- *  day, then the return of each rebalance period as bars and as a table. */
+ *  day, then the return of each rebalance period as bars and as a table, and
+ *  their downloads. */
 export function Fixed({ run }: { run: RunRow }) {
   const periods = useRead(() => client.periods(run.id, 1), [run.id]);
   return (
@@ -24,6 +26,7 @@ export function Fixed({ run }: { run: RunRow }) {
           periods.state === "failed" && <p class="screen-message warning">{periods.failure.message}</p>
         )}
       </div>
+      {periods.state === "done" && <Downloads run={run} trial={1} periods={periods.value} />}
     </>
   );
 }

@@ -13,12 +13,13 @@ export type Tab = "overview" | "selection" | "returns" | "settings";
  *  "Inspect an original trial" changes it, and a fixed schedule has only
  *  trial 1. `period` is the period of that trial that Returns lists the
  *  holdings of, counting from 1. `sector` limits those holdings to one sector:
- *  undefined for all of them, null for the holdings without a sector.
+ *  undefined for all of them (a company without a sector has the sector
+ *  "Unavailable").
  *  The tabs read these four from here. Overview's trial choice is a draft in
  *  its own select until "Show stocks and period returns" sets `trial`; the
  *  Explore selection and the distribution measure belong to the page, not to
  *  this selection. */
-export type Selection = { tab: Tab; trial: number; period: number; sector: string | null | undefined };
+export type Selection = { tab: Tab; trial: number; period: number; sector: string | undefined };
 
 /** The selection of a result just opened: Overview, trial 1, period 1, no
  *  sector. */

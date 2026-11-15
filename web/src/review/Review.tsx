@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { RunRow } from "../api/RunRow.ts";
 import type { TrialsReply } from "../api/TrialsReply.ts";
+import { tune } from "../build/Build.tsx";
 import { client } from "../client.ts";
 import { headlineCells, measureLines, settingsLines, settingsOf } from "../describe.ts";
 import { placeInWords, since } from "../format.ts";
@@ -9,12 +10,13 @@ import { useNow, useRuns } from "../live.ts";
 import { useRead } from "../read.ts";
 import { go } from "../route.ts";
 import type { Measure } from "../charts/Distribution.tsx";
+import { coverageOf } from "./coverage.ts";
 import { Explore, type ExploredTrials } from "./Explore.tsx";
 import { Fixed } from "./Fixed.tsx";
 import { Random } from "./Random.tsx";
 import { ReturnsTab } from "./ReturnsTab.tsx";
 import { choose, type Choice, opening, type Selection, SelectionContext, type Tab, useSelection } from "./selection.ts";
-import { SelectionTab } from "./SelectionTab.tsx";
+import { SelectionTab, type SectorView } from "./SelectionTab.tsx";
 
 /** Result review of run `id`; null when no result is open. The page keeps the
  *  selection of the open result (selection.ts) while another workspace is
@@ -51,7 +53,9 @@ function Section({ visible, tab, children }: { visible: boolean; tab?: Tab; chil
   );
 }
 
-function Heading({ title, window }: { title: string; window?: string }) {
+/** The heading of the page; `tuned` (a complete run) adds the button that
+ *  copies the run's settings into Build strategy. */
+function Heading({ title, window, tuned }: { title: string; window?: string; tuned?: RunRow }) {
   return (
     <div class="workspace-review-heading">
       <div>
@@ -59,6 +63,11 @@ function Heading({ title, window }: { title: string; window?: string }) {
         <h1 id="workspace-result-title">{title}</h1>
         <p id="workspace-result-window">{window}</p>
       </div>
+      {tuned && (
+        <button type="button" id="workspace-edit-copy" onClick={() => tune(tuned)}>
+          Tune this strategy
+        </button>
+      )}
     </div>
   );
 }
@@ -210,7 +219,7 @@ function Settings({ run }: { run: RunRow }) {
           ))}
         </dl>
       </div>
-      <p class="hint">These are the original settings.</p>
+      <p class="hint">These are the original settings. Tune this strategy to build a new test.</p>
     </aside>
   );
 }
@@ -229,13 +238,14 @@ function Complete({ run }: { run: RunRow }) {
   const trials = useRead(() => client.trials(run.id), [run.id]);
   const [explored, setExplored] = useState<ExploredTrials | null>(null);
   const [measure, setMeasure] = useState<Measure>("cagr");
-  const reply = trials.state === "done" ? trials.value : null;
   const random = run.schedule.trials !== undefined;
+  const [sectorView, setSectorView] = useState<SectorView>({ scope: random ? "all" : "trial", placed: null });
+  const reply = trials.state === "done" ? trials.value : null;
   const first = reply?.trials[0];
 
   return (
     <>
-      <Heading title={run.name} window={first ? `${first.start} → ${first.end} · ${random ? "Random dates" : "Fixed schedule"}` : ""} />
+      <Heading tuned={run} title={run.name} window={first ? `${first.start} → ${first.end} · ${random ? "Random dates" : "Fixed schedule"}` : ""} />
       <dl id="workspace-headline" class="headline" aria-label="Headline of the original result">
         {reply &&
           headlineCells(run.schedule, reply).map((cell) => (
@@ -265,6 +275,7 @@ function Complete({ run }: { run: RunRow }) {
           </button>
         ))}
       </nav>
+      {reply && selection.tab === "selection" && <SelectionTab run={run} trials={reply} view={[sectorView, setSectorView]} />}
       <section id="custom-view" class="panel">
         <h2>Scheduled backtest</h2>
         <p id="schedule-message" aria-live="polite">
@@ -280,32 +291,28 @@ function Complete({ run }: { run: RunRow }) {
 
 function TabBody({ tab, run, trials, explored, measure }: { tab: Tab; run: RunRow; trials: TrialsReply; explored: ExploredTrials | null; measure: [Measure, (measure: Measure) => void] }) {
   if (tab === "overview") return run.schedule.trials !== undefined ? <Random run={run} trials={trials} explored={explored} measure={measure} /> : <Fixed run={run} />;
-  if (tab === "selection") return <SelectionTab run={run} trials={trials} />;
   if (tab === "returns") return <ReturnsTab run={run} trials={trials} />;
   return null;
 }
 
 /** The notes of the original result: the program that calculated it, and for
- *  a fixed schedule how many periods were short or empty and how long the
- *  strategy held cash first. */
+ *  a fixed schedule its coverage note (see coverageOf). The coverage of a
+ *  trial of random dates is under that trial's header on Returns. */
 function Recorded({ run, trials }: { run: RunRow; trials: TrialsReply }) {
   const trial = trials.trials[0];
   const outcome = run.outcome;
-  const coverage =
-    run.schedule.trials === undefined && trial
-      ? `${trial.short_periods} short periods; ${trial.empty_periods} empty periods. ` +
-        (trial.empty_periods ? "Empty periods hold cash at 0%; SPY keeps its period return. " : "") +
-        (trial.cash_days ? `Both strategy and paired SPY hold cash until ${trial.first_trade} (${trial.cash_days} days); CAGR uses the common window.` : "")
-      : "";
+  const coverage = run.schedule.trials === undefined && trial ? coverageOf(trial, outcome?.seconds) : "";
   return (
     <details id="workspace-recorded-context" class="how-it-works">
       <summary>Recorded coverage and notes</summary>
       <p id="result-producer" class="hint" aria-live="polite">
         {outcome ? `Calculated by ${outcome.program} on prepared data generation ${outcome.generation}, as of ${outcome.as_of}.` : "Producer not recorded in this result."}
       </p>
-      <p id="schedule-coverage" class="hint" hidden={!coverage}>
-        {coverage}
-      </p>
+      {coverage && (
+        <p id="schedule-coverage" class="hint">
+          {coverage}
+        </p>
+      )}
     </details>
   );
 }

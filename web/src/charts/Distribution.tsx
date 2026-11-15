@@ -5,13 +5,13 @@ import { format } from "../format.ts";
 import { statistic } from "../review/statistics.ts";
 import { ScrollChart } from "./ScrollChart.tsx";
 
-/** What the distribution shows: each trial's CAGR (with its paired SPY),
- *  its total return, or its CAGR difference to SPY. */
+/** What the distribution shows: each trial's CAGR or total return (each with
+ *  its paired SPY), or its CAGR difference to SPY. */
 export type Measure = "cagr" | "total_return" | "excess_cagr";
 
 export const MEASURE_OPTIONS: { value: Measure; label: string }[] = [
   { value: "cagr", label: "CAGR: strategy and SPY" },
-  { value: "total_return", label: "Total return: strategy" },
+  { value: "total_return", label: "Total return: strategy and SPY" },
   { value: "excess_cagr", label: "CAGR difference vs SPY" },
 ];
 
@@ -27,19 +27,24 @@ const SPY = "#557ca5";
  *  note under the chart. */
 export function Distribution({ measure, trials, statistics, seed }: { measure: Measure; trials: TrialRow[]; statistics: StatisticRow[]; seed?: number }) {
   const complete = trials.filter((trial) => Number.isFinite(trial.cagr));
-  const named = (name: string, field: keyof TrialRow, stats: string) => ({
+  const named = (name: string, values: (trial: TrialRow) => number, stats: string) => ({
     name,
     color: name === "Paired SPY" ? SPY : STRATEGY,
-    values: complete.map((trial) => trial[field]).filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
+    values: complete.map(values).filter(Number.isFinite),
     mean: statistic(statistics, stats + ".mean"),
     stddev: statistic(statistics, stats + ".stddev"),
   });
+  const field = (name: keyof TrialRow) => (trial: TrialRow) => trial[name] as number;
+  // SPY's total return is the trial's `spy_growth - 1`: the same change of
+  // unit that the server makes for the strategy's `total_return`. Its mean
+  // and standard deviation (`spy_total_return.*`) are the server's.
+  const spyTotalReturn = (trial: TrialRow) => trial.spy_growth - 1;
   const series =
     measure === "cagr"
-      ? [named("Strategy", "cagr", "cagr"), named("Paired SPY", "spy_cagr", "spy_cagr")]
+      ? [named("Strategy", field("cagr"), "cagr"), named("Paired SPY", field("spy_cagr"), "spy_cagr")]
       : measure === "total_return"
-        ? [named("Strategy", "total_return", "total_return")]
-        : [named("Strategy − SPY", "excess_cagr", "excess_cagr")];
+        ? [named("Strategy", field("total_return"), "total_return"), named("Paired SPY", spyTotalReturn, "spy_total_return")]
+        : [named("Strategy − SPY", field("excess_cagr"), "excess_cagr")];
   const write = (value: number) => format(value, measure === "excess_cagr" ? "percentage_points" : "percent");
   const bins = histogram(series);
   const note = `Seed ${seed ?? "not recorded"} · ${statistic(statistics, "valid") ?? "—"} complete trials.` + (series.every((s) => !s.stddev) ? " Each series has identical returns; no bell curves are fitted." : "");
