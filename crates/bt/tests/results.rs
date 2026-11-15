@@ -1,7 +1,8 @@
 //! The read routes of `bt serve`: each result route answers the rows that
 //! `bt export tables` (and `bt export holdings`) write for the same result
 //! file, which the proof tests compare with the oracle's; explore, catalog,
-//! screen and data status answer what the `bt` commands print.
+//! screen and data status answer what the `bt` commands print; one trial's
+//! sector weights by period give that trial's sector shares.
 
 mod common;
 
@@ -109,5 +110,32 @@ fn the_read_routes_answer_the_exported_rows_and_the_commands_replies() {
     let (status, reply) = server.send("POST", "/api/screen", Some(&json!({"strategy": {}, "market": "hk"})), None);
     assert_eq!(status, 400, "{reply}");
     assert!(reply["error"]["place"].as_str().unwrap().starts_with("strategy"), "{reply}");
+    assert!(server.terminate());
+}
+
+#[test]
+fn one_trials_sector_weights_by_period_average_to_its_sector_shares() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let strategy = dir.path().join("sleeves.json");
+    std::fs::copy(fixtures().join("cases/builtins/hk-sleeves/strategy.json"), &strategy).unwrap();
+    let (out, home_arg) = (dir.path().join("out"), path(&home));
+    let schedule = ["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--trials", "2", "--seed", "852"];
+    bt_ok(&[&["run", path(&strategy)][..], &schedule, &["--out", path(&out), "--home", home_arg]].concat());
+    let server = serve(&home);
+    bt_ok(&["save", path(&out.join("sleeves.sqlite")), "--name", "sleeves", "--home", home_arg]);
+    let all = server.get("/api/runs/1/sectors");
+    assert_eq!(all.as_object().unwrap().keys().collect::<Vec<_>>(), ["spread", "trials"]);
+    for trial in 1..=2 {
+        let periods = server.get(&format!("/api/runs/1/periods?trial={trial}")).as_array().unwrap().len() as f64;
+        let weights = server.get(&format!("/api/runs/1/sectors?trial={trial}"))["weights"].as_array().unwrap().clone();
+        let shares: Vec<&Value> = all["trials"].as_array().unwrap().iter().filter(|s| s["trial"] == trial).collect();
+        assert!(!shares.is_empty());
+        for share in shares {
+            let held: Vec<f64> = weights.iter().filter(|w| w["sector"] == share["sector"]).map(|w| w["weight"].as_f64().unwrap()).collect();
+            assert_eq!(held.len() as u64, share["present"].as_u64().unwrap(), "{share}");
+            assert_eq!(held.iter().sum::<f64>() / periods, share["mean"].as_f64().unwrap(), "{share}");
+        }
+    }
     assert!(server.terminate());
 }

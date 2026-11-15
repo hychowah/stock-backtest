@@ -4,6 +4,7 @@
 use crate::http::{App, Body, Failure, blocking};
 use axum::routing::post;
 use axum::{Json, Router};
+use engine::names::{Display, UnitId};
 use engine::{Fault, Formula, Picture, Strategy};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
@@ -42,12 +43,11 @@ pub enum FormulaReply {
 #[ts(export)]
 pub struct CheckedFormula {
     pub canonical: String,
-    /// The unit's id.
-    pub unit: &'static str,
+    pub unit: UnitId,
     /// The display given, or the unit's default when it is none of the
     /// unit's; and the displays the unit allows.
-    pub display: &'static str,
-    pub displays: Vec<&'static str>,
+    pub display: Display,
+    pub displays: Vec<Display>,
     /// What the page draws to show how the text was read.
     pub picture: Picture,
 }
@@ -62,9 +62,9 @@ async fn check(Body(request): Body<FormulaRequest>) -> Result<Json<FormulaReply>
                 let display = request.display.as_deref().and_then(|d| unit.displays().iter().copied().find(|&shown| shown == d));
                 FormulaReply::Checked(CheckedFormula {
                     canonical: formula.text().to_string(),
-                    unit: unit.id(),
-                    display: display.unwrap_or(formula.display()),
-                    displays: unit.displays().to_vec(),
+                    unit: UnitId::of(unit.id()),
+                    display: Display::of(display.unwrap_or(formula.display())),
+                    displays: unit.displays().iter().map(|&d| Display::of(d)).collect(),
                     picture: formula.picture(),
                 })
             }

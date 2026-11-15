@@ -26,10 +26,12 @@
 //!   text, shown in the default display of its unit.
 //! - The canonical form is compact JSON: each name as the list spells it,
 //!   each formula as its canonical text, each threshold as its decimal text
-//!   expanded without an exponent, the keys in the order above, the
-//!   variables in file order, each with its display. A formula step whose
-//!   text would read as a whole name of another meaning is printed in
-//!   parentheses.
+//!   expanded without an exponent, the keys in the order above, and the
+//!   variables that the steps read, directly or through other variables, in
+//!   file order, each with its display. A formula step whose text would
+//!   read as a whole name of another meaning is printed in parentheses. A
+//!   variable that no step reads changes neither the canonical form nor the
+//!   identity.
 
 use crate::Error;
 use crate::formula::Formula;
@@ -40,7 +42,7 @@ use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use ts_rs::TS;
 
@@ -53,6 +55,8 @@ const MAX_EXPANDED: usize = 1024;
 #[derive(Debug)]
 pub struct Strategy {
     variables: Vec<Arc<Formula>>,
+    /// The variables that the steps read, directly or through others.
+    used: Vec<Arc<Formula>>,
     sleeves: Vec<Sleeve>,
     canonical: String,
 }
@@ -361,9 +365,16 @@ impl Strategy {
         }
     }
 
-    /// The file's variables, in file order.
+    /// The file's variables, in file order, whether a step reads them or
+    /// not.
     pub fn variables(&self) -> &[Arc<Formula>] {
         &self.variables
+    }
+
+    /// The variables that the steps read, directly or through other
+    /// variables, in file order: the ones the canonical form keeps.
+    pub(crate) fn used(&self) -> &[Arc<Formula>] {
+        &self.used
     }
 
     /// The canonical form: compact JSON that names each source as the list
@@ -376,7 +387,7 @@ impl Strategy {
     /// sources: a name, or a formula's canonical text, in parentheses when
     /// it would read as a whole name of another meaning.
     pub(crate) fn written(&self, source: &Source) -> String {
-        written(source, &self.variables)
+        written(source, &self.used)
     }
 
     /// The SHA-256 of the canonical form, in lower-case hex.
@@ -454,6 +465,20 @@ pub enum FileStep<'a> {
     },
 }
 
+/// The variables that the steps read, directly or through other variables,
+/// in file order.
+fn used(sleeves: &[Sleeve], variables: &[Arc<Formula>]) -> Vec<Arc<Formula>> {
+    let mut read = BTreeSet::new();
+    for step in sleeves.iter().flat_map(|s| &s.steps) {
+        if let Source::Formula(formula) = step.source() {
+            read.extend(formula.name());
+            read.extend(formula.uses());
+        }
+    }
+    variables.iter().filter(|v| v.name().is_some_and(|name| read.contains(name))).cloned().collect()
+}
+
+/// The canonical form of `sleeves` with `variables`, the ones they read.
 fn canonical<'a>(sleeves: &'a [Sleeve], variables: &'a [Arc<Formula>]) -> String {
     let step = |step: &'a Step| -> FileStep<'a> {
         match step {
@@ -585,8 +610,9 @@ impl Reader {
             }
             sleeves.push(Sleeve { name, steps });
         }
-        let canonical = canonical(&sleeves, &variables);
-        Ok(Strategy { variables, sleeves, canonical })
+        let used = used(&sleeves, &variables);
+        let canonical = canonical(&sleeves, &used);
+        Ok(Strategy { variables, used, sleeves, canonical })
     }
 
     /// The file's variables in file order, each read with the ones above it.

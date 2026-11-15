@@ -13,11 +13,16 @@
 //!   field there is an error.
 //! - Matching ignores case and repeated spaces; the list's spelling is the
 //!   canonical one.
+//! - Each name has a `category`, the heading it is listed under. The replies
+//!   give a display as [`Display`] and a unit as [`UnitId`] (`Unit` in the
+//!   website's types): the lists of every display and unit that a name, a
+//!   built-in or a formula unit gives.
 
 use crate::formula::Measure;
 use market_data::builtins::BUILTINS;
 use market_data::parameters::PARAMETERS;
-use serde::Serialize;
+use serde::de::IntoDeserializer;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// One source name.
@@ -68,6 +73,57 @@ pub enum SourceKind {
     Formula,
 }
 
+/// Every display a value can be shown in and a threshold written in: the
+/// displays of the names, of the built-ins and of each formula unit. The
+/// replies give a display as this type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum Display {
+    Number,
+    Multiple,
+    Percent,
+    PercentagePoints,
+    Usd,
+    UsdMillion,
+    UsdPerShare,
+    Shares,
+    Text,
+}
+
+/// Every unit of a value: the formula units and `text` for sector and
+/// exchange. The replies give a unit as this type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "Unit")]
+pub enum UnitId {
+    #[serde(rename = "scalar")]
+    Scalar,
+    #[serde(rename = "USD")]
+    Usd,
+    #[serde(rename = "USD/share")]
+    UsdPerShare,
+    #[serde(rename = "share")]
+    Share,
+    #[serde(rename = "text")]
+    Text,
+}
+
+impl Display {
+    /// The display spelled `id`. Every display the engine and the built-ins
+    /// give is one.
+    pub fn of(id: &str) -> Display {
+        Display::deserialize(id.into_deserializer()).unwrap_or_else(|_: serde::de::value::Error| panic!("{id:?} is not a display"))
+    }
+}
+
+impl UnitId {
+    /// The unit spelled `id`. Every unit the engine and the built-ins give
+    /// is one.
+    pub fn of(id: &str) -> UnitId {
+        UnitId::deserialize(id.into_deserializer()).unwrap_or_else(|_: serde::de::value::Error| panic!("{id:?} is not a unit"))
+    }
+}
+
 impl Kind {
     pub fn id(&self) -> SourceKind {
         match self {
@@ -108,6 +164,14 @@ impl Name {
             Kind::Field(field) if field.is_text() => "text",
             Kind::Field(_) => "usd",
         }
+    }
+
+    /// The vocabulary's heading of the name ([`HEADINGS`]).
+    pub fn category(&self) -> &'static str {
+        let at = |name: &Name| NAMES.iter().position(|n| std::ptr::eq(n, name)).expect("a name of the list");
+        let here = at(self);
+        let heading = HEADINGS.iter().rev().find(|(first, _)| at(find(first).expect("a heading's first name")) <= here);
+        heading.expect("the first name has a heading").1
     }
 
     /// Whether only a whole step can use the name: a built-in without a
@@ -231,6 +295,21 @@ const fn field(name: &'static str, field: Field) -> Name {
     Name { name, kind: Kind::Field(field) }
 }
 
+/// The headings of [`NAMES`], each with the first name under it: the
+/// vocabulary's headings, then "Built-in values" for the built-in that the
+/// vocabulary does not name and "Size and listing" for the fields.
+const HEADINGS: [(&str, &str); 9] = [
+    ("Revenue", "Income statement"),
+    ("Cash and equivalents", "Balance sheet"),
+    ("Operating cash flow", "Cash flow"),
+    ("Share price", "Market"),
+    ("P/E", "Valuation"),
+    ("Operating margin", "Margins and returns"),
+    ("Current ratio", "Debt and liquidity"),
+    ("Free cash flow", "Built-in values"),
+    ("Sector", "Size and listing"),
+];
+
 /// The list, in the vocabulary's order, then "Free cash flow" and the fields.
 /// A linked name reads its first linked built-in.
 pub static NAMES: [Name; 106] = [
@@ -349,3 +428,22 @@ pub static NAMES: [Name; 106] = [
     field("Market cap in dollars", Field::MarketCap),
     field("Enterprise value in dollars", Field::EnterpriseValue),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::formula::UNITS;
+
+    /// Every display and unit that a name, a built-in or a formula unit
+    /// gives is in the lists the replies use.
+    #[test]
+    fn every_display_and_unit_is_listed() {
+        let names = NAMES.iter().map(|n| (n.display(), n.unit()));
+        let builtins = BUILTINS.iter().map(|b| (b.display, b.unit));
+        let units = UNITS.into_iter().flat_map(|u| u.displays().iter().copied().chain([u.default_display()]).map(move |d| (d, u.id())));
+        for (display, unit) in names.chain(builtins).chain(units) {
+            Display::of(display);
+            UnitId::of(unit);
+        }
+    }
+}

@@ -1,6 +1,7 @@
 //! `bt serve`: one server per home, the origin rule and the JSON errors, the
-//! run list and the queue over HTTP, Stop, recovery after a shutdown or a
-//! crash, and `bt run` and `bt save` beside a server that runs a queue.
+//! static files' cache rule, the run list and the queue over HTTP, Stop,
+//! recovery after a shutdown or a crash, and `bt run` and `bt save` beside a
+//! server that runs a queue.
 
 mod common;
 
@@ -122,6 +123,19 @@ fn a_server_answers_refuses_other_origins_and_a_second_server_and_exits_on_sigte
 }
 
 #[test]
+fn a_static_file_is_checked_again_at_each_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(home.join("web")).unwrap();
+    std::fs::write(home.join("web/index.html"), "<p>the page</p>").unwrap();
+    let server = serve(&home);
+    let response = ureq::get(format!("{}/", server.url)).call().unwrap();
+    assert_eq!(response.headers()["cache-control"], "no-cache");
+    assert!(response.headers().contains_key("etag"), "{:?}", response.headers());
+    assert!(server.terminate());
+}
+
+#[test]
 fn an_added_run_completes_with_the_headline_of_bt_run_with_its_seed() {
     let dir = tempfile::tempdir().unwrap();
     let home = prepared(dir.path());
@@ -133,7 +147,7 @@ fn an_added_run_completes_with_the_headline_of_bt_run_with_its_seed() {
     assert_eq!(done["outcome"]["headline"], headline(&bt_run(dir.path(), &home, schedule)));
     let checked = &bt_ok(&["check", path(&dir.path().join("rank.json"))])["files"][0];
     assert_eq!(done["strategy"], serde_json::from_str::<Value>(checked["canonical"].as_str().unwrap()).unwrap());
-    assert_eq!(done["description"], json!({"variables": checked["variables"], "sleeves": checked["sleeves"]}));
+    assert_eq!(done["description"], json!({"variables": checked["variables"], "sleeves": checked["sleeves"], "ranks": checked["ranks"]}));
     let listed = &server.get("/api/runs")["runs"][0];
     assert!(listed.get("strategy").is_none() && listed.get("description").is_none(), "the list leaves out the strategy");
     assert!(result(&home, id).is_file());

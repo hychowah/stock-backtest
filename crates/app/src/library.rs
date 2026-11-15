@@ -17,7 +17,8 @@ use crate::store::missing;
 use axum::extract::State;
 use axum::routing::{get, put};
 use axum::{Json, Router};
-use engine::{Formula, Strategy, names};
+use engine::names::{self, Display};
+use engine::{Formula, Strategy};
 use market_data::Error;
 use rusqlite::Transaction;
 use serde::{Deserialize, Serialize};
@@ -32,7 +33,7 @@ pub struct Variable {
     pub name: String,
     /// The canonical formula text.
     pub formula: String,
-    pub display: String,
+    pub display: Display,
     pub favourite: bool,
     /// The entries its formula names, directly or through others, in
     /// library order: what a strategy file needs beside it.
@@ -260,7 +261,7 @@ impl Library {
             id: row.id,
             name: row.name.clone(),
             formula: formula.text().to_string(),
-            display: formula.display().to_string(),
+            display: Display::of(formula.display()),
             favourite: row.favourite,
             uses,
         }

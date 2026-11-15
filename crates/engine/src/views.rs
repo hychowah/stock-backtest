@@ -9,7 +9,8 @@
 //! - [`growth`]: each trial's growth of 1 by day, and [`band`] over the
 //!   trials (`result_curves`).
 //! - [`sectors`]: each trial's sector weights, and [`sector_spread`] over the
-//!   trials (`result_sectors`).
+//!   trials (`result_sectors`); [`sector_weights`]: the weights of each
+//!   period, which [`sectors`] totals.
 //! - [`contributions`]: each period's equal-weight attribution
 //!   (`contributions.js`): the top holdings with their contributions, which
 //!   the exported [`ContributionRow`] joins into a text of symbols.
@@ -194,8 +195,36 @@ pub struct SectorShare {
     pub present: u32,
 }
 
+/// One sector's weight in one period: its holdings / the period's holdings.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct SectorWeight {
+    pub period: u32,
+    pub sector: String,
+    pub weight: f64,
+}
+
 /// Each trial's sectors, in trial order; a trial's in name order.
 pub fn sectors(file: &ResultFile) -> Result<Vec<Vec<SectorShare>>, Error> {
+    weigh(file, |_, _, _| {})
+}
+
+/// The weight of each sector that a period holds, for every period of the
+/// file's trials: in period order, then sector name order. A route reads it
+/// from a file limited to one trial ([`ResultFile::only`]).
+pub fn sector_weights(file: &ResultFile) -> Result<Vec<SectorWeight>, Error> {
+    let mut weights = Vec::new();
+    weigh(file, |period, sector, weight| {
+        if weight > 0.0 {
+            weights.push(SectorWeight { period, sector: sector.to_string(), weight });
+        }
+    })?;
+    Ok(weights)
+}
+
+/// [`sectors`], which also gives `each` the period, the sector and the
+/// weight of each sector held in that period or an earlier one of its trial.
+fn weigh(file: &ResultFile, mut each: impl FnMut(u32, &str, f64)) -> Result<Vec<Vec<SectorShare>>, Error> {
     let (periods, holdings) = (file.periods()?, file.holdings()?);
     let books = by_period(&periods, &holdings, |h: &HoldingRow| (h.trial, h.period));
     let mut out = Vec::new();
@@ -216,6 +245,7 @@ pub fn sectors(file: &ResultFile) -> Result<Vec<Vec<SectorShare>>, Error> {
             }
             for (name, (total, minimum, maximum, present)) in &mut found {
                 let weight = counts.get(name).map_or(0.0, |&n| f64::from(n) / f64::from(period.names));
+                each(period.period, name, weight);
                 // Python's min and max keep the first of equal values.
                 *minimum = if weight < *minimum { weight } else { *minimum };
                 *maximum = if weight > *maximum { weight } else { *maximum };

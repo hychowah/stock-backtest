@@ -9,7 +9,7 @@ use crate::results::{self, ResultFile};
 use crate::statistics;
 use crate::names;
 use crate::run::Screened;
-use crate::names::{Field, SourceKind};
+use crate::names::{Display, Field, SourceKind, UnitId};
 use crate::strategy::{self, Source, Step, Test};
 use crate::formula;
 use crate::views::{self, ContributionRow, ExploreReply, JoinedHolding, Selection, SourceValues};
@@ -391,9 +391,13 @@ pub struct Checked {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct Description {
-    /// In file order.
+    /// The variables that the steps read, in file order.
     pub variables: Vec<DescribedVariable>,
     pub sleeves: Vec<DescribedSleeve>,
+    /// The first and last rank a period's holdings can have: the last Rank
+    /// step's of one sleeve; of several, 1 to the sum of the sizes of their
+    /// last Rank steps ([`Strategy::ranks`]).
+    pub ranks: (u32, u32),
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -401,8 +405,8 @@ pub struct DescribedVariable {
     pub name: String,
     /// The canonical formula text.
     pub formula: String,
-    pub unit: &'static str,
-    pub display: &'static str,
+    pub unit: UnitId,
+    pub display: Display,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -417,8 +421,8 @@ pub struct DescribedSleeve {
 pub struct DescribedStep {
     pub step: StepKind,
     pub source: DescribedSource,
-    pub unit: &'static str,
-    pub display: &'static str,
+    pub unit: UnitId,
+    pub display: Display,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub stored: Option<f64>,
@@ -448,13 +452,13 @@ pub fn check(file: &str, strategy: &Strategy) -> Checked {
 /// The description of a strategy's variables and steps.
 pub fn describe(strategy: &Strategy) -> Description {
     let variables = strategy
-        .variables()
+        .used()
         .iter()
         .map(|v| DescribedVariable {
             name: v.name().expect("a variable has a name").to_string(),
             formula: v.text().to_string(),
-            unit: v.unit().id(),
-            display: v.display(),
+            unit: UnitId::of(v.unit().id()),
+            display: Display::of(v.display()),
         })
         .collect();
     let step = |step: &Step| {
@@ -467,8 +471,8 @@ pub fn describe(strategy: &Strategy) -> Description {
         DescribedStep {
             step,
             source: DescribedSource { kind: source.kind(), name: strategy.written(source) },
-            unit: source.unit(),
-            display: source.display(),
+            unit: UnitId::of(source.unit()),
+            display: Display::of(source.display()),
             stored,
         }
     };
@@ -477,7 +481,7 @@ pub fn describe(strategy: &Strategy) -> Description {
         .iter()
         .map(|sleeve| DescribedSleeve { name: sleeve.name.clone(), steps: sleeve.steps.iter().map(step).collect() })
         .collect();
-    Description { variables, sleeves }
+    Description { variables, sleeves, ranks: strategy.ranks() }
 }
 
 /// What a strategy file can write, and the market's text values.
@@ -507,8 +511,11 @@ pub struct CatalogName {
     pub name: &'static str,
     /// `built-in`, `input`, `measure` or `field`.
     pub kind: SourceKind,
-    pub unit: &'static str,
-    pub display: &'static str,
+    /// The vocabulary's heading of the name, such as `Income statement`;
+    /// `Size and listing` for the fields.
+    pub category: &'static str,
+    pub unit: UnitId,
+    pub display: Display,
     /// Only a whole step can use the name, not a formula.
     pub step_only: bool,
 }
@@ -523,9 +530,9 @@ pub struct Form {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct CatalogUnit {
-    pub unit: &'static str,
-    pub displays: &'static [&'static str],
-    pub default: &'static str,
+    pub unit: UnitId,
+    pub displays: Vec<Display>,
+    pub default: Display,
 }
 
 /// The limits of a strategy file and of a formula.
@@ -557,8 +564,9 @@ pub fn catalog(home: &Home, market: Market) -> Result<CatalogReply, Error> {
             .map(|n| CatalogName {
                 name: n.name,
                 kind: n.kind.id(),
-                unit: n.unit(),
-                display: n.display(),
+                category: n.category(),
+                unit: UnitId::of(n.unit()),
+                display: Display::of(n.display()),
                 step_only: n.step_only(),
             })
             .collect(),
@@ -566,7 +574,11 @@ pub fn catalog(home: &Home, market: Market) -> Result<CatalogReply, Error> {
         operators: forms(formula::operators()),
         units: formula::UNITS
             .iter()
-            .map(|&u| CatalogUnit { unit: u.id(), displays: u.displays(), default: u.default_display() })
+            .map(|&u| CatalogUnit {
+                unit: UnitId::of(u.id()),
+                displays: u.displays().iter().map(|&d| Display::of(d)).collect(),
+                default: Display::of(u.default_display()),
+            })
             .collect(),
         limits: Limits {
             literal: strategy::MAX_LITERAL,

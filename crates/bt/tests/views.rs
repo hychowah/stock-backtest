@@ -1,6 +1,7 @@
 //! `bt explore`: its argument rules, and a selection of whole trials that
 //! gives the stored results; `bt export holdings`: a column for each numeric
-//! source of the steps; `bt catalog`: a name and the market's sectors.
+//! source of the steps; `bt catalog`: a name and the market's sectors, and
+//! the heading of each name.
 
 mod common;
 
@@ -70,4 +71,32 @@ fn explore_holdings_and_the_catalog_read_a_run_and_its_market() {
     let fcf = catalog["names"].as_array().unwrap().iter().find(|n| n["name"] == "Free cash flow").unwrap();
     assert_eq!((&fcf["step_only"], &fcf["unit"]), (&json!(true), &json!("USD")), "{fcf}");
     assert_eq!(catalog["sectors"], json!(["Financial Services", "Industrials", "Real Estate", "Utilities"]));
+}
+
+#[test]
+fn the_catalog_gives_each_name_the_heading_it_is_listed_under() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let (catalog, success) = bt(&["catalog", "--market", "us", "--home", path(&home)]);
+    assert!(success, "{catalog}");
+    let names = catalog["names"].as_array().unwrap();
+    let heading = |name: &str| names.iter().find(|n| n["name"] == name).unwrap()["category"].clone();
+    let expected = [
+        ("Revenue", "Income statement"),
+        ("Diluted EPS", "Income statement"),
+        ("Net debt", "Balance sheet"),
+        ("CapEx", "Cash flow"),
+        ("Treasury 10 year yield", "Market"),
+        ("Market cap", "Market"),
+        ("P/E", "Valuation"),
+        ("Turnover rate 1-week average", "Valuation"),
+        ("Gross margin", "Margins and returns"),
+        ("Debt/assets", "Debt and liquidity"),
+        ("Free cash flow", "Built-in values"),
+        ("Sector", "Size and listing"),
+        ("Enterprise value in dollars", "Size and listing"),
+    ];
+    for (name, category) in expected {
+        assert_eq!(heading(name), category, "{name}");
+    }
 }

@@ -94,10 +94,10 @@ bt catalog --market us --home HOME_DIR
 The reply is one JSON document. A row of `names`:
 
 ```text
-{"name": "Market cap", "kind": "built-in", "unit": "USD", "display": "usd_million", "step_only": false}
+{"name": "Market cap", "kind": "built-in", "category": "Market", "unit": "USD", "display": "usd_million", "step_only": false}
 ```
 
-The reply has `names`, one row like this for each source name: `kind` is `built-in`, `input`, `measure` or `field`, `display` is the display of a threshold, and `step_only` is described above. It also has `functions` and `operators` (how to write a formula), `units` (the displays that each formula unit allows, and its default), `limits` (the largest sizes the program accepts), and `sectors` and `exchanges` (the text values of this market's companies). To list names in a script, read the JSON, for example `[n["name"] for n in catalog["names"] if n["kind"] == "built-in"]`.
+The reply has `names`, one row like this for each source name: `kind` is `built-in`, `input`, `measure` or `field`, `category` is the heading the name is listed under (such as `Income statement` or `Valuation`, and `Size and listing` for the fields), `display` is the display of a threshold, and `step_only` is described above. It also has `functions` and `operators` (how to write a formula), `units` (the displays that each formula unit allows, and its default), `limits` (the largest sizes the program accepts), and `sectors` and `exchanges` (the text values of this market's companies). To list names in a script, read the JSON, for example `[n["name"] for n in catalog["names"] if n["kind"] == "built-in"]`.
 
 ## Checking a file
 
@@ -105,7 +105,7 @@ The reply has `names`, one row like this for each source name: `kind` is `built-
 bt check value.json two.json
 ```
 
-`bt check` reads strategy files without market data. For each file it prints `canonical` (the compact form), `identity` (the SHA-256 of the canonical form: two files that mean the same have the same identity), `variables`, and for each sleeve its steps. A step shows its `source` (`kind` and the name as the catalog spells it), `unit`, `display` and, for a number Filter, `stored`, the threshold as the program compares it. For a number Filter of `value.json` it prints:
+`bt check` reads strategy files without market data. For each file it prints `canonical` (the compact form), `identity` (the SHA-256 of the canonical form: two files that mean the same have the same identity), `variables`, for each sleeve its steps, and `ranks`, the first and last rank that a period's holdings can have (`[1, 3]` for the first strategy on this page). The canonical form and `variables` keep only the variables that the steps read, directly or through other variables: a variable that no step reads changes neither the canonical form nor the identity. A run stores the canonical form. A step shows its `source` (`kind` and the name as the catalog spells it), `unit`, `display` and, for a number Filter, `stored`, the threshold as the program compares it. For a number Filter of `value.json` it prints:
 
 ```text
 {"step": "filter", "source": {"kind": "field", "name": "Market cap in dollars"}, "unit": "USD", "display": "usd", "stored": 1000000000.0}
@@ -209,7 +209,7 @@ bt explore out/pe-30.sqlite --trial 1 --periods 2-5 --ranks 1-2
 bt screen value.json --market us --home HOME_DIR
 ```
 
-`bt screen` selects with the strategy file on the latest session of the market. The reply has `day`, `identity`, `description` (the `variables` and `sleeves` that `bt check` prints) and `picks`. Each pick has `rank`, `symbol`, `name`, `sector`, the candidate's other fields as a `holdings` row names them (`exchange`, `candidate_rank`, `fiscal`, `market_cap`, `enterprise_value`, `ebitda`, `ebitda_yield`, `ev_ebitda` and `spread`), `ranking_value` and `steps`: for each step, its `value` and, for a Rank step, its `step_rank`.
+`bt screen` selects with the strategy file on the latest session of the market. The reply has `day`, `identity`, `description` (the `variables`, `sleeves` and `ranks` that `bt check` prints) and `picks`. Each pick has `rank`, `symbol`, `name`, `sector`, the candidate's other fields as a `holdings` row names them (`exchange`, `candidate_rank`, `fiscal`, `market_cap`, `enterprise_value`, `ebitda`, `ebitda_yield`, `ev_ebitda` and `spread`), `ranking_value` and `steps`: for each step, its `value` and, for a Rank step, its `step_rank`.
 
 ### Cross-section
 

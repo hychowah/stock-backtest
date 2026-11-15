@@ -2,9 +2,10 @@
 //! views. Their rows are those of `bt export tables`, without `case`, except
 //! that the holdings are those of `bt export holdings` (with their `source:`
 //! fields), the sector spread is the `sectors` rows of trial `all` without
-//! that trial, and an attribution lists its top holdings. The page writes
-//! its CSV files from these rows. A route about one trial reads only that
-//! trial's rows.
+//! that trial, an attribution lists its top holdings, and one trial's
+//! sectors are the weights of each period ([`views::sector_weights`]). The
+//! page writes its CSV files from these rows. A route about one trial reads
+//! only that trial's rows.
 
 use crate::http::{App, Failure, Id, blocking};
 use axum::extract::rejection::QueryRejection;
@@ -13,7 +14,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 use engine::results::{PeriodRow, ResultFile, StepRow, TrialRow};
 use engine::views::{
-    self, Attribution, BandRow, ExploreReply, GrowthRow, JoinedHolding, SectorShare, SectorSpread, Selection, StatisticRow,
+    self, Attribution, BandRow, ExploreReply, GrowthRow, JoinedHolding, SectorShare, SectorSpread, SectorWeight, Selection,
+    StatisticRow,
 };
 use market_data::Error;
 use serde::Serialize;
@@ -58,12 +60,14 @@ pub enum CurveReply {
     Growth(Vec<GrowthRow>),
 }
 
-/// Each trial's sector shares, and the spread over all trials.
+/// Each trial's sector shares and the spread over all trials, or one
+/// trial's `weights`: each period's weight of each sector it holds.
 #[derive(Debug, Serialize, TS)]
+#[serde(untagged)]
 #[ts(export)]
-pub struct SectorsReply {
-    pub trials: Vec<SectorShare>,
-    pub spread: Vec<SectorSpread>,
+pub enum SectorsReply {
+    All { trials: Vec<SectorShare>, spread: Vec<SectorSpread> },
+    Trial { weights: Vec<SectorWeight> },
 }
 
 type Reply<T> = Result<Json<T>, Failure>;
@@ -109,10 +113,16 @@ async fn curve(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Curve
     .await
 }
 
-async fn sectors(State(app): State<App>, Id(id): Id) -> Reply<SectorsReply> {
-    read(app, id, None, |file| {
-        let trials = views::sectors(&file)?;
-        Ok(SectorsReply { spread: views::sector_spread(&trials), trials: trials.concat() })
+async fn sectors(State(app): State<App>, Id(id): Id, query: Values) -> Reply<SectorsReply> {
+    let trial = optional(&query?.0, "trial")?;
+    read(app, id, trial, move |file| {
+        Ok(match trial {
+            None => {
+                let trials = views::sectors(&file)?;
+                SectorsReply::All { spread: views::sector_spread(&trials), trials: trials.concat() }
+            }
+            Some(_) => SectorsReply::Trial { weights: views::sector_weights(&file)? },
+        })
     })
     .await
 }

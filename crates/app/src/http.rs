@@ -2,6 +2,9 @@
 //!
 //! `bt serve` listens on `127.0.0.1` only (remote use goes through a
 //! forward to that address) and serves `<home>/web/` at `/`, beside the API.
+//! The static files carry `Cache-Control: no-cache` with their ETag, so a
+//! browser checks each one again and never runs an old page against a new
+//! API.
 //!
 //! | Route | Request | Reply |
 //! |---|---|---|
@@ -22,7 +25,7 @@
 //! | `GET /api/runs/{id}/periods?trial` | | one trial's `PeriodRow`s |
 //! | `GET /api/runs/{id}/holdings?trial[&period]` | | [`HoldingsReply`](crate::results::HoldingsReply): the holdings with their source values, and their steps |
 //! | `GET /api/runs/{id}/curve[?trial]` | | [`CurveReply`](crate::results::CurveReply): `band` over the trials, or one trial's `growth` |
-//! | `GET /api/runs/{id}/sectors` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares and the spread |
+//! | `GET /api/runs/{id}/sectors[?trial]` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares and the spread, or one trial's `weights` by period |
 //! | `GET /api/runs/{id}/contributions?trial` | | one trial's `Attribution`s: each period's top holdings and totals |
 //! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` prints it |
 //! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` prints it |
@@ -61,7 +64,7 @@ use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{FromRequest, FromRequestParts, Request};
 use axum::http::request::Parts;
-use axum::http::{Method, StatusCode, header};
+use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
@@ -73,6 +76,7 @@ use std::fs::File;
 use std::net::SocketAddr;
 use std::path::Path;
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeader;
 
 /// What every route handler receives as its state.
 #[derive(Clone, Debug)]
@@ -169,7 +173,8 @@ pub(crate) async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T,
 
 /// The whole router: the API routes of each module, then the static files.
 fn router(app: App) -> Router {
-    let web = ServeDir::new(app.home.root().join("web"));
+    let files = ServeDir::new(app.home.root().join("web"));
+    let web = SetResponseHeader::overriding(files, header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     Router::new()
         .merge(crate::runs::routes())
         .merge(crate::library::routes())

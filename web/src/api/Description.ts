@@ -9,6 +9,12 @@ import type { DescribedVariable } from "./DescribedVariable.ts";
  */
 export type Description = { 
 /**
- * In file order.
+ * The variables that the steps read, in file order.
  */
-variables: Array<DescribedVariable>, sleeves: Array<DescribedSleeve>, };
+variables: Array<DescribedVariable>, sleeves: Array<DescribedSleeve>, 
+/**
+ * The first and last rank a period's holdings can have: the last Rank
+ * step's of one sleeve; of several, 1 to the sum of the sizes of their
+ * last Rank steps ([`Strategy::ranks`]).
+ */
+ranks: [number, number], };
