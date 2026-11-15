@@ -98,7 +98,7 @@ fn a_cross_section_row_has_the_return_a_holding_gets() {
     let rank = json!({"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 5});
     std::fs::write(&file, json!({ "sleeves": [{ "steps": [rank] }] }).to_string()).unwrap();
     // Two random trials: some entry days have two exits.
-    let schedule = ["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--random", "2", "--seed", "852"];
+    let schedule = ["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--trials", "2", "--seed", "852"];
     let (results, tables, section) = (dir.path().join("results"), dir.path().join("tables"), dir.path().join("section"));
     bt_ok(&[&["run", path(&file)], &schedule[..], &["--out", path(&results), "--home", path(&home)]].concat());
     bt_ok(&["export", "tables", path(&results.join("value.sqlite")), "--out", path(&tables)]);

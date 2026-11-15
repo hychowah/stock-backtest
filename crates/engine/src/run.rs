@@ -11,6 +11,7 @@ use market_data::{CompanyId, Day, Market, MarketData, Screen};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// One strategy's finished run.
 #[derive(Debug)]
@@ -124,17 +125,24 @@ pub(crate) struct Point {
 /// The error is the first one taken by strategy, then trial, then period; it
 /// comes with the strategy's position, and its place names the market,
 /// trial, entry day and, for a company, the symbol.
-pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Result<Vec<Run>, (usize, Error)> {
+///
+/// `stop` is read at the start of each entry day's work, which is almost all
+/// of a run: once it is set, the days not yet started are skipped and the
+/// run gives `None`.
+pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[&Strategy], stop: &AtomicBool) -> Result<Option<Vec<Run>>, (usize, Error)> {
     let sessions = data.sessions();
     let (start, end) = plan.window();
     let marked = |exit: Day| plan.final_mark() && exit == end;
     let days = plan.exits_by_entry();
     // valued[day][strategy][exit]
-    let valued: Vec<Vec<Vec<Result<Arc<PeriodRun>, Error>>>> = days
+    let valued: Option<Vec<Vec<Vec<Result<Arc<PeriodRun>, Error>>>>> = days
         .par_iter()
         .map(|(entry, exits)| {
+            if stop.load(Ordering::Relaxed) {
+                return None;
+            }
             let values = DayValues::new(data, *entry, Screen::Dated);
-            strategies
+            let valued = strategies
                 .iter()
                 .map(|strategy| {
                     exits
@@ -146,9 +154,11 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
                         })
                         .collect()
                 })
-                .collect()
+                .collect();
+            Some(valued)
         })
         .collect();
+    let Some(valued) = valued else { return Ok(None) };
     let manifest = data.manifest();
     let mut runs = Vec::with_capacity(strategies.len());
     for (s, strategy) in strategies.iter().enumerate() {
@@ -196,7 +206,7 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[Strategy]) -> Re
             trials,
         });
     }
-    Ok(runs)
+    Ok(Some(runs))
 }
 
 /// The ranks a period's holdings can have (`selection.rank_range`): one

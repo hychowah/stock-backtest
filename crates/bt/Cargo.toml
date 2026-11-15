@@ -10,7 +10,7 @@ engine = { path = "../engine" }
 market-data = { path = "../market-data" }
 serde = "1"
 serde_json = { version = "1", features = ["float_roundtrip"] }
+tables = { path = "../tables" }
 
 [dev-dependencies]
-tables = { path = "../tables" }
 tempfile = "3"

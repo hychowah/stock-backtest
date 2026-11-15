@@ -16,7 +16,6 @@
 use crate::portfolio;
 use crate::results::{CurveRow, HoldingRow, PeriodRow, ResultFile};
 use crate::run::rank_range;
-use crate::schedule::Dates;
 use crate::statistics::{self, Statistics, Summary};
 use crate::strategy::Source;
 use crate::Error;
@@ -395,7 +394,7 @@ pub(crate) fn explore(file: &ResultFile, selection: &Selection) -> Result<Explor
         Some(n) if n < 1 || n as usize > trials.len() => {
             return Err(Error::new(format!("the result has {} trials", trials.len()), "trial"));
         }
-        None if !matches!(schedule.dates, Dates::Random { .. }) => {
+        None if schedule.trials.is_none() => {
             return Err(Error::new("all trials are explored only in a run of random dates", "trial"));
         }
         _ => {}

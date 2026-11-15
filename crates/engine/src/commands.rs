@@ -1,8 +1,9 @@
-//! The engine's commands: each command's request, reply and handler. `bt`
-//! turns arguments into a request, calls the handler and prints the reply as
-//! JSON. A handler checks its request once, at the start; an [`Error`]
-//! stops it. Commands that read result files read their rows alone: they
-//! never open market data.
+//! The engine's commands: each command's request, reply and handler. A
+//! caller (`bt`, which turns arguments into a request and prints the reply
+//! as JSON) reads strategy files itself and passes [`Strategy`]s, and
+//! chooses where results go. A handler checks its request once, at the
+//! start; an [`Error`] stops it. Commands that read result files read their
+//! rows alone: they never open market data.
 
 use crate::results::{self, ResultFile};
 use crate::statistics::{self, Statistics};
@@ -16,44 +17,63 @@ use crate::{Error, Plan, Schedule, Strategy};
 use rayon::prelude::*;
 use market_data::commands::Home;
 use market_data::{Day, Market, MarketData};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tables::Cell;
 
-/// `bt run FILE... --market M <schedule> --out DIR`.
+/// One strategy of a run. The caller names it and chooses where its result
+/// file goes: `bt` uses the strategy file's path and `DIR/<file stem>.sqlite`.
+pub struct Target {
+    /// Repeated in the reply; the place of the strategy's errors starts with
+    /// it.
+    pub name: String,
+    pub strategy: Strategy,
+    /// The result file to write; its folder is created when missing. The
+    /// targets of a run name distinct files: anything else is the caller's
+    /// mistake, and no check catches it.
+    pub result: PathBuf,
+}
+
+/// Every target on the same trade dates, as one batch.
 pub struct RunRequest {
-    /// Strategy files; no two with the same stem.
-    pub files: Vec<PathBuf>,
     pub market: Market,
-    /// The seed of random dates is chosen by the caller.
+    /// A missing seed of random dates is drawn ([`Schedule::drawn`]).
     pub schedule: Schedule,
-    /// The result folder: new or empty.
-    pub out: PathBuf,
+    /// At least one, all run on the same plan.
+    pub runs: Vec<Target>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RunReply {
     pub market: Market,
+    /// The schedule run, with its seed.
     pub schedule: Schedule,
-    /// The seed of random dates, shared by the batch.
-    pub seed: Option<u32>,
     /// The prepared generation the batch read, and its as-of time.
     pub generation: u64,
     pub as_of: String,
     /// The wall time of the whole batch.
     pub seconds: f64,
-    /// One run per strategy file, in the order given.
+    /// One run per target, in the order given.
     pub runs: Vec<RunResult>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RunResult {
+    /// The target's name; `bt` names a target by its strategy file.
     pub file: String,
-    /// The result file: `DIR/<strategy stem>.sqlite`.
+    /// The result file's path.
     pub result: String,
     pub identity: String,
+    #[serde(flatten)]
+    pub headline: Headline,
+}
+
+/// The numbers of one run that a list of runs shows.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Headline {
     /// Each trial's CAGR, in trial order.
     pub cagr: Vec<f64>,
     /// The median, lowest and highest CAGR over the trials, and the median
@@ -68,64 +88,83 @@ pub struct RunResult {
     pub min_holdings: usize,
 }
 
-/// Runs every strategy file on the same plan as one batch and writes one
-/// result file for each. Every file is read and checked before any market
-/// data; then each file's `is` texts ([`check_texts`]) and the schedule are
-/// checked against the data. The first run-stopping error (by file, trial
-/// and period) stops the batch before any result file is written; its place
-/// starts with the strategy file. A failure while writing can leave the
-/// files written before it.
-pub fn run(home: &Home, request: &RunRequest) -> Result<RunReply, Error> {
+/// Runs every target's strategy on the same plan as one batch and writes
+/// each one's result file. The schedule is [drawn](Schedule::drawn) first,
+/// so the reply and every result file hold the seed that was run. The
+/// inputs are checked against the market's data as [`check_run`] checks
+/// them: every target's texts, then the schedule once; then the first
+/// run-stopping error (by target, trial and period) stops the batch
+/// before any result file is written, its place starting with the target's
+/// name. A failure while writing can leave the files written before it; a
+/// result file is whole or absent.
+///
+/// `stop` lets another thread end the run: it is read at the start of each
+/// entry day's work and once before writing. Once it is set, the run
+/// returns an error and writes no result file.
+pub fn run(home: &Home, request: &RunRequest, stop: &AtomicBool) -> Result<RunReply, Error> {
     let started = Instant::now();
-    let strategies = request.files.iter().map(|file| Strategy::read(file)).collect::<Result<Vec<_>, _>>()?;
-    let mut stems = BTreeSet::new();
-    for file in &request.files {
-        if !stems.insert(stem(file)) {
-            return Err(Error::new("another strategy file has the same name; their results would share one file", file.display()));
-        }
+    let schedule = request.schedule.drawn();
+    if request.runs.is_empty() {
+        return Err(Error::new("give at least one strategy", "runs"));
     }
-    let out = &request.out;
-    tables::new_or_empty(out).map_err(|message| Error::new(message, out.display()))?;
     let data = MarketData::open(home, request.market)?;
-    for (strategy, file) in strategies.iter().zip(&request.files) {
-        check_texts(strategy, file, &data)?;
+    for target in &request.runs {
+        check_texts(&data, &target.name, &target.strategy)?;
     }
-    let plan = Plan::new(&data, &request.schedule)?;
-    let runs = crate::run::run(&data, &plan, &strategies)
-        .map_err(|(at, e)| e.in_file(request.files[at].display()))?;
-    std::fs::create_dir_all(out).map_err(|e| Error::new(format!("cannot create the result folder: {e}"), out.display()))?;
+    let plan = Plan::new(&data, &schedule)?;
+    let strategies: Vec<&Strategy> = request.runs.iter().map(|t| &t.strategy).collect();
+    let runs = crate::run::run(&data, &plan, &strategies, stop).map_err(|(at, e)| e.in_file(&request.runs[at].name))?;
+    let runs = runs.filter(|_| !stop.load(Ordering::Relaxed)).ok_or_else(|| Error::new("the run was stopped", "stop"))?;
+    for folder in request.runs.iter().filter_map(|t| t.result.parent()) {
+        std::fs::create_dir_all(folder).map_err(|e| Error::new(format!("cannot create the result folder: {e}"), folder.display()))?;
+    }
     // Each file is written alone, so writing them in parallel changes no byte.
-    let paths: Vec<PathBuf> = request.files.iter().map(|file| out.join(format!("{}.sqlite", stem(file)))).collect();
     let written: Vec<Result<(), Error>> =
-        paths.par_iter().zip(&runs).map(|(path, run)| results::write(path, &request.schedule, run)).collect();
+        request.runs.par_iter().zip(&runs).map(|(target, run)| results::write(&target.result, &schedule, run)).collect();
     written.into_iter().collect::<Result<Vec<()>, Error>>()?;
-    let mut replies = Vec::with_capacity(runs.len());
-    for ((file, path), run) in request.files.iter().zip(&paths).zip(&runs) {
-        let summaries: Vec<_> = run.trials.iter().map(|t| t.summary.clone()).collect();
-        let statistics = statistics::statistics(&summaries);
-        replies.push(RunResult {
-            file: file.display().to_string(),
-            result: path.display().to_string(),
+    let replies = request
+        .runs
+        .iter()
+        .zip(&runs)
+        .map(|(target, run)| RunResult {
+            file: target.name.clone(),
+            result: target.result.display().to_string(),
             identity: run.identity.clone(),
-            cagr: summaries.iter().map(|s| s.cagr).collect(),
-            median: statistics.cagr.median,
-            worst: statistics.cagr.min,
-            best: statistics.cagr.max,
-            spy_median: statistics.spy_cagr.median,
-            beat_spy: statistics.beat_spy,
-            min_holdings: run.trials.iter().flat_map(|t| &t.periods).map(|p| p.holdings.len()).min().unwrap_or(0),
-        });
-    }
+            headline: headline(run),
+        })
+        .collect();
     let manifest = data.manifest();
     Ok(RunReply {
         market: request.market,
-        schedule: request.schedule.clone(),
-        seed: request.schedule.seed(),
+        schedule,
         generation: manifest.generation,
         as_of: manifest.as_of.clone(),
         seconds: started.elapsed().as_secs_f64(),
         runs: replies,
     })
+}
+
+fn headline(run: &crate::run::Run) -> Headline {
+    let summaries: Vec<_> = run.trials.iter().map(|t| t.summary.clone()).collect();
+    let statistics = statistics::statistics(&summaries);
+    Headline {
+        cagr: summaries.iter().map(|s| s.cagr).collect(),
+        median: statistics.cagr.median,
+        worst: statistics.cagr.min,
+        best: statistics.cagr.max,
+        spy_median: statistics.spy_cagr.median,
+        beat_spy: statistics.beat_spy,
+        min_holdings: run.trials.iter().flat_map(|t| &t.periods).map(|p| p.holdings.len()).min().unwrap_or(0),
+    }
+}
+
+/// Checks a run's inputs against the market's data: the strategy's `is`
+/// texts, then the schedule ([`Plan::new`]). A text's error place starts
+/// with `name`, the strategy's; a schedule's names its key. A schedule with
+/// trials must be [drawn](Schedule::drawn) first, or it is refused.
+pub fn check_run(data: &MarketData, name: &str, strategy: &Strategy, schedule: &Schedule) -> Result<Plan, Error> {
+    check_texts(data, name, strategy)?;
+    Plan::new(data, schedule)
 }
 
 /// `bt export tables RESULT... --out DIR` and `bt export holdings RESULT...
@@ -455,7 +494,9 @@ pub fn explore(request: &ExploreRequest) -> Result<ExploreReply, Error> {
 
 /// `bt screen FILE --market M`.
 pub struct ScreenRequest {
-    pub file: PathBuf,
+    /// The place of the strategy's errors starts with its name.
+    pub name: String,
+    pub strategy: Strategy,
     pub market: Market,
 }
 
@@ -474,14 +515,14 @@ pub struct ScreenReply {
 }
 
 /// The strategy's picks of the market's latest session, with each step's
-/// value. The file is checked before any market data is read, then its
-/// `is` texts against the market's companies. An error's place starts with
-/// the file, as `bt run`'s does.
+/// value. The strategy's `is` texts are checked against the market's
+/// companies first. An error's place starts with the strategy's name, as a
+/// run's does.
 pub fn screen(home: &Home, request: &ScreenRequest) -> Result<ScreenReply, Error> {
-    let strategy = Strategy::read(&request.file)?;
+    let (name, strategy) = (&request.name, &request.strategy);
     let data = MarketData::open(home, request.market)?;
-    check_texts(&strategy, &request.file, &data)?;
-    let (day, picks) = crate::run::screen(&data, &strategy).map_err(|e| e.in_file(request.file.display()))?;
+    check_texts(&data, name, strategy)?;
+    let (day, picks) = crate::run::screen(&data, strategy).map_err(|e| e.in_file(name))?;
     let manifest = data.manifest();
     Ok(ScreenReply {
         market: request.market,
@@ -494,10 +535,6 @@ pub fn screen(home: &Home, request: &ScreenRequest) -> Result<ScreenReply, Error
 }
 
 /// `bt check FILE...`.
-pub struct CheckRequest {
-    pub files: Vec<PathBuf>,
-}
-
 #[derive(Debug, Serialize)]
 pub struct CheckReply {
     /// In the order given.
@@ -551,51 +588,39 @@ pub struct CheckedSource {
     pub name: String,
 }
 
-/// Reads every strategy file, with no market data. The first file that
-/// fails stops the command with its error.
-pub fn check(request: &CheckRequest) -> Result<CheckReply, Error> {
-    let mut files = Vec::with_capacity(request.files.len());
-    for path in &request.files {
-        let strategy = Strategy::read(path)?;
-        let variables = strategy
-            .variables()
-            .iter()
-            .map(|v| CheckedVariable {
-                name: v.name().expect("a variable has a name").to_string(),
-                formula: v.text().to_string(),
-                unit: v.unit().id(),
-                display: v.display(),
-            })
-            .collect();
-        let step = |step: &Step| {
-            let source = step.source();
-            let (step, stored) = match step {
-                Step::Filter { test: Test::Number(_, threshold), .. } => ("filter", Some(threshold.stored)),
-                Step::Filter { .. } => ("filter", None),
-                Step::Rank { .. } => ("rank", None),
-            };
-            CheckedStep {
-                step,
-                source: CheckedSource { kind: source.kind(), name: strategy.written(source) },
-                unit: source.unit(),
-                display: source.display(),
-                stored,
-            }
+/// One strategy file as the program reads it, with no market data.
+pub fn check(file: &str, strategy: &Strategy) -> Checked {
+    let variables = strategy
+        .variables()
+        .iter()
+        .map(|v| CheckedVariable {
+            name: v.name().expect("a variable has a name").to_string(),
+            formula: v.text().to_string(),
+            unit: v.unit().id(),
+            display: v.display(),
+        })
+        .collect();
+    let step = |step: &Step| {
+        let source = step.source();
+        let (step, stored) = match step {
+            Step::Filter { test: Test::Number(_, threshold), .. } => ("filter", Some(threshold.stored)),
+            Step::Filter { .. } => ("filter", None),
+            Step::Rank { .. } => ("rank", None),
         };
-        let sleeves = strategy
-            .sleeves()
-            .iter()
-            .map(|sleeve| CheckedSleeve { name: sleeve.name.clone(), steps: sleeve.steps.iter().map(step).collect() })
-            .collect();
-        files.push(Checked {
-            file: path.display().to_string(),
-            canonical: strategy.canonical().to_string(),
-            identity: strategy.identity(),
-            variables,
-            sleeves,
-        });
-    }
-    Ok(CheckReply { files })
+        CheckedStep {
+            step,
+            source: CheckedSource { kind: source.kind(), name: strategy.written(source) },
+            unit: source.unit(),
+            display: source.display(),
+            stored,
+        }
+    };
+    let sleeves = strategy
+        .sleeves()
+        .iter()
+        .map(|sleeve| CheckedSleeve { name: sleeve.name.clone(), steps: sleeve.steps.iter().map(step).collect() })
+        .collect();
+    Checked { file: file.to_string(), canonical: strategy.canonical().to_string(), identity: strategy.identity(), variables, sleeves }
 }
 
 /// `bt catalog --market M`.
@@ -755,15 +780,16 @@ fn texts(data: &MarketData, field: Field) -> BTreeSet<&str> {
 /// Refuses an `is` step whose text no company of the market has, before
 /// anything runs: its sleeve would hold nothing, most likely from a typing
 /// slip. `is not` takes any text, since a file may run on several markets.
-pub(crate) fn check_texts(strategy: &Strategy, file: &Path, data: &MarketData) -> Result<(), Error> {
+/// The error's place starts with `name`, the strategy's.
+fn check_texts(data: &MarketData, name: &str, strategy: &Strategy) -> Result<(), Error> {
     for (s, sleeve) in strategy.sleeves().iter().enumerate() {
         for (n, step) in sleeve.steps.iter().enumerate() {
             if let Step::Filter { source: Source::Field(field), test: Test::Is(text) } = step
                 && !texts(data, *field).contains(text.as_str())
             {
-                let (market, name) = (data.manifest().market.id(), names::of_field(*field).name.to_lowercase());
-                let message = format!("no company of {market} has the {name} {text:?}: `bt catalog --market {market}` lists them");
-                return Err(Error::new(message, format!("{}: sleeves[{}].steps[{}]", file.display(), s + 1, n + 1)));
+                let (market, field) = (data.manifest().market.id(), names::of_field(*field).name.to_lowercase());
+                let message = format!("no company of {market} has the {field} {text:?}: `bt catalog --market {market}` lists them");
+                return Err(Error::new(message, format!("{name}: sleeves[{}].steps[{}]", s + 1, n + 1)));
             }
         }
     }

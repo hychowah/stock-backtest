@@ -41,7 +41,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::Arc;
 
 /// The longest threshold text, and the longest decimal it expands to
@@ -325,19 +324,13 @@ fn scaled(text: &str, shift: i32) -> String {
 }
 
 impl Strategy {
-    /// Reads and checks a strategy file. Checks everything that needs no
-    /// market data. An error names the file and the step or variable, and
-    /// the characters of a formula at fault.
-    pub fn read(path: &Path) -> Result<Strategy, Error> {
-        let file = path.display().to_string();
-        let text = std::fs::read_to_string(path).map_err(|_| Error::new("the strategy file cannot be read as text", &file))?;
-        Reader { file }.strategy(&text)
-    }
-
-    /// Reads a strategy from `text`, such as a canonical form stored in a
-    /// result file; an error's place starts with `place`.
-    pub(crate) fn from_text(text: &str, place: &str) -> Result<Strategy, Error> {
-        Reader { file: place.to_string() }.strategy(text)
+    /// Reads and checks the text of a strategy file. Checks everything that
+    /// needs no market data. An error's place is relative to the text: the
+    /// step or variable, and the characters of a formula at fault; empty
+    /// when the whole text is at fault. A caller that knows where the text
+    /// came from puts that in front ([`Error::in_file`]).
+    pub fn parse(text: &str) -> Result<Strategy, Error> {
+        Reader.strategy(text)
     }
 
     pub fn sleeves(&self) -> &[Sleeve] {
@@ -488,16 +481,13 @@ impl<'de> Deserialize<'de> for Ordered<'de> {
     }
 }
 
-/// Reads one file; `file` is its path as errors name it.
-struct Reader {
-    file: String,
-}
+/// Reads one strategy text.
+struct Reader;
 
 type Object<'a> = BTreeMap<String, &'a RawValue>;
 
 impl Reader {
     fn fail<T>(&self, place: &str, message: impl Into<String>) -> Result<T, Error> {
-        let place = if place.is_empty() { self.file.clone() } else { format!("{}: {place}", self.file) };
         Err(Error::new(message, place))
     }
 

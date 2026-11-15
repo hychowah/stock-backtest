@@ -4,7 +4,8 @@
 //! against the next period's returns.
 
 use crate::strategy::Source;
-use crate::{DayValues, Error, Plan, Schedule, Strategy};
+use crate::commands::check_run;
+use crate::{DayValues, Error, Schedule, Strategy};
 use market_data::builtins::BUILTINS;
 use market_data::commands::Home;
 use market_data::{Market, MarketData, Screen};
@@ -15,9 +16,11 @@ use tables::Cell;
 
 /// `bt export cross-section FILE --market M <schedule> --out DIR`.
 pub struct CrossSectionRequest {
-    pub file: PathBuf,
+    /// The place of the strategy's errors starts with its name.
+    pub name: String,
+    pub strategy: Strategy,
     pub market: Market,
-    /// The seed of random dates is chosen by the caller.
+    /// A missing seed of random dates is drawn ([`Schedule::drawn`]).
     pub schedule: Schedule,
     /// The export folder: new or empty.
     pub out: PathBuf,
@@ -26,8 +29,8 @@ pub struct CrossSectionRequest {
 #[derive(Debug, Serialize)]
 pub struct CrossSectionReply {
     pub market: Market,
+    /// The schedule exported, with its seed.
     pub schedule: Schedule,
-    pub seed: Option<u32>,
     /// The prepared generation read, and its as-of time.
     pub generation: u64,
     pub as_of: String,
@@ -49,23 +52,22 @@ const CHUNK: usize = 64;
 /// after the exit or has no valid exit; each built-in by its id, in canonical
 /// units, null when missing; and each file variable as `variable:<name>`, in
 /// its unit, null when missing. A variable's FUTURE_DATE stops the export,
-/// as it stops a run; its place starts with the file, the market and the day.
-/// Such an error, or a failure while writing, can leave a partial export.
-/// The file's `is` texts are checked against the market as `bt run` checks
-/// them.
+/// as it stops a run; its place starts with the strategy's name, the market
+/// and the day. Such an error, or a failure while writing, can leave a
+/// partial export. The inputs are checked against the data as a run's are
+/// ([`check_run`]).
 pub fn cross_section(home: &Home, request: &CrossSectionRequest) -> Result<CrossSectionReply, Error> {
-    let strategy = Strategy::read(&request.file)?;
+    let (name, strategy) = (&request.name, &request.strategy);
     let out = &request.out;
     tables::new_or_empty(out).map_err(|message| Error::new(message, out.display()))?;
+    let schedule = request.schedule.drawn();
     let data = MarketData::open(home, request.market)?;
-    crate::commands::check_texts(&strategy, &request.file, &data)?;
-    let plan = Plan::new(&data, &request.schedule)?;
+    let plan = check_run(&data, name, strategy, &schedule)?;
     let days = plan.exits_by_entry();
     let variables: Vec<Source> = strategy.variables().iter().map(|v| Source::Formula(v.clone())).collect();
-    let file = request.file.display();
     let manifest = data.manifest();
     let settings = serde_json::json!({
-        "file": file.to_string(), "market": request.market, "schedule": request.schedule,
+        "file": name, "market": request.market, "schedule": schedule,
         "generation": manifest.generation, "as_of": manifest.as_of,
     });
     let fail = |message: String| Error::new(message, out.display());
@@ -81,7 +83,7 @@ pub fn cross_section(home: &Home, request: &CrossSectionRequest) -> Result<Cross
                 let found = (0..values.candidates().len())
                     .map(|i| variables.iter().map(|v| values.of(v, i)).collect::<Result<Vec<_>, Error>>())
                     .collect::<Result<Vec<_>, Error>>()
-                    .map_err(|e| e.within(format!("{}, {day}", request.market.id())).in_file(&file))?;
+                    .map_err(|e| e.within(format!("{}, {day}", request.market.id())).in_file(name))?;
                 Ok((values, found))
             })
             .collect();
@@ -130,8 +132,7 @@ pub fn cross_section(home: &Home, request: &CrossSectionRequest) -> Result<Cross
     writer.finish().map_err(fail)?;
     Ok(CrossSectionReply {
         market: request.market,
-        schedule: request.schedule.clone(),
-        seed: request.schedule.seed(),
+        schedule,
         generation: manifest.generation,
         as_of: manifest.as_of.clone(),
         rows,

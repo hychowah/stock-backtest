@@ -6,14 +6,16 @@
 use chrono::{DateTime, SubsecRound, Utc};
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use engine::commands::{CatalogRequest, CheckRequest, ExploreRequest, ExportResultsRequest, RunRequest, ScreenRequest};
+use engine::commands::{CatalogRequest, CheckReply, ExploreRequest, ExportResultsRequest, RunReply, RunRequest, ScreenRequest, Target};
 use engine::cross_section::CrossSectionRequest;
-use engine::{Dates, Interval, Schedule, Selection};
+use engine::{Schedule, Selection, Strategy};
 use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
 use market_data::{Day, Error, Market};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
 
 /// Stock screener and backtest.
 #[derive(Parser)]
@@ -86,19 +88,20 @@ struct RunArgs {
     /// The last day of the window, YYYY-MM-DD
     #[arg(long)]
     end: String,
+    // The schedule's flags are the keys of `engine::Schedule`, which checks
+    // how they combine.
     /// Trade every N weeks (Nw) or months (Nm)
-    #[arg(long, required_unless_present = "dates", conflicts_with = "dates")]
+    #[arg(long)]
     every: Option<String>,
     /// Run this many trials, each trading on one random session in every interval
-    // Clap skips `requires` when --dates excludes --every, so this conflict is needed.
-    #[arg(long, requires = "every", conflicts_with = "dates")]
-    random: Option<u32>,
+    #[arg(long)]
+    trials: Option<u32>,
+    /// The seed of the random dates [default: drawn and reported]
+    #[arg(long)]
+    seed: Option<u32>,
     /// Trade on these sessions, comma-separated
     #[arg(long, value_delimiter = ',')]
     dates: Option<Vec<String>>,
-    /// The seed of the random dates [default: drawn and reported]
-    #[arg(long, requires = "random")]
-    seed: Option<u32>,
     /// The result folder: new or empty
     #[arg(long)]
     out: PathBuf,
@@ -181,7 +184,8 @@ fn main() -> ExitCode {
         }
         Command::Export(Export::CrossSection(args)) => reply(home.and_then(|home| {
             let (market, schedule) = schedule(&args)?;
-            let request = CrossSectionRequest { file: args.files[0].clone(), market, schedule, out: args.out };
+            let file = &args.files[0];
+            let request = CrossSectionRequest { name: name(file), strategy: strategy(file)?, market, schedule, out: args.out };
             engine::cross_section::cross_section(&home, &request)
         })),
         Command::Explore { result, trial, periods, ranks } => reply((|| {
@@ -192,14 +196,18 @@ fn main() -> ExitCode {
             let selection = Selection { trial, periods: range(&periods, "periods")?, ranks: range(&ranks, "ranks")? };
             engine::commands::explore(&ExploreRequest { result, selection })
         })()),
-        Command::Check { files } => reply(engine::commands::check(&CheckRequest { files })),
+        Command::Check { files } => reply((|| {
+            let files = files.iter().map(|file| Ok(engine::commands::check(&name(file), &strategy(file)?))).collect::<Result<_, Error>>()?;
+            Ok(CheckReply { files })
+        })()),
         Command::Catalog { market } => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
             engine::commands::catalog(&home, &CatalogRequest { market })
         })),
         Command::Screen { file, market } => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
-            engine::commands::screen(&home, &ScreenRequest { file, market })
+            let strategy = strategy(&file)?;
+            engine::commands::screen(&home, &ScreenRequest { name: name(&file), strategy, market })
         })),
         Command::Data(Data::Prepare { as_of }) => reply(home.and_then(|home| {
             let as_of = match as_of {
@@ -222,46 +230,60 @@ fn main() -> ExitCode {
     }
 }
 
-/// `bt run`: the schedule from the arguments, with a drawn seed when random
-/// dates have none.
-fn run(home: &Home, args: RunArgs) -> Result<engine::commands::RunReply, Error> {
+/// `bt run`: every strategy file is read before any data, and each result
+/// is `DIR/<file stem>.sqlite` in a new or empty folder.
+fn run(home: &Home, args: RunArgs) -> Result<RunReply, Error> {
     let (market, schedule) = schedule(&args)?;
-    engine::commands::run(home, &RunRequest { files: args.files, market, schedule, out: args.out })
+    let strategies = args.files.iter().map(|file| strategy(file)).collect::<Result<Vec<_>, _>>()?;
+    let mut stems = BTreeSet::new();
+    for file in &args.files {
+        if !stems.insert(file.file_stem()) {
+            return Err(Error::new("another strategy file has the same name; their results would share one file", file.display()));
+        }
+    }
+    let out = &args.out;
+    tables::new_or_empty(out).map_err(|message| Error::new(message, out.display()))?;
+    let runs = args
+        .files
+        .iter()
+        .zip(strategies)
+        .map(|(file, strategy)| {
+            let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+            Target { name: name(file), strategy, result: out.join(format!("{stem}.sqlite")) }
+        })
+        .collect();
+    engine::commands::run(home, &RunRequest { market, schedule, runs }, &AtomicBool::new(false))
 }
 
 /// The market and schedule of `bt run` and `bt export cross-section`.
 fn schedule(args: &RunArgs) -> Result<(Market, Schedule), Error> {
     let market: Market = args.market.parse()?;
-    let dates = match (&args.every, args.random, &args.dates) {
-        (Some(every), None, None) => Dates::Every(interval(every)?),
-        (Some(every), Some(trials), None) => Dates::Random { every: interval(every)?, trials, seed: args.seed.unwrap_or_else(draw_seed) },
-        (None, None, Some(dates)) => Dates::Explicit(dates.clone()),
-        _ => unreachable!("clap checks that --every or --dates is given, and --random only with --every"),
+    let schedule = Schedule {
+        start: args.start.clone(),
+        end: args.end.clone(),
+        every: args.every.clone(),
+        trials: args.trials,
+        seed: args.seed,
+        dates: args.dates.clone(),
     };
-    Ok((market, Schedule { start: args.start.clone(), end: args.end.clone(), dates }))
+    Ok((market, schedule))
 }
 
-/// `Nw` or `Nm`.
-fn interval(text: &str) -> Result<Interval, Error> {
-    let invalid = || Error::new(format!("{text:?} is not an interval: use N weeks (Nw) or N months (Nm), such as 13w or 3m"), "every");
-    let count = |count: &str| count.parse::<u32>().map_err(|_| invalid());
-    match (text.strip_suffix('w'), text.strip_suffix('m')) {
-        (Some(weeks), _) => Ok(Interval::Weeks(count(weeks)?)),
-        (_, Some(months)) => Ok(Interval::Months(count(months)?)),
-        _ => Err(invalid()),
-    }
+/// A strategy file, read and checked; an error's place starts with the file.
+fn strategy(file: &Path) -> Result<Strategy, Error> {
+    let text = std::fs::read_to_string(file).map_err(|_| Error::new("the strategy file cannot be read as text", file.display()))?;
+    Strategy::parse(&text).map_err(|e| e.in_file(file.display()))
+}
+
+/// A strategy file's name in replies and error places: its path as given.
+fn name(file: &Path) -> String {
+    file.display().to_string()
 }
 
 /// `A-B`: two whole numbers, which the command checks.
 fn range(text: &str, place: &str) -> Result<(u32, u32), Error> {
     let bounds = text.split_once('-').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
     bounds.ok_or_else(|| Error::new(format!("{text:?} is not a range: use A-B, such as 2-5"), place))
-}
-
-/// A seed from the process's random hash keys, which the system seeds.
-fn draw_seed() -> u32 {
-    use std::hash::{BuildHasher, RandomState};
-    RandomState::new().hash_one(std::time::SystemTime::now()) as u32
 }
 
 /// The runtime folder holds `bin/bt`, so it is the parent of the folder that

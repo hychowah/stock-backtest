@@ -3,19 +3,8 @@
 
 use engine::names::Field;
 use engine::strategy::{Compare, Step, Test};
-use engine::{Error, Source, Strategy};
+use engine::{Source, Strategy};
 use market_data::builtins::BUILTINS;
-use std::path::PathBuf;
-
-/// Writes `json` to a file `name` in a new folder and reads it; returns the
-/// file's path too.
-fn read(name: &str, json: &str) -> (PathBuf, Result<Strategy, Error>) {
-    let folder = tempfile::tempdir().unwrap();
-    let path = folder.path().join(name);
-    std::fs::write(&path, json).unwrap();
-    let strategy = Strategy::read(&path);
-    (path, strategy)
-}
 
 fn builtin(id: &str) -> Source {
     Source::Builtin(BUILTINS.iter().position(|b| b.id == id).unwrap())
@@ -40,9 +29,7 @@ fn one_sleeve(steps: &str) -> String {
 
 #[test]
 fn hong_kong_floors_read_the_dollar_fields_and_the_linked_yield() {
-    let (_, strategy) = read(
-        "hk.json",
-        &one_sleeve(
+    let strategy = Strategy::parse(&one_sleeve(
             r#"{"filter": "Market cap in dollars", "op": ">=", "value": "100000000"},
                {"filter": "Enterprise value in dollars", "op": ">=", "value": "50000000"},
                {"filter": "EBITDA yield", "op": ">=", "value": "0"},
@@ -66,7 +53,7 @@ fn hong_kong_floors_read_the_dollar_fields_and_the_linked_yield() {
 
 #[test]
 fn a_linked_name_reads_its_stored_lane_in_display_units() {
-    let (_, strategy) = read("roe.json", &one_sleeve(r#"{"filter": "ROE", "op": ">", "value": "15"}, {"rank": "ROE", "order": "lowest", "from": 1, "to": 5}"#));
+    let strategy = Strategy::parse(&one_sleeve(r#"{"filter": "ROE", "op": ">", "value": "15"}, {"rank": "ROE", "order": "lowest", "from": 1, "to": 5}"#));
     let strategy = strategy.unwrap();
     assert_eq!(steps(&strategy)[0], (builtin("filter:roe"), "Greater 15.0".to_string()));
     assert!(matches!(&strategy.sleeves()[0].steps[0], Step::Filter { test: Test::Number(Compare::Greater, _), .. }));
@@ -74,9 +61,7 @@ fn a_linked_name_reads_its_stored_lane_in_display_units() {
 
 #[test]
 fn a_step_only_name_reads_its_lane_and_an_input_reads_its_formula() {
-    let (_, strategy) = read(
-        "names.json",
-        &one_sleeve(
+    let strategy = Strategy::parse(&one_sleeve(
             r#"{"rank": "P/E 5-year average", "order": "lowest", "from": 1, "to": 5},
                {"filter": "revenue", "op": ">", "value": "100"},
                {"filter": "Price/sales", "op": "<", "value": "3"},
@@ -117,7 +102,7 @@ fn variables_and_formula_steps_print_canonically() {
         {"filter": "[ROE]", "op": ">", "value": "15"},
         {"filter": "ROE", "op": ">", "value": "15"},
         {"rank": "Doubled", "order": "lowest", "from": 1, "to": 5}]}]}"#;
-    let (_, strategy) = read("variables.json", written);
+    let strategy = Strategy::parse(written);
     let strategy = strategy.unwrap();
     let canonical = concat!(
         r#"{"variables":{"Debt to EV":{"formula":"Total debt / positive(Enterprise value)","display":"multiple"},"#,
@@ -131,7 +116,7 @@ fn variables_and_formula_steps_print_canonically() {
     assert_eq!(stored, ["Less 1.5", "Greater 100000000.0", "Greater 0.15", "Greater 15.0", "Lowest 1-5"]);
     let names: Vec<_> = strategy.variables().iter().map(|v| v.name().unwrap()).collect();
     assert_eq!(names, ["Debt to EV", "Doubled"]);
-    let (_, again) = read("again.json", canonical);
+    let again = Strategy::parse(canonical);
     let again = again.unwrap();
     assert_eq!((again.canonical(), again.identity()), (strategy.canonical(), strategy.identity()));
 }
@@ -143,8 +128,8 @@ fn the_fictional_strategy_files_read_and_their_canonical_forms_read_again() {
     for kind in std::fs::read_dir(cases).unwrap() {
         for case in std::fs::read_dir(kind.unwrap().path()).unwrap() {
             let path = case.unwrap().path().join("strategy.json");
-            let strategy = Strategy::read(&path).unwrap_or_else(|e| panic!("{e}"));
-            let (_, again) = read("again.json", strategy.canonical());
+            let strategy = Strategy::parse(&std::fs::read_to_string(&path).unwrap()).unwrap_or_else(|e| panic!("{e}"));
+            let again = Strategy::parse(strategy.canonical());
             let again = again.unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             assert_eq!((again.canonical(), again.identity()), (strategy.canonical(), strategy.identity()), "{}", path.display());
             count += 1;
@@ -183,9 +168,8 @@ fn formula_faults_name_the_variable_or_step_and_the_characters() {
         ),
     ];
     for (json, place, message) in cases {
-        let (path, refused) = read("formula.json", &json);
-        let error = refused.unwrap_err();
-        assert_eq!(error.place, format!("{}: {place}", path.display()));
+        let error = Strategy::parse(&json).unwrap_err();
+        assert_eq!(error.place, place);
         if !message.is_empty() {
             assert_eq!(error.message, message);
         }
@@ -210,8 +194,8 @@ fn spellings_of_the_same_strategy_have_one_canonical_form_and_identity() {
         {"name": "Margin", "steps": [
             {"filter": "DIVIDEND YIELD", "op": "<", "value": "007.50"},
             {"rank": "net margin", "order": "highest", "from": 2, "to": 4}]}]}"#;
-    let (_, a) = read("a.json", listed);
-    let (_, b) = read("b.json", respelled);
+    let a = Strategy::parse(listed);
+    let b = Strategy::parse(respelled);
     let (a, b) = (a.unwrap(), b.unwrap());
     assert_eq!(
         a.canonical(),
@@ -262,13 +246,11 @@ fn refused_files_name_the_place_and_the_cause() {
         (one_sleeve(&format!(r#"{rank}, {{"\ud800": 1}}"#)), "sleeves[1].steps[2]", "must be a JSON object"),
     ];
     for (json, place, message) in cases {
-        let (path, refused) = read("refused.json", &json);
-        let error = refused.unwrap_err();
-        let file = path.display().to_string();
-        assert_eq!(error.place, if place.is_empty() { file } else { format!("{file}: {place}") });
+        let error = Strategy::parse(&json).unwrap_err();
+        assert_eq!(error.place, place);
         assert_eq!(error.message, message);
     }
     // No ceiling on the steps or on the highest rank.
     let large = format!(r#"{}, {{"rank": "P/B", "order": "lowest", "from": 1, "to": 5001}}"#, vec![rank; 50].join(","));
-    assert!(read("large.json", &one_sleeve(&large)).1.is_ok());
+    assert!(Strategy::parse(&one_sleeve(&large)).is_ok());
 }

@@ -128,11 +128,11 @@ bt run value.json --market us --start 2021-07-01 --end 2023-06-28 --every 6m --h
 | Schedule | Arguments | Trials |
 |---|---|---|
 | Fixed | `--every 13w` or `--every 3m` | 1 |
-| Random | `--every 3m --random 24 --seed 7` | `--random` |
+| Random | `--every 3m --trials 24 --seed 7` | `--trials` |
 | Explicit | `--dates 2021-07-01,2022-01-03,2022-09-01` | 1 |
 
-- A random trial trades on one random session in every interval. `--random` needs `--every`. `--seed` needs `--random`. Without `--seed`, `bt` draws one and reports it as `seed`. The same seed, settings and prepared data give the same dates and the same results again.
-- `--dates` cannot be combined with `--every` or `--random`. Explicit dates are sessions, in increasing order, from the first session of the window and before its last one.
+- A random trial trades on one random session in every interval. `--trials` needs `--every`. `--seed` needs `--trials`. Without `--seed`, `bt` draws one and reports it in `schedule`. The same seed, settings and prepared data give the same dates and the same results again.
+- `--dates` cannot be combined with `--every` or `--trials`. Explicit dates are sessions, in increasing order, from the first session of the window and before its last one.
 - A random or explicit trial holds cash at 0% from the start of the window to its first trade.
 
 `--out` must be a folder that is new or empty. `bt run` writes `<out>/<file name without extension>.sqlite` for each strategy file, so two files in one batch must not have the same name.
@@ -141,15 +141,15 @@ Give several strategy files to run them as one batch. The script at the end of t
 
 ```bash
 bt run variants/pe-20.json variants/pe-30.json --market us --start 2021-07-01 \
-  --end 2023-06-28 --every 3m --random 24 --seed 1 --home HOME_DIR --out out
+  --end 2023-06-28 --every 3m --trials 24 --seed 1 --home HOME_DIR --out out
 ```
 
 A batch runs every file on the same trade dates, so a difference between the results comes from the strategy files. This is the fast way to compare variants. A file gives the same result alone or in a batch. The reply, trimmed:
 
 ```text
 {"market": "us",
- "schedule": {"start": "2021-07-01", "end": "2023-06-28", "random": {"every": {"months": 3}, "trials": 24, "seed": 1}},
- "seed": 1, "generation": 1, "as_of": "2023-06-30T07:30:00+00:00", "seconds": 0.138,
+ "schedule": {"start": "2021-07-01", "end": "2023-06-28", "every": "3m", "trials": 24, "seed": 1},
+ "generation": 1, "as_of": "2023-06-30T07:30:00+00:00", "seconds": 0.138,
  "runs": [
   {"file": "variants/pe-20.json", "result": "out/pe-20.sqlite", "identity": "07b7dab9...0bd1",
    "cagr": [0.20442863965307168, 0.31863415235653636, ...],
@@ -158,7 +158,7 @@ A batch runs every file on the same trade dates, so a difference between the res
   {"file": "variants/pe-30.json", ...}]}
 ```
 
-- `schedule` repeats the settings, with the seed. `generation` and `as_of` name the prepared data that the batch read. `seconds` is the program's own time for the whole batch. `runs` has one entry for each file, in the order given (a shell glob sorts the names).
+- `schedule` repeats the settings, with the seed, under the names of their flags. `generation` and `as_of` name the prepared data that the batch read. `seconds` is the program's own time for the whole batch. `runs` has one entry for each file, in the order given (a shell glob sorts the names).
 - `cagr` has the compound annual growth rate of each trial, in trial order (trials are numbered from 1), from the first session of the window to its last. It is a fraction: 0.20 is 20% a year.
 - `median`, `worst` and `best` are the median, lowest and highest `cagr`. `spy_median` is the median of SPY's CAGR over the same trials. `beat_spy` is the number of trials whose CAGR is above SPY's.
 - `min_holdings` is the fewest holdings in any period of any trial. A value below the picks that the strategy asks for (the size of the last Rank step, or the sum of these sizes over the sleeves) means a period had fewer picks. `0` means a period held cash.
@@ -168,7 +168,7 @@ A run stops with an error and status 1, and writes no result file for any file o
 - an argument is wrong (`place` is `arguments` or the argument);
 - a strategy file is refused (`place` starts with the file), including an `is` text value that no company of the market has;
 - the `--out` folder is not new or empty, or two files have the same name;
-- the schedule does not fit the data: `end` after `last_session`, or an explicit date that is not a session;
+- a schedule flag is wrong, combined wrongly or does not fit the data (such as `end` after `last_session`, or an explicit date that is not a session): this is reported after the strategy files are read and the data is opened, and `place` is the flag (`dates`, `trials`, `seed`, `every`, `start` or `end`);
 - a selected company has no valid exit price (`place` is the file, the market, the trial, the entry day and the symbol);
 - a formula with `at(X, DATE)` has a `DATE` after the entry day of a candidate.
 
@@ -217,7 +217,7 @@ bt screen value.json --market us --home HOME_DIR
 bt export cross-section cover.json --market us --start 2021-07-01 --end 2023-06-28 --every 6m --home HOME_DIR --out cross
 ```
 
-`bt export cross-section` is for studying a variable against the next period's returns over every candidate of the entry days, which a run selects from, not only the holdings. It takes one strategy file, `--market`, `--out` and a schedule as `bt run` does (`--every`, `--random` with `--seed`, or `--dates`), and it needs the home. It ignores the steps, but the file must still pass `bt check`: each sleeve needs a Rank step. The reply has `schedule`, `seed`, `generation`, `as_of` and `rows`, the number of rows written.
+`bt export cross-section` is for studying a variable against the next period's returns over every candidate of the entry days, which a run selects from, not only the holdings. It takes one strategy file, `--market`, `--out` and a schedule as `bt run` does (`--every`, `--trials` with `--seed`, or `--dates`), and it needs the home. It ignores the steps, but the file must still pass `bt check`: each sleeve needs a Rank step. The reply has `schedule` (with the seed), `generation`, `as_of` and `rows`, the number of rows written.
 
 `--out` gets `manifest.json` and `cross_section.jsonl`. The table `cross_section` has one row for every candidate of each period's entry day. Its key is `day` (the entry day), `exit` and `symbol`; a period that several trials share is written once. The columns are:
 
@@ -259,7 +259,7 @@ for pe in (10, 15, 20, 25, 30, 40):
 
 bt("check", *files)
 reply = bt("run", *files, "--market", "us", "--start", "2021-07-01", "--end", "2023-06-28",
-           "--every", "3m", "--random", "24", "--seed", "1", "--home", HOME, "--out", "loop-out")
+           "--every", "3m", "--trials", "24", "--seed", "1", "--home", HOME, "--out", "loop-out")
 runs = sorted(reply["runs"], key=lambda r: r["median"], reverse=True)
 for r in runs:
     print(f"{r['file']:20} median {r['median']:.3f}  worst {r['worst']:.3f}  best {r['best']:.3f}"

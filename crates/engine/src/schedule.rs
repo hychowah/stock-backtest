@@ -5,48 +5,77 @@ use numbers::Random;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The run settings that set the trade dates. Days are ISO text,
-/// `YYYY-MM-DD`; [`Plan::new`] checks every setting against the data.
+/// The run settings that set the trade dates, in one flat form: the keys
+/// are the flags of `bt run` (`--every`, `--trials`, `--seed`, `--dates`),
+/// the JSON of a request and a reply, and what a result file stores. Values
+/// stay as given (days as ISO text, `YYYY-MM-DD`; an interval as `Nw` or
+/// `Nm`); [`Plan::new`] checks them all once against the data and names the
+/// key at fault as the error's place. A schedule is one of:
+/// - `every`: one trial that trades at every interval from the start;
+/// - `every` and `trials` (at least 1), with an optional `seed`: that many
+///   trials, each trading on one random session in every interval;
+/// - `dates`: one trial that trades on these sessions, in increasing order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Schedule {
     /// The first day of the window.
     pub start: String,
     /// The last day of the window, included.
     pub end: String,
-    #[serde(flatten)]
-    pub dates: Dates,
+    /// 1 to 104 weeks (`Nw`) or 1 to 24 months (`Nm`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub every: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trials: Option<u32>,
+    /// The seed of random dates: the same seed on the same sessions gives
+    /// the same dates. [`Schedule::drawn`] gives one when it is missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dates: Option<Vec<String>>,
 }
 
 impl Schedule {
-    /// The seed of random dates; `None` for other schedules.
-    pub fn seed(&self) -> Option<u32> {
-        match self.dates {
-            Dates::Random { seed, .. } => Some(seed),
-            _ => None,
+    /// The schedule with a seed drawn when it has trials and no seed: the
+    /// one place a seed is drawn, so a run and the record of what it ran
+    /// hold the same seed.
+    pub fn drawn(&self) -> Schedule {
+        use std::hash::{BuildHasher, RandomState};
+        let mut schedule = self.clone();
+        if schedule.trials.is_some() && schedule.seed.is_none() {
+            // The process's random hash keys, which the system seeds.
+            schedule.seed = Some(RandomState::new().hash_one(std::time::SystemTime::now()) as u32);
+        }
+        schedule
+    }
+}
+
+/// 1 to 104 weeks or 1 to 24 months.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Interval {
+    Weeks(u32),
+    Months(u32),
+}
+
+impl Interval {
+    /// `Nw` or `Nm`.
+    fn parse(text: &str) -> Result<Interval, Error> {
+        let invalid = || Error::new(format!("{text:?} is not an interval: use N weeks (Nw) or N months (Nm), such as 13w or 3m"), "every");
+        let count = |count: &str| count.parse::<u32>().map_err(|_| invalid());
+        match (text.strip_suffix('w'), text.strip_suffix('m')) {
+            (Some(weeks), _) => Ok(Interval::Weeks(count(weeks)?)),
+            (_, Some(months)) => Ok(Interval::Months(count(months)?)),
+            _ => Err(invalid()),
         }
     }
 }
 
-/// How a schedule chooses its trade dates.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Dates {
-    /// One trial that trades at every interval from the start.
+/// How a checked schedule chooses its trade dates.
+#[derive(Clone, Copy)]
+enum Dates<'a> {
     Every(Interval),
-    /// `trials` trials (at least 1), each trading on one random session in
-    /// every interval from the start.
     Random { every: Interval, trials: u32, seed: u32 },
-    /// One trial that trades on these sessions, in increasing order.
-    #[serde(rename = "dates")]
-    Explicit(Vec<String>),
-}
-
-/// 1 to 104 weeks or 1 to 24 months.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Interval {
-    Weeks(u32),
-    Months(u32),
+    Explicit(&'a [String]),
 }
 
 /// The trade dates of every trial of a run, as the oracle plans them.
@@ -86,11 +115,34 @@ pub struct Period {
 }
 
 impl Plan {
-    /// Checks the schedule against the market's sessions, in the oracle's
-    /// order: the interval, the start and end, the trials, the window, then
-    /// each explicit date. An error names the setting at fault in `place`.
+    /// Checks the schedule against the market's sessions: first which keys
+    /// it combines, then, in the oracle's order, the interval, the start and
+    /// end, the trials, the window and each explicit date. An error names
+    /// the key at fault in `place`. A schedule with trials and no seed is
+    /// refused: [draw](Schedule::drawn) its seed first.
     pub fn new(data: &MarketData, schedule: &Schedule) -> Result<Plan, Error> {
-        if let Dates::Every(every) | Dates::Random { every, .. } = schedule.dates {
+        if schedule.dates.is_some() && (schedule.every.is_some() || schedule.trials.is_some()) {
+            return Err(Error::new("dates cannot be combined with every or trials", "dates"));
+        }
+        if schedule.trials.is_some() && schedule.every.is_none() {
+            return Err(Error::new("trials need every: a random trial trades once in every interval", "trials"));
+        }
+        if schedule.seed.is_some() && schedule.trials.is_none() {
+            return Err(Error::new("a seed is only for random trials: give trials too", "seed"));
+        }
+        let dates = match (&schedule.every, &schedule.dates) {
+            (Some(every), _) => {
+                let every = Interval::parse(every)?;
+                match (schedule.trials, schedule.seed) {
+                    (Some(trials), Some(seed)) => Dates::Random { every, trials, seed },
+                    (Some(_), None) => return Err(Error::new("a random schedule needs its seed drawn first", "seed")),
+                    (None, _) => Dates::Every(every),
+                }
+            }
+            (None, Some(dates)) => Dates::Explicit(dates),
+            (None, None) => return Err(Error::new("choose a schedule: every, every with trials, or dates", "every")),
+        };
+        if let Dates::Every(every) | Dates::Random { every, .. } = dates {
             let (count, maximum) = match every {
                 Interval::Weeks(count) => (count, 104),
                 Interval::Months(count) => (count, 24),
@@ -106,7 +158,7 @@ impl Plan {
         if end <= start {
             return Err(Error::new("the end must be after the start", "end"));
         }
-        if let Dates::Random { trials: 0, .. } = schedule.dates {
+        if let Dates::Random { trials: 0, .. } = dates {
             return Err(Error::new("choose at least 1 trial", "trials"));
         }
         let sessions = data.sessions();
@@ -136,8 +188,8 @@ impl Plan {
             cash_days: Some(entries[0].0 - window.0.0),
             periods: periods(&entries, final_day),
         };
-        let (final_mark, trials) = match &schedule.dates {
-            &Dates::Every(every) => {
+        let (final_mark, trials) = match dates {
+            Dates::Every(every) => {
                 let mut entries: Vec<Day> = Vec::new();
                 for (left, _) in blocks(every) {
                     let entry = sessions[at(left)];
@@ -152,7 +204,7 @@ impl Plan {
                 let fixed = Trial { first_trade: None, cash_days: None, periods: periods(&entries, final_day) };
                 (next > final_day, vec![fixed])
             }
-            &Dates::Random { every, trials, seed } => {
+            Dates::Random { every, trials, seed } => {
                 let populations: Vec<&[Day]> =
                     blocks(every).map(|(left, right)| &sessions[at(left)..at(right)]).filter(|p| !p.is_empty()).collect();
                 let mut random = Random::new(seed);

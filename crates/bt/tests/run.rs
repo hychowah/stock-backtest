@@ -1,6 +1,7 @@
-//! `bt run`: its argument rules, an `is` text no company has, the place of
-//! a run-stopping error, and a seed that gives the same result file again;
-//! and the files `bt export tables` refuses.
+//! `bt run`: its argument rules, the schedules it refuses, an `is` text no
+//! company has, the place of a run-stopping error, and a seed that gives the
+//! same result file again; and the files `bt export tables` refuses,
+//! among them a result file of an older layout.
 
 mod common;
 
@@ -17,9 +18,10 @@ fn strategy(file: &Path, steps: Value) {
 const RANK: &str = r#"{"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 50}"#;
 
 #[test]
-fn arguments_and_strategy_files_are_checked_before_any_data_is_read() {
+fn arguments_strategy_files_and_the_result_folder_are_checked_before_any_data_is_read() {
     let dir = tempfile::tempdir().unwrap();
-    // The home holds no prepared data, so each error below comes first.
+    // The home holds no prepared data, so each error below comes before the
+    // data is read.
     let (home, out) = (dir.path().join("home"), dir.path().join("out"));
     let (good, same, bad) = (dir.path().join("a.json"), dir.path().join("b/a.json"), dir.path().join("bad.json"));
     let rank: Value = serde_json::from_str(RANK).unwrap();
@@ -35,11 +37,7 @@ fn arguments_and_strategy_files_are_checked_before_any_data_is_read() {
         assert!(!success, "{reply}");
         reply["error"]["place"].as_str().unwrap().to_string()
     };
-    assert_eq!(run(&[&good], &["--dates", "2021-07-01", "--random", "2"]), "arguments");
-    assert_eq!(run(&[&good], &["--every", "3m", "--seed", "1"]), "arguments");
-    assert_eq!(run(&[&good], &["--every", "3m", "--dates", "2021-07-01"]), "arguments");
-    assert_eq!(run(&[&good], &[]), "arguments");
-    assert_eq!(run(&[&good], &["--every", "3x"]), "every");
+    assert_eq!(run(&[&good], &["--every", "3m", "--trials", "x"]), "arguments");
     assert!(run(&[&good, &bad], &["--every", "3m"]).starts_with(path(&bad)));
     assert_eq!(run(&[&good, &same], &["--every", "3m"]), path(&same));
     std::fs::create_dir(&out).unwrap();
@@ -48,6 +46,21 @@ fn arguments_and_strategy_files_are_checked_before_any_data_is_read() {
     std::fs::remove_file(out.join("other")).unwrap();
     // Only now is the market's data read.
     assert!(run(&[&good], &["--every", "3m"]).starts_with(path(&home)));
+}
+
+/// The schedule's flags are checked with the data (`engine::Plan::new` tests
+/// each combination).
+#[test]
+fn a_schedule_that_combines_its_flags_wrongly_is_refused_with_the_flag_at_fault() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let (file, out) = (dir.path().join("a.json"), dir.path().join("out"));
+    strategy(&file, json!([serde_json::from_str::<Value>(RANK).unwrap()]));
+    let mut args = vec!["run", path(&file), "--market", "us", "--start", "2021-07-01", "--end", "2023-06-28"];
+    args.extend(["--every", "3m", "--dates", "2021-07-01", "--out", path(&out), "--home", path(&home)]);
+    let (reply, success) = bt(&args);
+    assert!(!success && !out.exists(), "{reply}");
+    assert_eq!(reply["error"], json!({"message": "dates cannot be combined with every or trials", "place": "dates"}));
 }
 
 #[test]
@@ -96,15 +109,14 @@ fn a_run_stops_at_a_holding_without_an_exit_price_and_a_seed_repeats_its_result(
     let run = |out: &str, seed: Option<&str>| {
         let out = dir.path().join(out);
         let mut args = vec!["run", path(&gap), "--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28"];
-        args.extend(["--every", "6m", "--random", "3", "--out", path(&out), "--home", path(&home)]);
+        args.extend(["--every", "6m", "--trials", "3", "--out", path(&out), "--home", path(&home)]);
         args.extend(seed.map(|seed| ["--seed", seed]).into_iter().flatten());
         let (reply, success) = bt(&args);
         assert!(success, "{reply}");
         (reply, std::fs::read(out.join("gap.sqlite")).unwrap())
     };
     let (drawn, first) = run("drawn", None);
-    let seed = drawn["seed"].as_u64().unwrap().to_string();
-    assert_eq!(drawn["schedule"]["random"]["seed"], drawn["seed"]);
+    let seed = drawn["schedule"]["seed"].as_u64().unwrap().to_string();
     let (again, second) = run("again", Some(&seed));
     assert_eq!(first, second);
     assert_eq!(again["runs"][0]["cagr"], drawn["runs"][0]["cagr"]);
@@ -123,7 +135,7 @@ fn a_file_run_in_a_batch_gives_the_result_it_gives_alone() {
         let out = dir.path().join(out);
         let mut args = vec!["run"];
         args.extend(files.iter().map(|f| path(f)));
-        args.extend(["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--random", "3"]);
+        args.extend(["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--trials", "3"]);
         args.extend(["--seed", "852", "--out", path(&out), "--home", path(&home)]);
         let (reply, success) = bt(&args);
         assert!(success, "{reply}");
@@ -144,7 +156,7 @@ fn sleeves_that_keep_up_to_the_highest_rank_hold_what_they_hold_with_a_rank_of_1
         std::fs::write(&file, json!({"sleeves": [sleeve("A", "ROE"), sleeve("B", "Revenue")]}).to_string()).unwrap();
         let (out, exported) = (folder.join("out"), folder.join("holdings"));
         let mut args = vec!["run", path(&file), "--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m"];
-        args.extend(["--random", "3", "--seed", "852", "--out", path(&out), "--home", path(&home)]);
+        args.extend(["--trials", "3", "--seed", "852", "--out", path(&out), "--home", path(&home)]);
         let (reply, success) = bt(&args);
         assert!(success, "{reply}");
         assert!(bt(&["export", "holdings", path(&out.join("wide.sqlite")), "--out", path(&exported)]).1);
@@ -155,7 +167,7 @@ fn sleeves_that_keep_up_to_the_highest_rank_hold_what_they_hold_with_a_rank_of_1
 }
 
 #[test]
-fn export_tables_refuses_two_results_of_one_name_and_a_file_that_is_not_a_result() {
+fn export_tables_refuses_two_results_of_one_name_a_file_that_is_not_a_result_and_an_older_result() {
     let dir = tempfile::tempdir().unwrap();
     let home = prepared(dir.path());
     let file = dir.path().join("a.json");
@@ -178,4 +190,14 @@ fn export_tables_refuses_two_results_of_one_name_and_a_file_that_is_not_a_result
     assert_eq!(export(&[&a, &b]), path(&b));
     // The strategy file is not a result file.
     assert_eq!(export(&[&a, &file]), path(&file));
+    // A result file of version 0 (the header's `user_version`, 4 bytes at
+    // offset 60) holds another layout.
+    let old = dir.path().join("old.sqlite");
+    let mut bytes = std::fs::read(&a).unwrap();
+    bytes[60..64].fill(0);
+    std::fs::write(&old, bytes).unwrap();
+    let (reply, success) = bt(&["export", "tables", path(&old), "--out", path(&dir.path().join("old"))]);
+    assert!(!success, "{reply}");
+    let message = "this result file was written by another version of the program: run it again";
+    assert_eq!(reply["error"], json!({"message": message, "place": path(&old)}));
 }

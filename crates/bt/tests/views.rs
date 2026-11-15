@@ -27,7 +27,7 @@ fn explore_holdings_and_the_catalog_read_a_run_and_its_market() {
         assert!(success, "{reply}");
         (reply, out.join("value.sqlite").display().to_string())
     };
-    let (random, result) = run("random", &["--every", "6m", "--random", "2", "--seed", "1"]);
+    let (random, result) = run("random", &["--every", "6m", "--trials", "2", "--seed", "1"]);
     let (_, fixed) = run("fixed", &["--every", "6m"]);
 
     let explore = |result: &str, trial: &str, periods: &str, ranks: &str| {

@@ -18,6 +18,10 @@
 //! Days are ISO text. Number columns have no declared type, so SQLite keeps
 //! each value as written, `-0.0` included. Whatever can be derived (excess
 //! CAGR, total return, entry dates, weights, contributions) is not stored.
+//! The schedule is stored in the flat form of [`Schedule`].
+//!
+//! The file's `user_version` is [`VERSION`]. A file of another version is
+//! refused with "run it again", never read with this layout.
 
 use crate::Error;
 use crate::run::{Point, Run};
@@ -28,6 +32,9 @@ use market_data::Day;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OpenFlags, Row, params};
 use std::path::Path;
+
+/// The layout written and read; files from before it have version 0.
+const VERSION: i32 = 1;
 
 const SCHEMA: &str = r#"
 CREATE TABLE run(strategy TEXT NOT NULL, identity TEXT NOT NULL, market TEXT NOT NULL, schedule TEXT NOT NULL,
@@ -72,6 +79,7 @@ fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
     db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;")?;
     let tx = db.transaction()?;
     tx.execute_batch(SCHEMA)?;
+    tx.pragma_update(None, "user_version", VERSION)?;
     tx.execute(
         "INSERT INTO run VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         params![
@@ -79,7 +87,7 @@ fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
             run.identity,
             run.market.id(),
             serde_json::to_string(schedule).expect("a schedule is JSON"),
-            schedule.seed(),
+            schedule.seed,
             IsoDay(run.window.0),
             IsoDay(run.window.1),
             run.final_mark,
@@ -229,6 +237,9 @@ impl ResultFile {
         let fail = |e: rusqlite::Error| Error::new(format!("not a result file: {e}"), path.display());
         let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(fail)?;
         db.query_row("SELECT count(*) FROM run", [], |_| Ok(())).map_err(fail)?;
+        if db.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0)).map_err(fail)? != VERSION {
+            return Err(Error::new("this result file was written by another version of the program: run it again", path.display()));
+        }
         Ok(ResultFile { db })
     }
 
@@ -238,7 +249,7 @@ impl ResultFile {
         let rows = self.rows("SELECT strategy, schedule FROM run", |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         let (strategy, schedule) = rows.into_iter().next().expect("a result file has one run row");
         let place = format!("{}: run.strategy", self.db.path().unwrap_or_default());
-        Ok((Strategy::from_text(&strategy, &place)?, serde_json::from_str(&schedule).expect("a stored schedule is JSON")))
+        Ok((Strategy::parse(&strategy).map_err(|e| e.in_file(place))?, serde_json::from_str(&schedule).expect("a stored schedule is JSON")))
     }
 
     /// Each trial's summary, with the entries of its periods as its dates.

@@ -93,7 +93,8 @@ pub fn read(case: &Path, file: &str) -> Value {
     serde_json::from_slice(&std::fs::read(case.join(file)).unwrap()).unwrap()
 }
 
-/// The `bt run` schedule arguments of a case's run settings.
+/// The `bt run` schedule arguments of a case's run settings, whose
+/// `interval` is the flag `--every`.
 pub fn schedule(settings: &Value) -> Vec<String> {
     let text = |key: &str| settings[key].as_str().unwrap().to_string();
     let mut args = vec!["--market".into(), text("market"), "--start".into(), text("start"), "--end".into(), text("end")];
@@ -104,7 +105,7 @@ pub fn schedule(settings: &Value) -> Vec<String> {
         args.extend(["--every".into(), text("interval")]);
     }
     if let Some(trials) = settings.get("trials") {
-        args.extend(["--random".into(), trials.to_string(), "--seed".into(), settings["seed"].to_string()]);
+        args.extend(["--trials".into(), trials.to_string(), "--seed".into(), settings["seed"].to_string()]);
     }
     args
 }

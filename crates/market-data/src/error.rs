@@ -26,9 +26,10 @@ impl Error {
     }
 
     /// The same error with the file it is about in front of its place:
-    /// `FILE: PLACE`.
+    /// `FILE: PLACE`, or `FILE` when the place is empty.
     pub fn in_file(self, file: impl fmt::Display) -> Error {
-        Error { place: format!("{file}: {}", self.place), ..self }
+        let place = if self.place.is_empty() { file.to_string() } else { format!("{file}: {}", self.place) };
+        Error { place, ..self }
     }
 }
 
