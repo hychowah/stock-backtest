@@ -250,7 +250,11 @@ fn refused_files_name_the_place_and_the_cause() {
         assert_eq!(error.place, place);
         assert_eq!(error.message, message);
     }
-    // No ceiling on the steps or on the highest rank.
-    let large = format!(r#"{}, {{"rank": "P/B", "order": "lowest", "from": 1, "to": 5001}}"#, vec![rank; 50].join(","));
-    assert!(Strategy::parse(&one_sleeve(&large)).is_ok());
+}
+
+#[test]
+fn the_highest_rank_of_several_sleeves_saturates_instead_of_overflowing() {
+    let sleeve = |name: &str| format!(r#"{{"name": "{name}", "steps": [{{"rank": "P/B", "order": "lowest", "from": 1, "to": 4294967295}}]}}"#);
+    let strategy = Strategy::parse(&format!(r#"{{"sleeves": [{}, {}]}}"#, sleeve("A"), sleeve("B"))).unwrap();
+    assert_eq!(strategy.ranks(), (1, u32::MAX));
 }

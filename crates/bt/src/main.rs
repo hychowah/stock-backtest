@@ -6,9 +6,9 @@
 use chrono::{DateTime, SubsecRound, Utc};
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use engine::commands::{CatalogRequest, CheckReply, ExploreRequest, ExportResultsRequest, RunReply, RunRequest, ScreenRequest, Target};
+use engine::commands::{CheckReply, RunReply, RunRequest, ScreenRequest, Target};
 use engine::cross_section::CrossSectionRequest;
-use engine::views::Selection;
+use engine::views::{Selection, range};
 use engine::{Schedule, Strategy};
 use market_data::commands::{self, ExportRequest, Home, InspectRequest, PrepareRequest};
 use market_data::{Day, Error, Market};
@@ -192,12 +192,8 @@ fn main() -> ExitCode {
     let home = root.clone().map(Home::new);
     match cli.command {
         Command::Run(args) => reply(home.and_then(|home| run(&home, args))),
-        Command::Export(Export::Tables(ExportArgs { results, out })) => {
-            reply(engine::commands::export_tables(&ExportResultsRequest { results, out }))
-        }
-        Command::Export(Export::Holdings(ExportArgs { results, out })) => {
-            reply(engine::commands::export_holdings(&ExportResultsRequest { results, out }))
-        }
+        Command::Export(Export::Tables(ExportArgs { results, out })) => reply(engine::commands::export_tables(&results, &out)),
+        Command::Export(Export::Holdings(ExportArgs { results, out })) => reply(engine::commands::export_holdings(&results, &out)),
         Command::Export(Export::CrossSection(args)) => reply(home.and_then(|home| {
             let (market, schedule) = schedule(&args)?;
             let file = &args.files[0];
@@ -210,16 +206,13 @@ fn main() -> ExitCode {
                 text => Some(text.parse().map_err(|_| Error::new(format!("{text:?} is not a trial: use its number, or all"), "trial"))?),
             };
             let selection = Selection { trial, periods: range(&periods, "periods")?, ranks: range(&ranks, "ranks")? };
-            engine::commands::explore(&ExploreRequest { result, selection })
+            engine::commands::explore(&result, &selection)
         })()),
         Command::Check { files } => reply((|| {
             let files = files.iter().map(|file| Ok(engine::commands::check(&name(file), &strategy(file)?))).collect::<Result<_, Error>>()?;
             Ok(CheckReply { files })
         })()),
-        Command::Catalog { market } => reply(home.and_then(|home| {
-            let market: Market = market.parse()?;
-            engine::commands::catalog(&home, &CatalogRequest { market })
-        })),
+        Command::Catalog { market } => reply(home.and_then(|home| engine::commands::catalog(&home, market.parse()?))),
         Command::Screen { file, market } => reply(home.and_then(|home| {
             let market: Market = market.parse()?;
             let strategy = strategy(&file)?;
@@ -301,12 +294,6 @@ fn strategy(file: &Path) -> Result<Strategy, Error> {
 /// A strategy file's name in replies and error places: its path as given.
 fn name(file: &Path) -> String {
     file.display().to_string()
-}
-
-/// `A-B`: two whole numbers, which the command checks.
-fn range(text: &str, place: &str) -> Result<(u32, u32), Error> {
-    let bounds = text.split_once('-').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
-    bounds.ok_or_else(|| Error::new(format!("{text:?} is not a range: use A-B, such as 2-5"), place))
 }
 
 /// The runtime folder holds `bin/bt`, so it is the parent of the folder that

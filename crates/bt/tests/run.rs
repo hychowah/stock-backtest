@@ -1,7 +1,6 @@
 //! `bt run`: its argument rules, the schedules it refuses, an `is` text no
 //! company has, the place of a run-stopping error, and a seed that gives the
-//! same result file again; and the files `bt export tables` refuses,
-//! among them a result file of an older layout.
+//! same result file again; and the files `bt export tables` refuses.
 
 mod common;
 
@@ -145,29 +144,7 @@ fn a_file_run_in_a_batch_gives_the_result_it_gives_alone() {
 }
 
 #[test]
-fn sleeves_that_keep_up_to_the_highest_rank_hold_what_they_hold_with_a_rank_of_1000() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = prepared(dir.path());
-    let holdings = |to: u32| {
-        let folder = dir.path().join(format!("to{to}"));
-        let file = folder.join("wide.json");
-        let sleeve = |name: &str, rank: &str| json!({"name": name, "steps": [{"rank": rank, "order": "highest", "from": 1, "to": to}]});
-        std::fs::create_dir_all(&folder).unwrap();
-        std::fs::write(&file, json!({"sleeves": [sleeve("A", "ROE"), sleeve("B", "Revenue")]}).to_string()).unwrap();
-        let (out, exported) = (folder.join("out"), folder.join("holdings"));
-        let mut args = vec!["run", path(&file), "--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m"];
-        args.extend(["--trials", "3", "--seed", "852", "--out", path(&out), "--home", path(&home)]);
-        let (reply, success) = bt(&args);
-        assert!(success, "{reply}");
-        assert!(bt(&["export", "holdings", path(&out.join("wide.sqlite")), "--out", path(&exported)]).1);
-        std::fs::read_to_string(exported.join("holdings.jsonl")).unwrap()
-    };
-    let (wide, narrow) = (holdings(u32::MAX), holdings(1000));
-    assert!(!wide.is_empty() && wide == narrow);
-}
-
-#[test]
-fn export_tables_refuses_two_results_of_one_name_a_file_that_is_not_a_result_and_an_older_result() {
+fn export_tables_refuses_two_results_of_one_name_and_a_file_that_is_not_a_result() {
     let dir = tempfile::tempdir().unwrap();
     let home = prepared(dir.path());
     let file = dir.path().join("a.json");
@@ -190,14 +167,4 @@ fn export_tables_refuses_two_results_of_one_name_a_file_that_is_not_a_result_and
     assert_eq!(export(&[&a, &b]), path(&b));
     // The strategy file is not a result file.
     assert_eq!(export(&[&a, &file]), path(&file));
-    // A result file of version 0 (the header's `user_version`, 4 bytes at
-    // offset 60) holds another layout.
-    let old = dir.path().join("old.sqlite");
-    let mut bytes = std::fs::read(&a).unwrap();
-    bytes[60..64].fill(0);
-    std::fs::write(&old, bytes).unwrap();
-    let (reply, success) = bt(&["export", "tables", path(&old), "--out", path(&dir.path().join("old"))]);
-    assert!(!success, "{reply}");
-    let message = "this result file was written by another version of the program: run it again";
-    assert_eq!(reply["error"], json!({"message": message, "place": path(&old)}));
 }

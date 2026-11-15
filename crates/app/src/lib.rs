@@ -93,7 +93,7 @@ mod worker;
 pub use http::serve;
 pub use library::{NewVariable, Variable};
 pub use runs::{AddRun, Deleted, EditRun, MoveRun, Queue};
-pub use store::{Outcome, RunRow, RunsReply, State};
+pub use store::{RunRow, RunsReply, State};
 
 use store::Store;
 
@@ -108,4 +108,10 @@ pub fn save(root: &Path, result: &Path, name: &str) -> Result<RunRow, Error> {
     let saved = engine::commands::saved(result)?;
     let store = Store::open(root)?;
     store.save(name, &saved, result).map_err(|failure| failure.error)
+}
+
+/// A strategy's JSON from a request or a queued run, read as `bt` reads a
+/// file; an error's place starts with `strategy`.
+fn strategy(text: &str) -> Result<engine::Strategy, Error> {
+    engine::Strategy::parse(text).map_err(|e| e.in_file("strategy"))
 }

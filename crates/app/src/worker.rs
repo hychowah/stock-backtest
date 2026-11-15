@@ -26,14 +26,11 @@
 //!   result file (if any) is removed, and once the worker has ended the
 //!   server puts the run back to waiting, so the next start continues the
 //!   queue.
-//! - **Crash, abort and out-of-memory kill.** These end the whole process,
-//!   so the run stays `running`. The next start holds it, in its place: the
-//!   rest of the queue goes on, and the user releases or deletes it. A run
-//!   that always ends the server therefore cannot end it again by itself.
+//! - **Crash, abort and out-of-memory kill.** The next start holds the run
+//!   (see the crate comment).
 
-use crate::store::{Claimed, Outcome, Store, remove};
-use engine::Strategy;
-use engine::commands::{RunRequest, Target};
+use crate::store::{Claimed, Store, remove};
+use engine::commands::{Outcome, RunRequest, Target};
 use market_data::Error;
 use market_data::commands::Home;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -157,7 +154,7 @@ impl Worker {
 fn execute(home: &Home, store: &Store, run: Claimed, stop: &AtomicBool) -> Result<Outcome, Error> {
     let result = store.file(run.id);
     catch_unwind(AssertUnwindSafe(|| {
-        let strategy = Strategy::parse(&run.strategy).map_err(|e| e.in_file("strategy"))?;
+        let strategy = crate::strategy(&run.strategy)?;
         let target = Target { name: "strategy".into(), strategy, result };
         let reply = engine::commands::run(home, &RunRequest { market: run.market, schedule: run.schedule, runs: vec![target] }, stop)?;
         let headline = reply.runs.into_iter().next().expect("one target").headline;

@@ -128,7 +128,8 @@ async fn explore(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Exp
         "all" => None,
         _ => Some(number(&query, "trial")?),
     };
-    let selection = Selection { trial, periods: range(&query, "periods")?, ranks: range(&query, "ranks")? };
+    let range = |name| views::range(value(&query, name)?, name).map_err(Failure::input);
+    let selection = Selection { trial, periods: range("periods")?, ranks: range("ranks")? };
     read(app, id, None, move |file| views::explore(&file, &selection)).await
 }
 
@@ -176,12 +177,4 @@ fn number(query: &BTreeMap<String, String>, name: &str) -> Result<u32, Failure> 
 
 fn optional(query: &BTreeMap<String, String>, name: &str) -> Result<Option<u32>, Failure> {
     if query.contains_key(name) { number(query, name).map(Some) } else { Ok(None) }
-}
-
-/// `A-B`, two counts; the engine checks that 1 ≤ A ≤ B.
-fn range(query: &BTreeMap<String, String>, name: &str) -> Result<(u32, u32), Failure> {
-    let text = value(query, name)?;
-    text.split_once('-')
-        .and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?)))
-        .ok_or_else(|| Failure::input(Error::new(format!("{text:?} is not a range: use A-B, such as 2-5"), name)))
 }

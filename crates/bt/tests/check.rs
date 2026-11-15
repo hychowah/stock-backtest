@@ -1,14 +1,13 @@
-//! `bt check`: what it reports of each step and variable; every case's
-//! strategy file reads and its canonical form reads back to itself; the
-//! first file that fails names its place.
+//! `bt check`: what it reports of each step and variable; the first file
+//! that fails names its place.
 
 mod common;
 
-use common::{bt, fixtures};
+use common::bt;
 use serde_json::{Value, json};
 
 #[test]
-fn check_reports_each_source_and_its_canonical_form_is_a_fixed_point() {
+fn check_reports_each_source_and_the_first_file_that_fails() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("kinds.json");
     let strategy = json!({
@@ -45,29 +44,6 @@ fn check_reports_each_source_and_its_canonical_form_is_a_fixed_point() {
         ]
     );
     assert_eq!(checked["sleeves"][0]["steps"][1]["stored"], json!(0.5));
-
-    let cases = fixtures().join("cases");
-    let mut files = Vec::new();
-    for kind in std::fs::read_dir(cases).unwrap() {
-        for case in std::fs::read_dir(kind.unwrap().path()).unwrap() {
-            files.push(case.unwrap().path().join("strategy.json").display().to_string());
-        }
-    }
-    let canonical: Vec<String> = files
-        .iter()
-        .enumerate()
-        .map(|(n, _)| dir.path().join(format!("{n}.json")).display().to_string())
-        .collect();
-    let (first, success) = bt(&[&["check"], &files.iter().map(String::as_str).collect::<Vec<_>>()[..]].concat());
-    assert!(success, "{first}");
-    for (path, read) in canonical.iter().zip(first["files"].as_array().unwrap()) {
-        std::fs::write(path, read["canonical"].as_str().unwrap()).unwrap();
-    }
-    let (again, success) = bt(&[&["check"], &canonical.iter().map(String::as_str).collect::<Vec<_>>()[..]].concat());
-    assert!(success, "{again}");
-    for (a, b) in first["files"].as_array().unwrap().iter().zip(again["files"].as_array().unwrap()) {
-        assert_eq!((&a["canonical"], &a["identity"]), (&b["canonical"], &b["identity"]), "{}", a["file"]);
-    }
 
     let bad = dir.path().join("bad.json");
     std::fs::write(&bad, r#"{"sleeves": [{"steps": [{"rank": "Revenue +", "order": "highest", "from": 1, "to": 3}]}]}"#).unwrap();

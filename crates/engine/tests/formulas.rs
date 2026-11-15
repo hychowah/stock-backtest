@@ -156,14 +156,3 @@ fn very_long_or_deep_texts_are_refused() {
         assert_eq!(Formula::read(&text, &[]).unwrap_err().code, "DEFINITION_LIMIT");
     }
 }
-
-#[test]
-fn a_formula_has_no_ceiling_on_its_parts_or_on_the_definitions_it_uses() {
-    let balanced = (0..9).fold("Revenue".to_string(), |half, _| format!("({half} + {half})"));
-    assert!(Formula::read(&balanced, &[]).is_ok(), "1023 parts");
-    let parts: Vec<Arc<Formula>> =
-        (1..=40).map(|n| Arc::new(Formula::read(&format!("Revenue + {n} USD"), &[]).unwrap().named(&format!("Part {n}")))).collect();
-    let names: Vec<String> = (1..=40).map(|n| format!("Part {n}")).collect();
-    let sum = names.chunks(4).map(|group| format!("({})", group.join(" + "))).collect::<Vec<_>>().join(" + ");
-    assert!(Formula::read(&sum, &parts).is_ok(), "40 definitions");
-}

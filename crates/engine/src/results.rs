@@ -41,7 +41,7 @@ use serde::Serialize;
 use std::path::Path;
 use ts_rs::TS;
 
-/// The layout written and read; files from before it have version 0.
+/// The layout written and read.
 const VERSION: i32 = 1;
 
 const SCHEMA: &str = r#"

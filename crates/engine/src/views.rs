@@ -410,6 +410,13 @@ pub struct Selection {
     pub ranks: (u32, u32),
 }
 
+/// Reads `A-B`, two whole numbers, as a selection's periods or ranks;
+/// [`explore`] checks that 1 ≤ A ≤ B. An error's place is `place`.
+pub fn range(text: &str, place: &str) -> Result<(u32, u32), Error> {
+    let bounds = text.split_once('-').and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
+    bounds.ok_or_else(|| Error::new(format!("{text:?} is not a range: use A-B, such as 2-5"), place))
+}
+
 /// The days an exploration covers and what it selects.
 #[derive(Debug, Serialize, TS)]
 pub struct Window {

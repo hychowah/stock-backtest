@@ -199,11 +199,11 @@ async fn same_origin(request: Request, next: Next) -> Response {
 }
 
 /// `bt serve`: takes `data/serve.lock`, opens the database, holds a run
-/// still marked running (the last server died while running it), listens
-/// on `127.0.0.1:port` (0: a free port the system chooses), starts the
-/// worker and calls `ready` with the address. Serves until Ctrl+C or
-/// SIGTERM, then stops accepting requests, lets the open ones finish, stops
-/// the worker, puts the run it interrupted back to waiting and returns.
+/// still marked running, listens on `127.0.0.1:port` (0: a free port the
+/// system chooses), starts the worker and calls `ready` with the address.
+/// Serves until Ctrl+C or SIGTERM, then stops accepting requests, lets the
+/// open ones finish, stops the worker, puts the run it interrupted back to
+/// waiting and returns.
 pub fn serve(root: &Path, port: u16, ready: impl FnOnce(SocketAddr)) -> Result<(), Error> {
     let _lock = lock(root)?;
     let store = Store::open(root)?;

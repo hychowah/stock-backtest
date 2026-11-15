@@ -166,18 +166,29 @@ fn numbers(summaries: &[statistics::Summary], holdings: impl Iterator<Item = usi
     }
 }
 
+/// What a complete run gave, stored when it finished.
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Outcome {
+    pub headline: Headline,
+    /// The prepared generation the run read, and its as-of time.
+    pub generation: u64,
+    pub as_of: String,
+    /// The program that ran it.
+    pub program: String,
+    /// The run's wall time; absent for a result added by `bt save`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub seconds: Option<f64>,
+}
+
 /// What a list of runs keeps of a result file, read from the file alone.
 pub struct Saved {
     pub market: Market,
     pub schedule: Schedule,
     pub strategy: Strategy,
-    /// The prepared generation the run read, its as-of time, and the
-    /// program that ran it.
-    pub generation: u64,
-    pub as_of: String,
-    pub program: String,
-    /// The same numbers as the run's reply gave.
-    pub headline: Headline,
+    /// The same numbers as the run's reply gave; the wall time is not known.
+    pub outcome: Outcome,
 }
 
 /// Reads a result file's run row and headline.
@@ -187,7 +198,8 @@ pub fn saved(result: &Path) -> Result<Saved, Error> {
     let (market, generation, as_of, program) = file.origin()?;
     let holdings = file.periods()?.into_iter().map(|p| p.names as usize);
     let headline = numbers(&file.summaries()?, holdings);
-    Ok(Saved { market: market.parse()?, schedule, strategy, generation, as_of, program, headline })
+    let outcome = Outcome { headline, generation, as_of, program, seconds: None };
+    Ok(Saved { market: market.parse()?, schedule, strategy, outcome })
 }
 
 /// Checks a run's inputs against the market's data: the strategy's `is`
@@ -199,28 +211,21 @@ pub fn check_run(data: &MarketData, name: &str, strategy: &Strategy, schedule: &
     Plan::new(data, schedule)
 }
 
-/// `bt export tables RESULT... --out DIR` and `bt export holdings RESULT...
-/// --out DIR`.
-pub struct ExportResultsRequest {
-    /// Result files; no two with the same stem.
-    pub results: Vec<PathBuf>,
-    /// The export folder: new or empty.
-    pub out: PathBuf,
-}
-
 #[derive(Debug, Serialize)]
 pub struct ExportResultsReply {
     /// The rows written per table.
     pub tables: BTreeMap<String, u64>,
 }
 
-/// Writes the result files as keyed tables (`tables` crate format) into
-/// `out`: the stored rows `trials`, `statistics`, `periods`, `holdings`,
-/// `steps` and `curve`, and the views `growth`, `band`, `sectors` and
-/// `contributions`, as `proof/l3.py` defines them. Each table's rows are its
-/// row type's, led by `case`, the result file's stem, which starts every key.
-pub fn export_tables(request: &ExportResultsRequest) -> Result<ExportResultsReply, Error> {
-    let mut export = Export::start(request)?;
+/// `bt export tables RESULT... --out DIR`: writes the result files (no two
+/// with the same stem) as keyed tables (`tables` crate format) into `out`, a
+/// new or empty folder: the stored rows `trials`, `statistics`, `periods`,
+/// `holdings`, `steps` and `curve`, and the views `growth`, `band`,
+/// `sectors` and `contributions`, as `proof/l3.py` defines them. Each
+/// table's rows are its row type's, led by `case`, the result file's stem,
+/// which starts every key.
+pub fn export_tables(results: &[PathBuf], out: &Path) -> Result<ExportResultsReply, Error> {
+    let mut export = Export::start(results, out)?;
     export.table("trials", &["trial"], ResultFile::trials)?;
     export.table("statistics", &["statistic"], views::statistics)?;
     export.table("periods", &["trial", "period"], ResultFile::periods)?;
@@ -251,14 +256,15 @@ pub fn export_tables(request: &ExportResultsRequest) -> Result<ExportResultsRepl
     export.finish()
 }
 
-/// Writes one table, `holdings` (case, trial, period, rank), of every holding
-/// of the result files: the fields of the `holdings` table of
-/// [`export_tables`], and one column for each numeric source of the
-/// strategy's steps, named `source:` and the source as the canonical form
-/// writes it (so it is unique and never a fixed field), with the value that
-/// the holding's step trail read (null when no picking sleeve reads it).
-pub fn export_holdings(request: &ExportResultsRequest) -> Result<ExportResultsReply, Error> {
-    let mut export = Export::start(request)?;
+/// `bt export holdings RESULT... --out DIR`: writes one table, `holdings`
+/// (case, trial, period, rank), of every holding of the result files: the
+/// fields of the `holdings` table of [`export_tables`], and one column for
+/// each numeric source of the strategy's steps, named `source:` and the
+/// source as the canonical form writes it (so it is unique and never a fixed
+/// field), with the value that the holding's step trail read (null when no
+/// picking sleeve reads it).
+pub fn export_holdings(results: &[PathBuf], out: &Path) -> Result<ExportResultsReply, Error> {
+    let mut export = Export::start(results, out)?;
     export.table("holdings", &["trial", "period", "rank"], |file| Ok(views::holdings(file)?.1))?;
     export.finish()
 }
@@ -274,18 +280,17 @@ struct Export<'r> {
 }
 
 impl Export<'_> {
-    fn start(request: &ExportResultsRequest) -> Result<Export<'_>, Error> {
+    fn start<'r>(results: &[PathBuf], out: &'r Path) -> Result<Export<'r>, Error> {
         let mut files = BTreeMap::new();
-        for path in &request.results {
+        for path in results {
             let file = ResultFile::open(path)?;
             if files.insert(stem(path), file).is_some() {
                 return Err(Error::new("another result file has the same name; their rows would share one case", path.display()));
             }
         }
         let settings = serde_json::json!({ "cases": files.keys().collect::<Vec<_>>() });
-        let writer = tables::Writer::create(&request.out, market_data::PROGRAM, settings)
-            .map_err(|message| Error::new(message, request.out.display()))?;
-        Ok(Export { files, writer, out: &request.out, tables: BTreeMap::new() })
+        let writer = tables::Writer::create(out, market_data::PROGRAM, settings).map_err(|message| Error::new(message, out.display()))?;
+        Ok(Export { files, writer, out, tables: BTreeMap::new() })
     }
 
     /// Writes table `name` of each file's `rows`, keyed by `case` and `keys`.
@@ -313,15 +318,10 @@ impl Export<'_> {
     }
 }
 
-/// `bt explore RESULT --trial N|all --periods A-B --ranks A-B`.
-pub struct ExploreRequest {
-    pub result: PathBuf,
-    pub selection: Selection,
-}
-
-/// Explores one result file from its rows alone ([`views::explore`]).
-pub fn explore(request: &ExploreRequest) -> Result<ExploreReply, Error> {
-    views::explore(&ResultFile::open(&request.result)?, &request.selection)
+/// `bt explore RESULT --trial N|all --periods A-B --ranks A-B`: explores
+/// one result file from its rows alone ([`views::explore`]).
+pub fn explore(result: &Path, selection: &Selection) -> Result<ExploreReply, Error> {
+    views::explore(&ResultFile::open(result)?, selection)
 }
 
 /// `bt screen FILE --market M`.
@@ -480,11 +480,6 @@ pub fn describe(strategy: &Strategy) -> Description {
     Description { variables, sleeves }
 }
 
-/// `bt catalog --market M`.
-pub struct CatalogRequest {
-    pub market: Market,
-}
-
 /// What a strategy file can write, and the market's text values.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
@@ -549,14 +544,14 @@ pub struct Limits {
     pub yearly_values: u64,
 }
 
-/// The catalog of what a strategy file can write, with the market's
-/// sectors and exchanges from its prepared data.
-pub fn catalog(home: &Home, request: &CatalogRequest) -> Result<CatalogReply, Error> {
-    let data = MarketData::open(home, request.market)?;
+/// `bt catalog --market M`: the catalog of what a strategy file can write,
+/// with the market's sectors and exchanges from its prepared data.
+pub fn catalog(home: &Home, market: Market) -> Result<CatalogReply, Error> {
+    let data = MarketData::open(home, market)?;
     let (sectors, exchanges) = (texts(&data, Field::Sector), texts(&data, Field::Exchange));
     let forms = |lines: Vec<(String, String)>| lines.into_iter().map(|(form, meaning)| Form { form, meaning }).collect();
     Ok(CatalogReply {
-        market: request.market,
+        market,
         names: names::NAMES
             .iter()
             .map(|n| CatalogName {

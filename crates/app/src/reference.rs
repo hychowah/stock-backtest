@@ -5,8 +5,8 @@ use crate::http::{App, Body, Failure, blocking};
 use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use engine::{Strategy, StrategyFile};
-use engine::commands::{CatalogReply, CatalogRequest, ScreenReply, ScreenRequest};
+use engine::StrategyFile;
+use engine::commands::{CatalogReply, ScreenReply, ScreenRequest};
 use market_data::Market;
 use market_data::commands::StatusReply;
 use serde::Deserialize;
@@ -33,14 +33,13 @@ pub struct ScreenBody {
 
 async fn catalog(State(app): State<App>, Path(market): Path<String>) -> Result<Json<CatalogReply>, Failure> {
     let market: Market = market.parse().map_err(Failure::unknown)?;
-    blocking(move || Ok(engine::commands::catalog(&app.home, &CatalogRequest { market })?)).await.map(Json)
+    blocking(move || Ok(engine::commands::catalog(&app.home, market)?)).await.map(Json)
 }
 
 async fn screen(State(app): State<App>, Body(body): Body<ScreenBody>) -> Result<Json<ScreenReply>, Failure> {
     blocking(move || {
-        let name = "strategy".to_string();
-        let strategy = Strategy::parse(body.strategy.get()).map_err(|e| e.in_file(&name))?;
-        Ok(engine::commands::screen(&app.home, &ScreenRequest { name, strategy, market: body.market })?)
+        let strategy = crate::strategy(body.strategy.get())?;
+        Ok(engine::commands::screen(&app.home, &ScreenRequest { name: "strategy".into(), strategy, market: body.market })?)
     })
     .await
     .map(Json)

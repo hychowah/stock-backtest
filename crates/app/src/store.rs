@@ -2,7 +2,7 @@
 //! changed by single statements (see the crate comment for the states).
 
 use crate::http::Failure;
-use engine::commands::{Description, Headline};
+use engine::commands::{Description, Outcome};
 use engine::{Schedule, Strategy, StrategyFile};
 use market_data::{Error, Market};
 use rusqlite::{Connection, OptionalExtension, Row};
@@ -86,22 +86,6 @@ pub struct RunRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub description: Option<Description>,
-}
-
-/// What a complete run gave, stored when it finished.
-#[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Outcome {
-    pub headline: Headline,
-    /// The prepared generation the run read, and its as-of time.
-    pub generation: u64,
-    pub as_of: String,
-    /// The program that ran it.
-    pub program: String,
-    /// The run's wall time; absent for a result added by `bt save`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub seconds: Option<f64>,
 }
 
 /// `GET /api/runs`: the queue's pause and every run, the queue first
@@ -345,12 +329,11 @@ impl Store {
         let added = (|| -> Result<i64, Failure> {
             let mut db = self.connect()?;
             let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            let outcome = Outcome::from(saved);
             let sql = format!(
                 "INSERT INTO runs(name, market, schedule, strategy, state, created, finished, outcome)
                  VALUES(?, ?, ?, ?, 'complete', {NOW}, {NOW}, ?) RETURNING id"
             );
-            let values = (name, saved.market.id(), json(&saved.schedule), saved.strategy.canonical(), json(&outcome));
+            let values = (name, saved.market.id(), json(&saved.schedule), saved.strategy.canonical(), json(&saved.outcome));
             let id: i64 = tx.query_row(&sql, values, |row| row.get(0))?;
             let file = self.file(id);
             std::fs::rename(&temporary, &file).map_err(|e| Failure::io(Error::new(format!("cannot add the result file: {e}"), file.display())))?;
@@ -392,14 +375,6 @@ fn json(value: &impl Serialize) -> String {
 /// Removes a file that may not exist.
 pub(crate) fn remove(path: &Path) {
     let _ = std::fs::remove_file(path);
-}
-
-impl From<&engine::commands::Saved> for Outcome {
-    /// A result added by `bt save`: its wall time is not known.
-    fn from(saved: &engine::commands::Saved) -> Outcome {
-        let (headline, as_of, program) = (saved.headline.clone(), saved.as_of.clone(), saved.program.clone());
-        Outcome { headline, generation: saved.generation, as_of, program, seconds: None }
-    }
 }
 
 /// A run row from the columns [`COLUMNS`], without its strategy.
