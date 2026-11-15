@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Build } from "../build/Build.tsx";
+import { FormulaEditor } from "../formula/Editor.tsx";
 import { lastResult, useRuns } from "../live.ts";
 import { Review } from "../review/Review.tsx";
 import { go, parseRoute, type Route } from "../route.ts";
@@ -87,6 +88,7 @@ export function Shell() {
         <Runs visible={route.view === "runs"} queue={!trayOpen && <QueuePanel />} />
         <Review visible={route.view === "review"} id={reviewId} />
         <footer>Source: prepared data and saved results · No market-data requests are made by this page.</footer>
+        <FormulaEditor />
       </main>
     </>
   );

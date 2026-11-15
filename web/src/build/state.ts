@@ -60,6 +60,19 @@ export function changeDraft(edit: (draft: Draft) => Draft): void {
   else update({ live: edit(state.live), fresh: false });
 }
 
+/** The change of the state that applies `edit` to the live draft and to a
+ *  held run's draft alike. */
+export function bothDrafts(current: Pick<BuildState, "live" | "held" | "fresh">, edit: (draft: Draft) => Draft): Pick<BuildState, "live" | "held" | "fresh"> {
+  const live = edit(current.live);
+  return { live, held: current.held && { ...current.held, draft: edit(current.held.draft) }, fresh: current.fresh && live === current.live };
+}
+
+/** Changes both drafts, as a change of the variable library must: the live
+ *  one and a held run's. */
+export function changeDrafts(edit: (draft: Draft) => Draft): void {
+  update(bothDrafts(state, edit));
+}
+
 /** Moves the start of the default draft inside the market's sessions, once,
  *  as a change of market does. A typed or copied start stays as it is. */
 export function placeDefaultStart(sessions: { first: string; last: string }): void {

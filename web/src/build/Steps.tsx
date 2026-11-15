@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { CatalogReply } from "../api/CatalogReply.ts";
+import type { FileVariable } from "../api/FileVariable.ts";
 import type { Variable } from "../api/Variable.ts";
+import { client } from "../client.ts";
 import {
   addStep,
   commitRanks,
@@ -18,9 +20,13 @@ import {
   sourceOf,
   type Step,
 } from "../draft.ts";
+import { type Edited, editedSource, isFormulaText, keepCopy, renameSource } from "../formula.ts";
+import { openEditor } from "../formula/Editor.tsx";
+import { useRead } from "../read.ts";
 import { describeSource, displayName, type Known, sourceGroups, textChoices } from "../sources.ts";
+import { requestVariables } from "../variables.ts";
 import { Picker } from "./Picker.tsx";
-import { changeDraft } from "./state.ts";
+import { changeDraft, changeDrafts } from "./state.ts";
 
 const COMPARISONS = [
   [">", "More than (>)"],
@@ -99,6 +105,23 @@ export function Steps({ draft, sleeve, setSleeve, catalog, library, note }: {
     focus.current = next ? `step-remove-${next.id}` : "add-filter";
     changeDraft((current) => removeStep(current, sleeve, step.id));
   };
+  /** Opens the formula editor for a step; Use makes the step read the
+   *  result, and changes the draft's own variable when one was edited. A
+   *  rename or a delete in the library changes both drafts. */
+  const formula = (title: string, use: string, edited: Edited | null, onUse: (source: string) => void) =>
+    openEditor({
+      title,
+      use,
+      catalog,
+      own: draft.variables,
+      edited,
+      onUse: (source: string, own?: FileVariable) => {
+        if (own) changeDraft((current) => ({ ...current, variables: { ...current.variables, [source]: own } }));
+        onUse(source);
+      },
+      onRenamed: (from, to) => changeDrafts((current) => renameSource(current, from, to)),
+      onDeleted: (gone, entries) => changeDrafts((current) => keepCopy(current, gone, entries)),
+    });
   const open = (kind: Kind) => {
     before(null);
     setPending(kind);
@@ -176,12 +199,14 @@ export function Steps({ draft, sleeve, setSleeve, catalog, library, note }: {
             number={i + 1}
             last={i === steps.length - 1}
             known={known}
+            loaded={library !== null}
             groups={sourceGroups(isRank(step) ? "rank" : "filter", catalog, library)}
             note={note}
             onSource={(name) => {
               changeDraft((current) => setSource(current, sleeve, step.id, name, isText(name)));
               focus.current = isRank(step) ? `step-direction-${step.id}` : `step-value-${step.id}`;
             }}
+            onFormula={(edited, onUse) => formula(`Step ${i + 1} · ${isRank(step) ? "Rank" : "Filter"}`, `Update step ${i + 1}`, edited, onUse)}
             onEdit={(edit) => changeDraft((current) => editStep(current, sleeve, step.id, edit))}
             onRanks={(key) => changeDraft((current) => commitRanks(current, sleeve, step.id, key))}
             onMove={(offset) => move(step, offset)}
@@ -191,7 +216,16 @@ export function Steps({ draft, sleeve, setSleeve, catalog, library, note }: {
         {pending && (
           <li class="condition-row condition-pending" data-row="new">
             <span class="step-name">New {pending}</span>
-            <Picker id="new" kind={pending} label="" title={`New ${pending}`} groups={sourceGroups(pending, catalog, library)} note={note} onChoose={(name) => choose(pending, name)} />
+            <Picker
+              id="new"
+              kind={pending}
+              label=""
+              title={`New ${pending}`}
+              groups={sourceGroups(pending, catalog, library)}
+              note={note}
+              onChoose={(name) => choose(pending, name)}
+              onCreate={() => formula(`New ${pending}`, `Add as ${pending}`, null, (source) => choose(pending, source))}
+            />
             <div class="condition-actions">
               <button
                 type="button"
@@ -230,15 +264,21 @@ export function Steps({ draft, sleeve, setSleeve, catalog, library, note }: {
 type Edit = Parameters<typeof editStep>[3];
 
 /** One step: its name, source picker, comparison or order, and value or
- *  ranks, then Move up, Move down and Remove. */
-function StepRow({ step, number, last, known, groups, note, onSource, onEdit, onRanks, onMove, onRemove }: {
+ *  ranks, then Edit formula (for a variable or formula text), Move up, Move
+ *  down and Remove. */
+function StepRow({ step, number, last, known, loaded, groups, note, onSource, onFormula, onEdit, onRanks, onMove, onRemove }: {
   step: Step;
   number: number;
   last: boolean;
   known: Known;
+  /** Whether the library has been read. */
+  loaded: boolean;
   groups: ReturnType<typeof sourceGroups>;
   note: string;
   onSource: (name: string) => void;
+  /** Opens the formula editor with `edited` (null: an empty formula); Use
+   *  calls `onUse`. */
+  onFormula: (edited: Edited | null, onUse: (source: string) => void) => void;
   onEdit: (edit: Edit) => void;
   onRanks: (key: "from" | "to") => void;
   onMove: (offset: -1 | 1) => void;
@@ -247,6 +287,14 @@ function StepRow({ step, number, last, known, groups, note, onSource, onEdit, on
   const key = step.id;
   const name = `Step ${number} · ${isRank(step) ? "Rank" : "Filter"}`;
   const source = sourceOf(step);
+  const edited = editedSource(source, known, loaded);
+  // A number filter on formula text shows the display its threshold is read
+  // in: the default display of the formula's unit, which a check without a
+  // display answers.
+  const typed = !isRank(step) && !isTextFilter(step) && isFormulaText(source, known, loaded);
+  const variables = requestVariables(known.own, known.library);
+  const typedRead = useRead(() => (typed ? client.formula({ formula: source, variables }) : Promise.resolve(null)), [typed ? source : "", typed ? JSON.stringify(variables) : ""]);
+  const typedDisplay = typedRead.state === "done" && typedRead.value && "checked" in typedRead.value ? typedRead.value.checked.display : undefined;
   let middle;
   let value;
   if (isRank(step)) {
@@ -300,7 +348,7 @@ function StepRow({ step, number, last, known, groups, note, onSource, onEdit, on
       </select>
     );
   } else {
-    const display = describeSource(source, known)?.display;
+    const display = describeSource(source, known)?.display ?? typedDisplay;
     middle = (
       <select id={`step-op-${key}`} aria-label={`${name} comparison`} value={step.op} onChange={(event) => onEdit({ op: event.currentTarget.value as (typeof COMPARISONS)[number][0] })}>
         {COMPARISONS.map(([op, label]) => (
@@ -334,10 +382,20 @@ function StepRow({ step, number, last, known, groups, note, onSource, onEdit, on
   return (
     <li class={`condition-row step-${isRank(step) ? "rank" : "filter"}`} data-row={key}>
       <span class="step-name">{name}</span>
-      <Picker id={String(key)} kind={isRank(step) ? "rank" : "filter"} label={source} title={name} groups={groups} note={note} onChoose={onSource} />
+      <Picker
+        id={String(key)}
+        kind={isRank(step) ? "rank" : "filter"}
+        label={source}
+        title={name}
+        groups={groups}
+        note={note}
+        onChoose={onSource}
+        onCreate={() => onFormula(null, onSource)}
+      />
       {middle}
       {value}
       <div class="condition-actions">
+        {edited && button("edit", "Edit formula", "Edit formula", () => onFormula(edited, onSource))}
         {button("up", "Move up", "↑", () => onMove(-1), number === 1)}
         {button("down", "Move down", "↓", () => onMove(1), last)}
         {button("remove", "Remove", "✕", onRemove)}
