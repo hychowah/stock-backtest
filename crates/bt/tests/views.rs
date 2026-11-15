@@ -51,7 +51,8 @@ fn explore_holdings_and_the_catalog_read_a_run_and_its_market() {
     assert_eq!(one["cagr"], random["runs"][0]["cagr"][1]);
     let (all, success) = explore(&result, "all", "1-4", "1-5");
     assert!(success, "{all}");
-    assert_eq!(all["statistics"]["cagr.median"], random["runs"][0]["median"]);
+    let median = all["statistics"].as_array().unwrap().iter().find(|s| s["statistic"] == "cagr.median").unwrap();
+    assert_eq!(median["value"], random["runs"][0]["median"]);
     assert_eq!(all["trials"][0]["last_exit"], Value::Null);
 
     let out = dir.path().join("holdings");

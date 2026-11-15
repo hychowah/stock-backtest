@@ -6,13 +6,13 @@
 //! rows alone: they never open market data.
 
 use crate::results::{self, ResultFile};
-use crate::statistics::{self, Statistics};
+use crate::statistics;
 use crate::names;
 use crate::run::Screened;
 use crate::names::Field;
 use crate::strategy::{self, Source, Step, Test};
 use crate::formula;
-use crate::views::{self, Exploration, ExploredTrial, Explored, Selection, Window};
+use crate::views::{self, Exploration, ExploredTrial, Explored, JoinedHolding, Selection, SourceValues, StatisticRow, Window};
 use crate::{Error, Plan, Schedule, Strategy};
 use rayon::prelude::*;
 use market_data::commands::Home;
@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tables::Cell;
+use ts_rs::TS;
 
 /// One strategy of a run. The caller names it and chooses where its result
 /// file goes: `bt` uses the strategy file's path and `DIR/<file stem>.sqlite`.
@@ -72,7 +73,8 @@ pub struct RunResult {
 }
 
 /// The numbers of one run that a list of runs shows.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Headline {
     /// Each trial's CAGR, in trial order.
     pub cagr: Vec<f64>,
@@ -185,214 +187,36 @@ pub struct ExportResultsReply {
 /// Writes the result files as keyed tables (`tables` crate format) into
 /// `out`: the stored rows `trials`, `statistics`, `periods`, `holdings`,
 /// `steps` and `curve`, and the views `growth`, `band`, `sectors` and
-/// `contributions`, as `proof/l3.py` defines them. Every key starts with
-/// `case`, the result file's stem.
+/// `contributions`, as `proof/l3.py` defines them. Each table's rows are its
+/// row type's, led by `case`, the result file's stem, which starts every key.
 pub fn export_tables(request: &ExportResultsRequest) -> Result<ExportResultsReply, Error> {
-    let (files, mut writer) = start_export(request)?;
-    let fail = |message: String| Error::new(message, request.out.display());
-    let mut tables = BTreeMap::new();
-    let day = |d: Day| d.to_string();
-
-    let mut table = writer.table("trials", &["case", "trial"]).map_err(fail)?;
-    for (case, file) in &files {
-        for s in file.trials()? {
-            let dates = s.dates.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(" ");
-            let (start, end, first_trade) = (day(s.start), day(s.end), s.first_trade.map(day));
-            table
-                .row(&[
-                    ("case", Cell::Text(case)),
-                    ("trial", Cell::Int(s.trial.into())),
-                    ("dates", Cell::Text(&dates)),
-                    ("start", Cell::Text(&start)),
-                    ("first_trade", first_trade.as_deref().map_or(Cell::Null, Cell::Text)),
-                    ("end", Cell::Text(&end)),
-                    ("cash_days", s.cash_days.map_or(Cell::Null, |d| Cell::Int(d.into()))),
-                    ("periods", Cell::Int(s.periods.into())),
-                    ("cagr", Cell::Number(s.cagr)),
-                    ("spy_cagr", Cell::Number(s.spy_cagr)),
-                    ("excess_cagr", Cell::Number(s.excess_cagr())),
-                    ("total_return", Cell::Number(s.total_return())),
-                    ("growth", Cell::Number(s.growth)),
-                    ("spy_growth", Cell::Number(s.spy_growth)),
-                    ("empty_periods", Cell::Int(s.empty_periods.into())),
-                    ("short_periods", Cell::Int(s.short_periods.into())),
-                ])
-                .map_err(fail)?;
-        }
-    }
-    tables.insert("trials".to_string(), table.finish().map_err(fail)?);
-
-    let mut table = writer.table("statistics", &["case", "statistic"]).map_err(fail)?;
-    for (case, file) in &files {
-        for (name, value) in named_statistics(&statistics::statistics(&file.trials()?)) {
-            let value = match value {
-                Statistic::Count(n) => Cell::Int(n as i64),
-                Statistic::Value(x) => Cell::Number(x),
-            };
-            table.row(&[("case", Cell::Text(case)), ("statistic", Cell::Text(&name)), ("value", value)]).map_err(fail)?;
-        }
-    }
-    tables.insert("statistics".to_string(), table.finish().map_err(fail)?);
-
-    let mut table = writer.table("periods", &["case", "trial", "period"]).map_err(fail)?;
-    for (case, file) in &files {
-        for p in file.periods()? {
-            let (entry, exit) = (day(p.entry), day(p.exit));
-            table
-                .row(&[
-                    ("case", Cell::Text(case)),
-                    ("trial", Cell::Int(p.trial.into())),
-                    ("period", Cell::Int(p.period.into())),
-                    ("entry", Cell::Text(&entry)),
-                    ("exit", Cell::Text(&exit)),
-                    ("names", Cell::Int(p.names.into())),
-                    ("portfolio", Cell::Number(p.portfolio)),
-                    ("spy", Cell::Number(p.spy)),
-                ])
-                .map_err(fail)?;
-        }
-    }
-    tables.insert("periods".to_string(), table.finish().map_err(fail)?);
-
-    let mut table = writer.table("holdings", &["case", "trial", "period", "rank"]).map_err(fail)?;
-    for (case, file) in &files {
-        for h in views::holdings(file)?.1 {
-            let dates = [day(h.row.fiscal), day(h.row.entry), day(h.row.exit)];
-            table.row(&holding_cells(case, &h, &dates)).map_err(fail)?;
-        }
-    }
-    tables.insert("holdings".to_string(), table.finish().map_err(fail)?);
-
-    let mut table = writer.table("steps", &["case", "trial", "period", "rank", "sleeve", "step"]).map_err(fail)?;
-    for (case, file) in &files {
-        for s in file.steps()? {
-            table
-                .row(&[
-                    ("case", Cell::Text(case)),
-                    ("trial", Cell::Int(s.trial.into())),
-                    ("period", Cell::Int(s.period.into())),
-                    ("rank", Cell::Int(s.rank.into())),
-                    ("sleeve", Cell::Int(s.sleeve.into())),
-                    ("step", Cell::Int(s.step.into())),
-                    ("value", s.value.map_or(Cell::Null, Cell::Number)),
-                    ("step_rank", s.step_rank.map_or(Cell::Null, |r| Cell::Int(r.into()))),
-                ])
-                .map_err(fail)?;
-        }
-    }
-    tables.insert("steps".to_string(), table.finish().map_err(fail)?);
-
-    let mut table = writer.table("curve", &["case", "trial", "period", "day"]).map_err(fail)?;
-    for (case, file) in &files {
-        for c in file.curve()? {
-            let d = day(c.point.day);
-            table
-                .row(&[
-                    ("case", Cell::Text(case)),
-                    ("trial", Cell::Int(c.trial.into())),
-                    ("period", Cell::Int(c.period.into())),
-                    ("day", Cell::Text(&d)),
-                    ("portfolio", Cell::Number(c.point.portfolio)),
-                    ("spy", Cell::Number(c.point.spy)),
-                ])
-                .map_err(fail)?;
-        }
-    }
-    tables.insert("curve".to_string(), table.finish().map_err(fail)?);
-
-    let mut growth = writer.table("growth", &["case", "trial", "day"]).map_err(fail)?;
-    let mut band = writer.table("band", &["case", "day"]).map_err(fail)?;
-    for (case, file) in &files {
-        let curves = views::growth(file)?;
-        for (c, trial) in curves.iter().zip(1i64..) {
-            for ((&d, &strategy), &spy) in c.days.iter().zip(&c.strategy).zip(&c.spy) {
-                let d = day(d);
-                growth
-                    .row(&[
-                        ("case", Cell::Text(case)),
-                        ("trial", Cell::Int(trial)),
-                        ("day", Cell::Text(&d)),
-                        ("strategy", Cell::Number(strategy)),
-                        ("spy", Cell::Number(spy)),
-                    ])
-                    .map_err(fail)?;
-            }
-        }
-        let b = views::band(&curves);
-        for (i, &d) in b.days.iter().enumerate() {
-            let d = day(d);
-            band.row(&[
-                ("case", Cell::Text(case)),
-                ("day", Cell::Text(&d)),
-                ("median", Cell::Number(b.median[i])),
-                ("lowest", Cell::Number(b.lowest[i])),
-                ("highest", Cell::Number(b.highest[i])),
-                ("spy", Cell::Number(b.spy[i])),
-            ])
-            .map_err(fail)?;
-        }
-    }
-    tables.insert("growth".to_string(), growth.finish().map_err(fail)?);
-    tables.insert("band".to_string(), band.finish().map_err(fail)?);
-
-    let mut table = writer.table("sectors", &["case", "trial", "sector"]).map_err(fail)?;
-    for (case, file) in &files {
+    let mut export = Export::start(request)?;
+    export.table("trials", &["trial"], ResultFile::trials)?;
+    export.table("statistics", &["statistic"], views::statistics)?;
+    export.table("periods", &["trial", "period"], ResultFile::periods)?;
+    // The `holdings` table leaves out the source values, which differ by strategy.
+    export.table("holdings", &["trial", "period", "rank"], |file| {
+        Ok(views::holdings(file)?.1.into_iter().map(|h| JoinedHolding { sources: SourceValues::default(), ..h }).collect())
+    })?;
+    export.table("steps", &["trial", "period", "rank", "sleeve", "step"], ResultFile::steps)?;
+    export.table("curve", &["trial", "period", "day"], ResultFile::curve)?;
+    export.table("growth", &["trial", "day"], |file| Ok(views::growth(file)?.concat()))?;
+    export.table("band", &["day"], |file| Ok(views::band(&views::growth(file)?)))?;
+    // Each trial's sectors, then the spread over all trials as trial `all`.
+    let mut table = export.writer.table("sectors", &["case", "trial", "sector"]).map_err(|e| export.fail(e))?;
+    for (case, file) in &export.files {
         let trials = views::sectors(file)?;
-        for (sectors, trial) in trials.iter().zip(1i64..) {
-            for s in sectors {
-                table
-                    .row(&[
-                        ("case", Cell::Text(case)),
-                        ("trial", Cell::Int(trial)),
-                        ("sector", Cell::Text(&s.name)),
-                        ("mean", Cell::Number(s.mean)),
-                        ("minimum", Cell::Number(s.minimum)),
-                        ("maximum", Cell::Number(s.maximum)),
-                        ("present", Cell::Int(s.present.into())),
-                    ])
-                    .map_err(fail)?;
-            }
+        for share in trials.iter().flatten() {
+            table.record(&[("case", Cell::Text(case))], share).map_err(|e| export.fail(e))?;
         }
-        for s in views::sector_spread(&trials) {
-            table
-                .row(&[
-                    ("case", Cell::Text(case)),
-                    ("trial", Cell::Text("all")),
-                    ("sector", Cell::Text(&s.name)),
-                    ("mean", Cell::Number(s.mean)),
-                    ("minimum", Cell::Number(s.minimum)),
-                    ("maximum", Cell::Number(s.maximum)),
-                    ("leading", Cell::Int(s.leading.into())),
-                ])
-                .map_err(fail)?;
+        for spread in views::sector_spread(&trials) {
+            table.record(&[("case", Cell::Text(case)), ("trial", Cell::Text("all"))], &spread).map_err(|e| export.fail(e))?;
         }
     }
-    tables.insert("sectors".to_string(), table.finish().map_err(fail)?);
-
-    let mut table = writer.table("contributions", &["case", "trial", "period"]).map_err(fail)?;
-    for (case, file) in &files {
-        for (trial, period, c) in views::contributions(file)? {
-            let top = c.top.join(" ");
-            table
-                .row(&[
-                    ("case", Cell::Text(case)),
-                    ("trial", Cell::Int(trial.into())),
-                    ("period", Cell::Int(period.into())),
-                    ("count", Cell::Int(c.count as i64)),
-                    ("gains", Cell::Number(c.gains)),
-                    ("losses", Cell::Number(c.losses)),
-                    ("net", Cell::Number(c.net)),
-                    ("top_total", Cell::Number(c.top_total)),
-                    ("other_total", Cell::Number(c.other_total)),
-                    ("top", Cell::Text(&top)),
-                ])
-                .map_err(fail)?;
-        }
-    }
-    tables.insert("contributions".to_string(), table.finish().map_err(fail)?);
-
-    writer.finish().map_err(fail)?;
-    Ok(ExportResultsReply { tables })
+    let rows = table.finish().map_err(|e| export.fail(e))?;
+    export.tables.insert("sectors".to_string(), rows);
+    export.table("contributions", &["trial", "period"], views::contributions)?;
+    export.finish()
 }
 
 /// Writes one table, `holdings` (case, trial, period, rank), of every holding
@@ -402,53 +226,59 @@ pub fn export_tables(request: &ExportResultsRequest) -> Result<ExportResultsRepl
 /// writes it (so it is unique and never a fixed field), with the value that
 /// the holding's step trail read (null when no picking sleeve reads it).
 pub fn export_holdings(request: &ExportResultsRequest) -> Result<ExportResultsReply, Error> {
-    let (files, mut writer) = start_export(request)?;
-    let fail = |message: String| Error::new(message, request.out.display());
-    let mut table = writer.table("holdings", &["case", "trial", "period", "rank"]).map_err(fail)?;
-    for (case, file) in &files {
-        let (sources, holdings) = views::holdings(file)?;
-        for h in &holdings {
-            let dates = [h.row.fiscal.to_string(), h.row.entry.to_string(), h.row.exit.to_string()];
-            let mut cells = holding_cells(case, h, &dates);
-            cells.extend(sources.iter().zip(&h.values).map(|(s, v)| (s.as_str(), v.map_or(Cell::Null, Cell::Number))));
-            table.row(&cells).map_err(fail)?;
-        }
-    }
-    let rows = table.finish().map_err(fail)?;
-    writer.finish().map_err(fail)?;
-    Ok(ExportResultsReply { tables: BTreeMap::from([("holdings".to_string(), rows)]) })
+    let mut export = Export::start(request)?;
+    export.table("holdings", &["trial", "period", "rank"], |file| Ok(views::holdings(file)?.1))?;
+    export.finish()
 }
 
-/// The `holdings` fields of one holding; `dates` are its fiscal, entry and
-/// exit days as text.
-fn holding_cells<'a>(case: &'a str, h: &'a views::Joined, dates: &'a [String; 3]) -> Vec<(&'a str, Cell<'a>)> {
-    let r = &h.row;
-    vec![
-        ("case", Cell::Text(case)),
-        ("trial", Cell::Int(r.trial.into())),
-        ("period", Cell::Int(r.period.into())),
-        ("rank", Cell::Int(r.rank.into())),
-        ("symbol", Cell::Text(&r.symbol)),
-        ("name", Cell::Text(&r.name)),
-        ("sector", Cell::Text(&r.sector)),
-        ("exchange", Cell::Text(&r.exchange)),
-        ("candidate_rank", r.candidate_rank.map_or(Cell::Null, |n| Cell::Int(n.into()))),
-        ("fiscal", Cell::Text(&dates[0])),
-        ("entry", Cell::Text(&dates[1])),
-        ("exit", Cell::Text(&dates[2])),
-        ("market_cap", Cell::Number(r.market_cap)),
-        ("enterprise_value", Cell::Number(r.enterprise_value)),
-        ("ebitda", Cell::Number(r.ebitda)),
-        ("ebitda_yield", Cell::Number(r.ebitda_yield)),
-        ("ev_ebitda", Cell::Number(r.ev_ebitda)),
-        ("spread", Cell::Number(r.spread)),
-        ("return", Cell::Number(r.return_value)),
-        ("status", Cell::Text(&r.status)),
-        ("ranking_value", Cell::Number(r.ranking_value)),
-        ("sleeve", Cell::Int(r.sleeve.into())),
-        ("weight", Cell::Number(h.weight)),
-        ("contribution", Cell::Number(h.contribution)),
-    ]
+/// An export of result files in progress, and the rows written per table.
+struct Export<'r> {
+    /// The result files by case (their stems; two of one stem would share
+    /// one case).
+    files: BTreeMap<String, ResultFile>,
+    writer: tables::Writer,
+    out: &'r Path,
+    tables: BTreeMap<String, u64>,
+}
+
+impl Export<'_> {
+    fn start(request: &ExportResultsRequest) -> Result<Export<'_>, Error> {
+        let mut files = BTreeMap::new();
+        for path in &request.results {
+            let file = ResultFile::open(path)?;
+            if files.insert(stem(path), file).is_some() {
+                return Err(Error::new("another result file has the same name; their rows would share one case", path.display()));
+            }
+        }
+        let settings = serde_json::json!({ "cases": files.keys().collect::<Vec<_>>() });
+        let writer = tables::Writer::create(&request.out, market_data::PROGRAM, settings)
+            .map_err(|message| Error::new(message, request.out.display()))?;
+        Ok(Export { files, writer, out: &request.out, tables: BTreeMap::new() })
+    }
+
+    /// Writes table `name` of each file's `rows`, keyed by `case` and `keys`.
+    fn table<R: Serialize>(&mut self, name: &str, keys: &[&str], rows: impl Fn(&ResultFile) -> Result<Vec<R>, Error>) -> Result<(), Error> {
+        let keys: Vec<&str> = ["case"].into_iter().chain(keys.iter().copied()).collect();
+        let mut table = self.writer.table(name, &keys).map_err(|e| self.fail(e))?;
+        for (case, file) in &self.files {
+            for row in rows(file)? {
+                table.record(&[("case", Cell::Text(case))], &row).map_err(|e| self.fail(e))?;
+            }
+        }
+        let rows = table.finish().map_err(|e| self.fail(e))?;
+        self.tables.insert(name.to_string(), rows);
+        Ok(())
+    }
+
+    fn finish(self) -> Result<ExportResultsReply, Error> {
+        let out = self.out;
+        self.writer.finish().map_err(|message| Error::new(message, out.display()))?;
+        Ok(ExportResultsReply { tables: self.tables })
+    }
+
+    fn fail(&self, message: String) -> Error {
+        Error::new(message, self.out.display())
+    }
 }
 
 /// `bt explore RESULT --trial N|all --periods A-B --ranks A-B`.
@@ -457,17 +287,17 @@ pub struct ExploreRequest {
     pub selection: Selection,
 }
 
-/// One trial's exploration, or all trials': the window, the statistics by
-/// `<value>.<statistic>` and the counts, as the `statistics` table names
-/// them, and each trial.
-#[derive(Debug, Serialize)]
+/// One trial's exploration, or all trials': the window, the statistics as
+/// the `statistics` table has them, and each trial.
+#[derive(Debug, Serialize, TS)]
 #[serde(untagged)]
+#[ts(export)]
 pub enum ExploreReply {
     Trial(Exploration),
     All {
         #[serde(flatten)]
         window: Window,
-        statistics: BTreeMap<String, Statistic>,
+        statistics: Vec<StatisticRow>,
         trials: Vec<ExploredTrial>,
     },
 }
@@ -484,11 +314,7 @@ pub fn explore(request: &ExploreRequest) -> Result<ExploreReply, Error> {
     let file = ResultFile::open(&request.result)?;
     Ok(match views::explore(&file, s)? {
         Explored::Trial(trial) => ExploreReply::Trial(trial),
-        Explored::All(batch) => ExploreReply::All {
-            window: batch.window,
-            statistics: named_statistics(&batch.statistics).into_iter().collect(),
-            trials: batch.trials,
-        },
+        Explored::All(batch) => ExploreReply::All { window: batch.window, statistics: batch.statistics, trials: batch.trials },
     })
 }
 
@@ -500,11 +326,11 @@ pub struct ScreenRequest {
     pub market: Market,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ScreenReply {
     pub market: Market,
     /// The market's last session, whose latest screen was read.
-    #[serde(serialize_with = "views::iso")]
     pub day: Day,
     /// The prepared generation read, and its as-of time.
     pub generation: u64,
@@ -629,7 +455,8 @@ pub struct CatalogRequest {
 }
 
 /// What a strategy file can write, and the market's text values.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct CatalogReply {
     pub market: Market,
     /// The source names, in the list's order.
@@ -648,7 +475,8 @@ pub struct CatalogReply {
     pub exchanges: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct CatalogName {
     pub name: &'static str,
     /// `built-in`, `input`, `measure` or `field`.
@@ -659,13 +487,15 @@ pub struct CatalogName {
     pub step_only: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct Form {
     pub form: String,
     pub meaning: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct CatalogUnit {
     pub unit: &'static str,
     pub displays: &'static [&'static str],
@@ -673,7 +503,8 @@ pub struct CatalogUnit {
 }
 
 /// The limits of a strategy file and of a formula.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct Limits {
     /// Characters of a threshold or a formula constant.
     pub literal: usize,
@@ -723,47 +554,6 @@ pub fn catalog(home: &Home, request: &CatalogRequest) -> Result<CatalogReply, Er
     })
 }
 
-/// One statistic: a count, or a value of a distribution.
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum Statistic {
-    Count(usize),
-    Value(f64),
-}
-
-/// The statistics of one result by name, in name order: `<value>.<statistic>`
-/// of each distribution, and the counts.
-fn named_statistics(s: &Statistics) -> Vec<(String, Statistic)> {
-    // Every trial has a CAGR (see `Statistics`): all are valid.
-    let counts = [
-        ("completed", s.completed),
-        ("valid", s.completed),
-        ("incomplete", 0),
-        ("beat_spy", s.beat_spy),
-        ("unique_schedules", s.unique_schedules),
-    ];
-    let mut rows: Vec<(String, Statistic)> = counts.into_iter().map(|(name, n)| (name.to_string(), Statistic::Count(n))).collect();
-    let distributions =
-        [("cagr", &s.cagr), ("spy_cagr", &s.spy_cagr), ("excess_cagr", &s.excess_cagr), ("total_return", &s.total_return), ("growth", &s.growth)];
-    for (field, d) in distributions {
-        let values = [
-            ("mean", d.mean),
-            ("median", d.median),
-            ("p10", d.p10),
-            ("p25", d.p25),
-            ("p75", d.p75),
-            ("p90", d.p90),
-            ("min", d.min),
-            ("max", d.max),
-            ("stddev", d.stddev),
-        ];
-        rows.push((format!("{field}.n"), Statistic::Count(d.n)));
-        rows.extend(values.into_iter().map(|(statistic, value)| (format!("{field}.{statistic}"), Statistic::Value(value))));
-    }
-    rows.sort_by(|a, b| a.0.cmp(&b.0));
-    rows
-}
-
 /// The distinct sectors or exchanges of the market's companies, in order.
 fn texts(data: &MarketData, field: Field) -> BTreeSet<&str> {
     let companies = data.companies();
@@ -794,22 +584,6 @@ fn check_texts(data: &MarketData, name: &str, strategy: &Strategy) -> Result<(),
         }
     }
     Ok(())
-}
-
-/// The result files of an export by case (their stems; two of one stem
-/// would share one case), and the export's writer.
-fn start_export(request: &ExportResultsRequest) -> Result<(BTreeMap<String, ResultFile>, tables::Writer), Error> {
-    let mut files = BTreeMap::new();
-    for path in &request.results {
-        let file = ResultFile::open(path)?;
-        if files.insert(stem(path), file).is_some() {
-            return Err(Error::new("another result file has the same name; their rows would share one case", path.display()));
-        }
-    }
-    let settings = serde_json::json!({ "cases": files.keys().collect::<Vec<_>>() });
-    let writer = tables::Writer::create(&request.out, market_data::PROGRAM, settings)
-        .map_err(|message| Error::new(message, request.out.display()))?;
-    Ok((files, writer))
 }
 
 /// A file's name without its extension.

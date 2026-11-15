@@ -8,6 +8,7 @@ name = "compare-tables"
 path = "src/main.rs"
 
 [dependencies]
+serde = "1"
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
 [dev-dependencies]

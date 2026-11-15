@@ -4,7 +4,7 @@ use crate::portfolio;
 use crate::schedule::{Period, Plan};
 use crate::selection::{Trail, select};
 use crate::statistics::Summary;
-use crate::strategy::{Step, Strategy};
+use crate::strategy::Strategy;
 use crate::values::DayValues;
 use crate::Error;
 use market_data::{CompanyId, Day, Market, MarketData, Screen};
@@ -12,6 +12,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use ts_rs::TS;
 
 /// One strategy's finished run.
 #[derive(Debug)]
@@ -162,7 +163,7 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[&Strategy], stop
     let manifest = data.manifest();
     let mut runs = Vec::with_capacity(strategies.len());
     for (s, strategy) in strategies.iter().enumerate() {
-        let (from, to) = rank_range(strategy);
+        let (from, to) = strategy.ranks();
         let requested = (to - from + 1) as usize;
         let mut trials = Vec::with_capacity(plan.trials().len());
         for (trial, number) in plan.trials().iter().zip(1..) {
@@ -209,22 +210,9 @@ pub(crate) fn run(data: &MarketData, plan: &Plan, strategies: &[&Strategy], stop
     Ok(Some(runs))
 }
 
-/// The ranks a period's holdings can have (`selection.rank_range`): one
-/// sleeve, its last Rank step's; several, 1 to the sum of the sizes of their
-/// last Rank steps, at most `u32::MAX`.
-pub(crate) fn rank_range(strategy: &Strategy) -> (u32, u32) {
-    let last = |steps: &[Step]| match steps.iter().rev().find(|s| matches!(s, Step::Rank { .. })) {
-        Some(&Step::Rank { from, to, .. }) => (from, to),
-        _ => panic!("a sleeve has a Rank step"),
-    };
-    match strategy.sleeves() {
-        [one] => last(&one.steps),
-        several => (1, several.iter().map(|s| last(&s.steps)).fold(0, |sum, (from, to)| sum.saturating_add(to - from + 1))),
-    }
-}
-
 /// One pick of the latest screen.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct Screened {
     pub rank: u32,
     pub symbol: String,
@@ -232,23 +220,19 @@ pub struct Screened {
     pub sector: String,
     /// The value of the first picking sleeve's last Rank step.
     pub ranking_value: f64,
-    /// Each picking sleeve's step trail, in sleeve order; written as the
-    /// `steps` rows of a result: sleeve and step from 1, value, step_rank.
-    #[serde(rename = "steps", serialize_with = "trail_rows")]
-    pub sleeves: Vec<Trail>,
+    /// Each picking sleeve's step trail, in sleeve and step order.
+    pub steps: Vec<ScreenedStep>,
 }
 
-fn trail_rows<S: serde::Serializer>(sleeves: &[Trail], s: S) -> Result<S::Ok, S::Error> {
-    #[derive(Serialize)]
-    struct Row {
-        sleeve: u32,
-        step: u32,
-        value: Option<f64>,
-        step_rank: Option<u32>,
-    }
-    s.collect_seq(sleeves.iter().flat_map(|trail| {
-        (1..).zip(&trail.steps).map(|(step, o)| Row { sleeve: trail.sleeve as u32 + 1, step, value: o.value, step_rank: o.rank })
-    }))
+/// One step of a pick's trail, as the `steps` rows of a result have it.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct ScreenedStep {
+    /// The sleeve and the step, from 1.
+    pub sleeve: u32,
+    pub step: u32,
+    pub value: Option<f64>,
+    pub step_rank: Option<u32>,
 }
 
 /// The strategy's picks on the market's last session, as the oracle's
@@ -269,7 +253,18 @@ pub(crate) fn screen(data: &MarketData, strategy: &Strategy) -> Result<(Day, Vec
             name: companies.name(pick.candidate.company).to_string(),
             sector: companies.sector(pick.candidate.company).to_string(),
             ranking_value: pick.value,
-            sleeves: pick.sleeves,
+            steps: pick
+                .sleeves
+                .iter()
+                .flat_map(|trail| {
+                    (1..).zip(&trail.steps).map(|(step, o)| ScreenedStep {
+                        sleeve: trail.sleeve as u32 + 1,
+                        step,
+                        value: o.value,
+                        step_rank: o.rank,
+                    })
+                })
+                .collect(),
         })
         .collect();
     Ok((day, picks))

@@ -84,13 +84,11 @@ fn read_rows(case: &Path, name: &str, result: &str, periods: u64, home: &Path, r
     if settings.get("trials").is_some() {
         let all = explore("all");
         let window = ["start", "end", "periods"].map(|key| (key.to_string(), all[key].clone()));
-        let statistics = all["statistics"].as_object().unwrap().clone();
+        let statistics = all["statistics"].as_array().unwrap().iter().map(|s| (s["statistic"].as_str().unwrap().to_string(), s["value"].clone()));
         explored.push(row(name, [("selection".to_string(), Value::from("all"))].into_iter().chain(window).chain(statistics)));
         for trial in all["trials"].as_array().unwrap() {
             let mut fields = trial.as_object().unwrap().clone();
             let number = fields.remove("trial").unwrap();
-            let dates: Vec<&str> = trial["dates"].as_array().unwrap().iter().map(|d| d.as_str().unwrap()).collect();
-            fields.insert("dates".into(), Value::from(dates.join(" ")));
             explored.push(row(name, [("selection".to_string(), Value::from(format!("all {number}")))].into_iter().chain(fields)));
         }
     }

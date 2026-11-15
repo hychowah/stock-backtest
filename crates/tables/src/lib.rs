@@ -42,6 +42,7 @@
 //! a streaming merge, so memory holds two rows, not two tables. A table that is
 //! not in ascending key order is an error.
 
+use serde::Serialize;
 use serde_json::{Map, Value};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -334,27 +335,65 @@ impl Table {
     /// Writes one row: its fields in the given order. An integer wider than
     /// 53 bits is an error: the format holds it only as text.
     pub fn row(&mut self, fields: &[(&str, Cell<'_>)]) -> Result<(), String> {
-        let at = |msg: &str| format!("{}:{}: {msg}", self.path.display(), self.rows + 1);
-        if let Some((name, _)) = fields.iter().find(|(_, cell)| matches!(cell, Cell::Int(n) if n.unsigned_abs() > 1 << 53)) {
-            return Err(at(&format!("field {name}: integer wider than 53 bits: write it as text")));
+        self.start(fields, &Map::new())?;
+        self.end()
+    }
+
+    /// Writes one row from a serializable one: the `leading` fields (such as
+    /// a key that `row` does not hold), then the fields of `row`, a struct or
+    /// map of numbers, text, booleans and nulls, in its order, as
+    /// [`row`](Self::row) writes them. serde_json writes a non-finite number
+    /// as `null`, so a row that can hold one is written with `row`.
+    pub fn record(&mut self, leading: &[(&str, Cell<'_>)], row: &impl Serialize) -> Result<(), String> {
+        let text = serde_json::to_vec(row).map_err(|e| self.at(&e.to_string()))?;
+        let fields = match serde_json::from_slice(&text) {
+            Ok(Value::Object(fields)) if !fields.values().any(|v| v.is_array() || v.is_object()) => fields,
+            _ => return Err(self.at("the row is not a flat JSON object")),
+        };
+        self.start(leading, &fields)?;
+        if !fields.is_empty() {
+            if !leading.is_empty() {
+                self.line.push(b',');
+            }
+            // serde_json spells numbers and text as `row` does.
+            self.line.extend_from_slice(&text[1..text.len() - 1]);
+        }
+        self.end()
+    }
+
+    /// Checks a row's integers and key, whose fields are `cells` and then
+    /// `rest`, and starts its line with `cells`.
+    fn start(&mut self, cells: &[(&str, Cell<'_>)], rest: &Map<String, Value>) -> Result<(), String> {
+        let wide = |n: &serde_json::Number| n.as_i64().map(i64::unsigned_abs).or(n.as_u64()).is_some_and(|n| n > 1 << 53);
+        let too_wide = cells
+            .iter()
+            .find(|(_, cell)| matches!(cell, Cell::Int(n) if n.unsigned_abs() > 1 << 53))
+            .map(|(name, _)| *name)
+            .or_else(|| rest.iter().find(|(_, v)| matches!(v, Value::Number(n) if wide(n))).map(|(name, _)| name.as_str()));
+        if let Some(name) = too_wide {
+            return Err(self.at(&format!("field {name}: integer wider than 53 bits: write it as text")));
         }
         let mut key = Vec::with_capacity(self.keys.len());
         for name in &self.keys {
-            let value = match fields.iter().find(|(field, _)| field == name).map(|(_, cell)| cell) {
-                Some(Cell::Int(n)) => Value::from(*n),
-                Some(Cell::Number(x)) if x.is_finite() => Value::from(*x),
-                Some(Cell::Text(s)) => Value::from(*s),
-                _ => return Err(at(&format!("key field {name} is missing, null or not a number or text"))),
+            let value = match cells.iter().find(|(field, _)| field == name) {
+                Some((_, Cell::Int(n))) => Some(Value::from(*n)),
+                Some((_, Cell::Number(x))) if x.is_finite() => Some(Value::from(*x)),
+                Some((_, Cell::Text(s))) => Some(Value::from(*s)),
+                Some(_) => None,
+                None => rest.get(name).filter(|v| v.is_number() || v.is_string()).cloned(),
+            };
+            let Some(value) = value else {
+                return Err(self.at(&format!("key field {name} is missing, null or not a number or text")));
             };
             key.push(value);
         }
         if self.last.as_deref().is_some_and(|last| compare_keys(last, &key) != Ordering::Less) {
-            return Err(at("the rows are not in ascending key order"));
+            return Err(self.at("the rows are not in ascending key order"));
         }
         self.last = Some(key);
         self.line.clear();
         self.line.push(b'{');
-        for (i, (name, cell)) in fields.iter().enumerate() {
+        for (i, (name, cell)) in cells.iter().enumerate() {
             if i > 0 {
                 self.line.push(b',');
             }
@@ -372,10 +411,20 @@ impl Table {
                 Cell::Text(s) => serde_json::to_writer(&mut self.line, s).expect("writing to memory"),
             }
         }
+        Ok(())
+    }
+
+    /// Ends the line started by [`start`](Self::start) and writes it.
+    fn end(&mut self) -> Result<(), String> {
         self.line.extend_from_slice(b"}\n");
-        self.out.write_all(&self.line).map_err(|e| at(&e.to_string()))?;
+        self.out.write_all(&self.line).map_err(|e| self.at(&e.to_string()))?;
         self.rows += 1;
         Ok(())
+    }
+
+    /// An error message at the row being written.
+    fn at(&self, message: &str) -> String {
+        format!("{}:{}: {message}", self.path.display(), self.rows + 1)
     }
 
     /// Flushes the file and returns the number of rows written.

@@ -1,12 +1,16 @@
 //! Calendar days.
 
+use serde::{Serialize, Serializer};
 use std::fmt;
+use ts_rs::TS;
 
 /// A calendar day, counted as days since 1970-01-01 (`Day(0)`), so the order
 /// and differences of the numbers are those of the calendar. The years are
 /// those of Python's `date`, 1 to 9999. The prepared store holds a day as its
-/// `i32`, and a mapped day column reads as `&[Day]`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// `i32`, and a mapped day column reads as `&[Day]`. Replies and the
+/// website's types write it as ISO text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, TS)]
+#[ts(type = "string")]
 #[repr(transparent)]
 pub struct Day(pub i32);
 
@@ -84,6 +88,12 @@ impl fmt::Display for Day {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (y, m, d) = self.ymd();
         write!(f, "{y:04}-{m:02}-{d:02}")
+    }
+}
+
+impl Serialize for Day {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
     }
 }
 

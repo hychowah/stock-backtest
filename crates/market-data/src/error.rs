@@ -1,10 +1,12 @@
 use serde::Serialize;
 use std::fmt;
+use ts_rs::TS;
 
 /// Why a command failed. `bt` prints it as `{"error": {"message", "place"}}`
 /// and exits with status 1. Commands check their inputs once, at the start;
 /// an error names the input, file or folder at fault in `place`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
 pub struct Error {
     /// What went wrong and, where the user can act, what to do.
     pub message: String,

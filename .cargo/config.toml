@@ -1,3 +1,7 @@
-# Where the TypeScript types generated from the serde types are written.
+# The TypeScript types generated from the serde types: their folder, imports
+# with the `.ts` extension that the website's module resolution needs, and
+# 64-bit integers as numbers (the values sent stay below 2^53).
 [env]
 TS_RS_EXPORT_DIR = { value = "web/src/api", relative = true }
+TS_RS_IMPORT_EXTENSION = "ts"
+TS_RS_LARGE_INT = "number"

@@ -23,6 +23,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run the Rust tests
         run: cargo test --locked
+      - name: Check that the committed TypeScript types are the ones the tests generate
+        run: |
+          changed=$(git status --porcelain -- web/src/api)
+          if [ -n "$changed" ]; then echo "$changed"; git diff -- web/src/api; exit 1; fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'

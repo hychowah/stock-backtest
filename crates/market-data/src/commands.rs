@@ -16,6 +16,7 @@ use crate::{Day, Denial, Error, Market, MarketData, PROGRAM, Screen};
 use chrono::{DateTime, FixedOffset};
 use rayon::prelude::*;
 use serde::Serialize;
+use ts_rs::TS;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -191,13 +192,15 @@ fn raw_present(home: &Home, market: Market) -> bool {
 }
 
 /// `bt data status`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct StatusReply {
     /// One entry per market, in [`Market::ALL`] order.
     pub markets: Vec<MarketStatus>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct MarketStatus {
     pub market: Market,
     /// Whether `raw/` holds the market's data.
@@ -208,7 +211,8 @@ pub struct MarketStatus {
 }
 
 /// A market's current generation.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct Prepared {
     pub generation: u64,
     pub as_of: String,

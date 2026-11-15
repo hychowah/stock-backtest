@@ -6,10 +6,12 @@ use crate::{Day, Error};
 use chrono::{DateTime, Datelike, FixedOffset, TimeDelta, Timelike};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use ts_rs::TS;
 
 /// A stock market whose data the program prepares and reads.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum Market {
     Us,
     Hk,

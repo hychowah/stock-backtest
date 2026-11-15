@@ -337,6 +337,20 @@ impl Strategy {
         &self.sleeves
     }
 
+    /// The ranks a period's holdings can have (`selection.rank_range`): one
+    /// sleeve, its last Rank step's; several, 1 to the sum of the sizes of
+    /// their last Rank steps, at most `u32::MAX`.
+    pub fn ranks(&self) -> (u32, u32) {
+        let last = |steps: &[Step]| match steps.iter().rev().find(|s| matches!(s, Step::Rank { .. })) {
+            Some(&Step::Rank { from, to, .. }) => (from, to),
+            _ => panic!("a sleeve has a Rank step"),
+        };
+        match self.sleeves() {
+            [one] => last(&one.steps),
+            several => (1, several.iter().map(|s| last(&s.steps)).fold(0, |sum, (from, to)| sum.saturating_add(to - from + 1))),
+        }
+    }
+
     /// The file's variables, in file order.
     pub fn variables(&self) -> &[Arc<Formula>] {
         &self.variables

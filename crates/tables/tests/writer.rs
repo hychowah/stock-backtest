@@ -31,3 +31,18 @@ fn a_written_export_equals_itself_and_a_changed_value_differs() {
     let error = Writer::create(a.path(), "test", serde_json::json!({})).err().unwrap();
     assert!(error.contains("new or empty"), "{error}");
 }
+
+#[test]
+fn a_record_writes_its_leading_cells_then_the_rows_fields_in_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut out = Writer::create(dir.path(), "test", serde_json::json!({})).unwrap();
+    let mut t = out.table("t", &["case", "id"]).unwrap();
+    let row = |id: i64, v: f64| serde_json::json!({"id": id, "v": v, "w": null});
+    t.record(&[("case", Cell::Text("a"))], &row(2, 0.1 + 0.2)).unwrap();
+    assert!(t.record(&[("case", Cell::Text("a"))], &row(1, 0.0)).unwrap_err().contains("ascending"));
+    assert!(t.record(&[], &serde_json::json!({"case": "b", "id": [3]})).unwrap_err().contains("flat"));
+    assert_eq!(t.finish().unwrap(), 1);
+    out.finish().unwrap();
+    let text = std::fs::read_to_string(dir.path().join("t.jsonl")).unwrap();
+    assert_eq!(text, "{\"case\":\"a\",\"id\":2,\"v\":0.30000000000000004,\"w\":null}\n");
+}

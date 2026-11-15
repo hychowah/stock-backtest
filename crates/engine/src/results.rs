@@ -1,4 +1,10 @@
-//! The result file of a run: one SQLite file, written once and never changed.
+//! The result file of a run: one SQLite file, written once and never changed,
+//! and [`ResultFile`], which reads it back as rows.
+//!
+//! One row type per table ([`TrialRow`], [`PeriodRow`], [`HoldingRow`],
+//! [`StepRow`], [`CurveRow`]), shared by the export, the HTTP replies and the
+//! website's types: a row serializes to its table's fields in their order,
+//! days as ISO text.
 //!
 //! Tables, keyed by the columns in brackets; every count starts at 1:
 //! - `run`, one row: strategy (canonical form), identity, market, schedule
@@ -24,14 +30,16 @@
 //! refused with "run it again", never read with this layout.
 
 use crate::Error;
-use crate::run::{Point, Run};
+use crate::run::Run;
 use crate::schedule::Schedule;
 use crate::statistics::Summary;
 use crate::strategy::Strategy;
 use market_data::Day;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OpenFlags, Row, params};
+use serde::Serialize;
 use std::path::Path;
+use ts_rs::TS;
 
 /// The layout written and read; files from before it have version 0.
 const VERSION: i32 = 1;
@@ -170,12 +178,58 @@ fn fill(path: &Path, schedule: &Schedule, run: &Run) -> rusqlite::Result<()> {
 }
 
 /// A finished result file, open for reading. Rows come in key order.
-pub(crate) struct ResultFile {
+pub struct ResultFile {
     db: Connection,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PeriodRow {
+/// A trial's summary (`trials`), with its derived excess CAGR and total
+/// return.
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct TrialRow {
+    pub trial: u32,
+    /// The entries of the trial's periods, as ISO days joined by spaces.
+    pub dates: String,
+    pub start: Day,
+    pub first_trade: Option<Day>,
+    pub end: Day,
+    pub cash_days: Option<i32>,
+    pub periods: u32,
+    pub cagr: f64,
+    pub spy_cagr: f64,
+    pub excess_cagr: f64,
+    pub total_return: f64,
+    pub growth: f64,
+    pub spy_growth: f64,
+    pub empty_periods: u32,
+    pub short_periods: u32,
+}
+
+impl TrialRow {
+    pub(crate) fn new(s: &Summary) -> TrialRow {
+        TrialRow {
+            trial: s.trial,
+            dates: s.dates.iter().map(Day::to_string).collect::<Vec<_>>().join(" "),
+            start: s.start,
+            first_trade: s.first_trade,
+            end: s.end,
+            cash_days: s.cash_days,
+            periods: s.periods,
+            cagr: s.cagr,
+            spy_cagr: s.spy_cagr,
+            excess_cagr: s.excess_cagr(),
+            total_return: s.total_return(),
+            growth: s.growth,
+            spy_growth: s.spy_growth,
+            empty_periods: s.empty_periods,
+            short_periods: s.short_periods,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct PeriodRow {
     pub trial: u32,
     pub period: u32,
     pub entry: Day,
@@ -185,8 +239,9 @@ pub(crate) struct PeriodRow {
     pub spy: f64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct HoldingRow {
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct HoldingRow {
     pub trial: u32,
     pub period: u32,
     pub rank: u32,
@@ -204,6 +259,7 @@ pub(crate) struct HoldingRow {
     pub ebitda_yield: f64,
     pub ev_ebitda: f64,
     pub spread: f64,
+    #[serde(rename = "return")]
     pub return_value: f64,
     /// The oracle's status text.
     pub status: String,
@@ -212,8 +268,9 @@ pub(crate) struct HoldingRow {
     pub sleeve: u32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StepRow {
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct StepRow {
     pub trial: u32,
     pub period: u32,
     pub rank: u32,
@@ -223,17 +280,20 @@ pub(crate) struct StepRow {
     pub step_rank: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CurveRow {
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct CurveRow {
     pub trial: u32,
     pub period: u32,
-    pub point: Point,
+    pub day: Day,
+    pub portfolio: f64,
+    pub spy: f64,
 }
 
 impl ResultFile {
     /// Opens a result file for reading. Fails, naming the path, when it is
     /// not one.
-    pub(crate) fn open(path: &Path) -> Result<ResultFile, Error> {
+    pub fn open(path: &Path) -> Result<ResultFile, Error> {
         let fail = |e: rusqlite::Error| Error::new(format!("not a result file: {e}"), path.display());
         let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(fail)?;
         db.query_row("SELECT count(*) FROM run", [], |_| Ok(())).map_err(fail)?;
@@ -252,8 +312,12 @@ impl ResultFile {
         Ok((Strategy::parse(&strategy).map_err(|e| e.in_file(place))?, serde_json::from_str(&schedule).expect("a stored schedule is JSON")))
     }
 
+    pub fn trials(&self) -> Result<Vec<TrialRow>, Error> {
+        Ok(self.summaries()?.iter().map(TrialRow::new).collect())
+    }
+
     /// Each trial's summary, with the entries of its periods as its dates.
-    pub(crate) fn trials(&self) -> Result<Vec<Summary>, Error> {
+    pub(crate) fn summaries(&self) -> Result<Vec<Summary>, Error> {
         let mut trials = self.rows("SELECT * FROM trials ORDER BY trial", |row| {
             Ok(Summary {
                 trial: row.get("trial")?,
@@ -277,7 +341,7 @@ impl ResultFile {
         Ok(trials)
     }
 
-    pub(crate) fn periods(&self) -> Result<Vec<PeriodRow>, Error> {
+    pub fn periods(&self) -> Result<Vec<PeriodRow>, Error> {
         self.rows("SELECT * FROM periods ORDER BY trial, period", |row| {
             Ok(PeriodRow {
                 trial: row.get("trial")?,
@@ -291,7 +355,7 @@ impl ResultFile {
         })
     }
 
-    pub(crate) fn holdings(&self) -> Result<Vec<HoldingRow>, Error> {
+    pub fn holdings(&self) -> Result<Vec<HoldingRow>, Error> {
         self.rows("SELECT * FROM holdings ORDER BY trial, period, rank", |row| {
             Ok(HoldingRow {
                 trial: row.get("trial")?,
@@ -319,7 +383,7 @@ impl ResultFile {
         })
     }
 
-    pub(crate) fn steps(&self) -> Result<Vec<StepRow>, Error> {
+    pub fn steps(&self) -> Result<Vec<StepRow>, Error> {
         self.rows("SELECT * FROM steps ORDER BY trial, period, rank, sleeve, step", |row| {
             Ok(StepRow {
                 trial: row.get("trial")?,
@@ -333,12 +397,14 @@ impl ResultFile {
         })
     }
 
-    pub(crate) fn curve(&self) -> Result<Vec<CurveRow>, Error> {
+    pub fn curve(&self) -> Result<Vec<CurveRow>, Error> {
         self.rows("SELECT * FROM curve ORDER BY trial, period, day", |row| {
             Ok(CurveRow {
                 trial: row.get("trial")?,
                 period: row.get("period")?,
-                point: Point { day: row.get::<_, IsoDay>("day")?.0, portfolio: row.get("portfolio")?, spy: row.get("spy")? },
+                day: row.get::<_, IsoDay>("day")?.0,
+                portfolio: row.get("portfolio")?,
+                spy: row.get("spy")?,
             })
         })
     }
