@@ -94,7 +94,8 @@ pub(crate) fn statistics(trials: &[Summary]) -> Statistics {
     }
 }
 
-fn distribution(values: &[f64]) -> Distribution {
+/// The distribution of `values`, one per trial; not empty.
+pub(crate) fn distribution(values: &[f64]) -> Distribution {
     let mut sorted = values.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).expect("finite trial values"));
     Distribution {

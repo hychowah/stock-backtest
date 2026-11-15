@@ -6,7 +6,15 @@ import type { ScreenedStep } from "./ScreenedStep.ts";
  * One pick of the latest screen: its candidate's fields under the names
  * and in the units of a holding row (`HoldingRow`).
  */
-export type Screened = { rank: number, symbol: string, name: string, sector: string, exchange: string, candidate_rank: number | null, fiscal: Day, market_cap: number, enterprise_value: number, ebitda: number, ebitda_yield: number, ev_ebitda: number, spread: number, 
+export type Screened = { rank: number, symbol: string, name: string, sector: string, exchange: string, candidate_rank: number | null, fiscal: Day, 
+/**
+ * The day the selected report counts as available.
+ */
+known: Day, 
+/**
+ * The entry close in US dollars, and its day.
+ */
+price: number, price_date: Day, market_cap: number, enterprise_value: number, ebitda: number, ebitda_yield: number, ev_ebitda: number, spread: number, 
 /**
  * The value of the first picking sleeve's last Rank step.
  */

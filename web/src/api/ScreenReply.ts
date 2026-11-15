@@ -16,4 +16,9 @@ generation: number, as_of: string, identity: string, description: Description,
 /**
  * In rank order.
  */
-picks: Array<Screened>, };
+picks: Array<Screened>, 
+/**
+ * The median `market_cap` and `ebitda_yield` of the picks; absent when
+ * there is no pick.
+ */
+median_market_cap?: number, median_ebitda_yield?: number, };

@@ -228,6 +228,11 @@ pub struct Screened {
     pub exchange: String,
     pub candidate_rank: Option<u32>,
     pub fiscal: Day,
+    /// The day the selected report counts as available.
+    pub known: Day,
+    /// The entry close in US dollars, and its day.
+    pub price: f64,
+    pub price_date: Day,
     pub market_cap: f64,
     pub enterprise_value: f64,
     pub ebitda: f64,
@@ -273,6 +278,9 @@ pub(crate) fn screen(data: &MarketData, strategy: &Strategy) -> Result<(Day, Vec
                 exchange: companies.exchange(c.company).to_string(),
                 candidate_rank: c.rank,
                 fiscal: c.fiscal,
+                known: c.known,
+                price: c.price,
+                price_date: c.entry,
                 market_cap: c.market_cap,
                 enterprise_value: c.enterprise_value,
                 ebitda: c.ebitda,

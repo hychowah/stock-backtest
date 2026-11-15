@@ -2,8 +2,10 @@
 //! views. Their rows are those of `bt export tables`, without `case`, except
 //! that the holdings are those of `bt export holdings` (with their `source:`
 //! fields), the sector spread is the `sectors` rows of trial `all` without
-//! that trial, an attribution lists its top holdings, and one trial's
-//! sectors are the weights of each period ([`views::sector_weights`]). The
+//! that trial, an attribution lists its top holdings, one trial's sectors
+//! are the weights of each period ([`views::sector_weights`]), and the
+//! statistics over the trials (of `trials` and of `explore` of all trials)
+//! also hold `spy_total_return` ([`views::add_spy_total_return`]). The
 //! page writes its CSV files from these rows. A route about one trial reads
 //! only that trial's rows.
 
@@ -74,7 +76,12 @@ type Reply<T> = Result<Json<T>, Failure>;
 type Values = Result<Query<BTreeMap<String, String>>, QueryRejection>;
 
 async fn trials(State(app): State<App>, Id(id): Id) -> Reply<TrialsReply> {
-    read(app, id, None, |file| Ok(TrialsReply { statistics: views::statistics(&file)?, trials: file.trials()? })).await
+    read(app, id, None, |file| {
+        let (mut statistics, trials) = (views::statistics(&file)?, file.trials()?);
+        views::add_spy_total_return(&mut statistics, trials.iter().map(|t| t.spy_growth));
+        Ok(TrialsReply { statistics, trials })
+    })
+    .await
 }
 
 async fn periods(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Vec<PeriodRow>> {
@@ -140,7 +147,14 @@ async fn explore(State(app): State<App>, Id(id): Id, query: Values) -> Reply<Exp
     };
     let range = |name| views::range(value(&query, name)?, name).map_err(Failure::input);
     let selection = Selection { trial, periods: range("periods")?, ranks: range("ranks")? };
-    read(app, id, None, move |file| views::explore(&file, &selection)).await
+    read(app, id, None, move |file| {
+        let mut reply = views::explore(&file, &selection)?;
+        if let ExploreReply::All { statistics, trials, .. } = &mut reply {
+            views::add_spy_total_return(statistics, trials.iter().map(|t| t.row.spy_growth));
+        }
+        Ok(reply)
+    })
+    .await
 }
 
 /// Opens run `id`'s result file, limited to `trial` when one is given, and

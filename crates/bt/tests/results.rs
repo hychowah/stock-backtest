@@ -1,14 +1,29 @@
 //! The read routes of `bt serve`: each result route answers the rows that
 //! `bt export tables` (and `bt export holdings`) write for the same result
 //! file, which the proof tests compare with the oracle's; explore, catalog,
-//! screen and data status answer what the `bt` commands print; one trial's
-//! sector weights by period give that trial's sector shares.
+//! screen and data status answer what the `bt` commands print, the
+//! statistics with SPY's total return beside them; one trial's sector
+//! weights by period give that trial's sector shares.
 
 mod common;
 
 use common::{bt_ok, fixtures, path, prepared, serve};
 use serde_json::{Value, json};
 use std::path::Path;
+
+/// Whether a statistics row is one of `spy_total_return`, which only the
+/// HTTP replies carry.
+fn spy(row: &Value) -> bool {
+    row["statistic"].as_str().unwrap().starts_with("spy_total_return.")
+}
+
+/// A reply with its `spy_total_return` statistics left out.
+fn without_spy(mut reply: Value) -> Value {
+    if let Some(statistics) = reply.get_mut("statistics") {
+        statistics.as_array_mut().unwrap().retain(|s| !spy(s));
+    }
+    reply
+}
 
 /// A table file's rows without their `case`.
 fn rows(dir: &Path, table: &str) -> Vec<Value> {
@@ -51,7 +66,7 @@ fn the_read_routes_answer_the_exported_rows_and_the_commands_replies() {
 
     let trials = api("trials");
     assert_eq!(trials["trials"].as_array().unwrap(), &rows(&tables, "trials"));
-    assert_eq!(trials["statistics"].as_array().unwrap(), &rows(&tables, "statistics"));
+    assert_eq!(without_spy(trials.clone())["statistics"].as_array().unwrap(), &rows(&tables, "statistics"));
     assert_eq!(each("periods", None), rows(&tables, "periods"));
     assert_eq!(each("holdings", Some("holdings")), rows(&holdings, "holdings"));
     assert_eq!(each("holdings", Some("steps")), rows(&tables, "steps"));
@@ -89,7 +104,7 @@ fn the_read_routes_answer_the_exported_rows_and_the_commands_replies() {
     }
     for trial in ["1", "all"] {
         let explored = bt_ok(&["explore", path(&result), "--trial", trial, "--periods", "2-3", "--ranks", "1-4"]);
-        assert_eq!(api(&format!("explore?trial={trial}&periods=2-3&ranks=1-4")), explored);
+        assert_eq!(without_spy(api(&format!("explore?trial={trial}&periods=2-3&ranks=1-4"))), explored);
     }
 
     assert_eq!(server.get("/api/catalog/hk"), bt_ok(&["catalog", "--market", "hk", "--home", home_arg]));
@@ -136,6 +151,36 @@ fn one_trials_sector_weights_by_period_average_to_its_sector_shares() {
             assert_eq!(held.len() as u64, share["present"].as_u64().unwrap(), "{share}");
             assert_eq!(held.iter().sum::<f64>() / periods, share["mean"].as_f64().unwrap(), "{share}");
         }
+    }
+    assert!(server.terminate());
+}
+
+#[test]
+fn the_trials_replies_give_spys_total_return_and_the_exported_statistics_do_not() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = prepared(dir.path());
+    let strategy = dir.path().join("sleeves.json");
+    std::fs::copy(fixtures().join("cases/builtins/hk-sleeves/strategy.json"), &strategy).unwrap();
+    let (out, home_arg) = (dir.path().join("out"), path(&home));
+    let schedule = ["--market", "hk", "--start", "2021-07-01", "--end", "2023-06-28", "--every", "6m", "--trials", "3", "--seed", "852"];
+    bt_ok(&[&["run", path(&strategy)][..], &schedule, &["--out", path(&out), "--home", home_arg]].concat());
+    let (result, tables) = (out.join("sleeves.sqlite"), dir.path().join("tables"));
+    bt_ok(&["export", "tables", path(&result), "--out", path(&tables)]);
+    assert!(!rows(&tables, "statistics").iter().any(spy));
+    let explored = bt_ok(&["explore", path(&result), "--trial", "all", "--periods", "1-3", "--ranks", "1-4"]);
+    assert!(!explored["statistics"].as_array().unwrap().iter().any(spy));
+
+    let server = serve(&home);
+    bt_ok(&["save", path(&result), "--name", "sleeves", "--home", home_arg]);
+    let trials = server.get("/api/runs/1/trials");
+    let explore = server.get("/api/runs/1/explore?trial=all&periods=1-3&ranks=1-4");
+    for (reply, trials) in [(&trials["statistics"], &trials["trials"]), (&explore["statistics"], &explore["trials"])] {
+        let mut returns: Vec<f64> = trials.as_array().unwrap().iter().map(|t| t["spy_growth"].as_f64().unwrap() - 1.0).collect();
+        returns.sort_by(f64::total_cmp);
+        let value = |name: &str| reply.as_array().unwrap().iter().find(|s| s["statistic"] == format!("spy_total_return.{name}")).unwrap()["value"].clone();
+        assert_eq!(value("n"), 3);
+        assert_eq!([value("min"), value("median"), value("max")], [returns[0], returns[1], returns[2]].map(Value::from));
+        assert_eq!(reply.as_array().unwrap().iter().filter(|s| spy(s)).count(), 10);
     }
     assert!(server.terminate());
 }

@@ -1,11 +1,12 @@
 //! `bt explore`: its argument rules, and a selection of whole trials that
 //! gives the stored results; `bt export holdings`: a column for each numeric
 //! source of the steps; `bt catalog`: a name and the market's sectors, and
-//! the heading of each name.
+//! the heading of each name; `bt screen`: each pick's price and report
+//! dates, and the medians of the picks.
 
 mod common;
 
-use common::{bt, path, prepared};
+use common::{bt, bt_ok, fixtures, path, prepared};
 use serde_json::{Value, json};
 
 #[test]
@@ -99,4 +100,45 @@ fn the_catalog_gives_each_name_the_heading_it_is_listed_under() {
     for (name, category) in expected {
         assert_eq!(heading(name), category, "{name}");
     }
+}
+
+/// `bt screen` of the fictional Hong Kong sleeves on the latest session.
+fn screen_sleeves(dir: &std::path::Path, strategy: &std::path::Path) -> Value {
+    let home = prepared(dir);
+    bt_ok(&["screen", path(strategy), "--market", "hk", "--home", path(&home)])
+}
+
+#[test]
+fn a_pick_gives_the_price_and_report_dates_of_the_oracles_latest_candidate() {
+    let dir = tempfile::tempdir().unwrap();
+    let screen = screen_sleeves(dir.path(), &fixtures().join("cases/builtins/hk-sleeves/strategy.json"));
+    let text = std::fs::read_to_string(fixtures().join("expected/hk/candidates.jsonl")).unwrap();
+    let latest: Vec<Value> = text.lines().map(|l| serde_json::from_str::<Value>(l).unwrap()).filter(|c| c["screen"] == "latest" && c["day"] == screen["day"]).collect();
+    let picks = screen["picks"].as_array().unwrap();
+    assert!(!picks.is_empty());
+    for pick in picks {
+        let candidate = latest.iter().find(|c| c["symbol"] == pick["symbol"]).unwrap();
+        assert_eq!([&pick["known"], &pick["price"], &pick["price_date"]], [&candidate["known"], &candidate["price"], &candidate["entry"]], "{pick}");
+    }
+}
+
+#[test]
+fn the_screen_gives_the_median_market_cap_and_ebitda_yield_of_its_picks() {
+    let dir = tempfile::tempdir().unwrap();
+    let screen = screen_sleeves(dir.path(), &fixtures().join("cases/builtins/hk-sleeves/strategy.json"));
+    let median = |field: &str| {
+        let mut values: Vec<f64> = screen["picks"].as_array().unwrap().iter().map(|p| p[field].as_f64().unwrap()).collect();
+        values.sort_by(f64::total_cmp);
+        let middle = values.len() / 2;
+        if values.len() % 2 == 1 { values[middle] } else { (values[middle - 1] + values[middle]) / 2.0 }
+    };
+    assert_eq!(screen["median_market_cap"], median("market_cap"));
+    assert_eq!(screen["median_ebitda_yield"], median("ebitda_yield"));
+
+    let none = dir.path().join("none.json");
+    let steps = json!([{"filter": "Market cap in dollars", "op": ">=", "value": "1e20"}, {"rank": "EBITDA yield", "order": "highest", "from": 1, "to": 3}]);
+    std::fs::write(&none, json!({"sleeves": [{"steps": steps}]}).to_string()).unwrap();
+    let empty = bt_ok(&["screen", path(&none), "--market", "hk", "--home", path(&dir.path().join("home"))]);
+    assert!(empty["picks"].as_array().unwrap().is_empty());
+    assert!(empty.get("median_market_cap").is_none() && empty.get("median_ebitda_yield").is_none(), "{empty}");
 }

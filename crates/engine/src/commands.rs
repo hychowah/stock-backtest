@@ -350,6 +350,14 @@ pub struct ScreenReply {
     pub description: Description,
     /// In rank order.
     pub picks: Vec<Screened>,
+    /// The median `market_cap` and `ebitda_yield` of the picks; absent when
+    /// there is no pick.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub median_market_cap: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub median_ebitda_yield: Option<f64>,
 }
 
 /// The strategy's picks of the market's latest session, with each step's
@@ -369,8 +377,16 @@ pub fn screen(home: &Home, request: &ScreenRequest) -> Result<ScreenReply, Error
         as_of: manifest.as_of.clone(),
         identity: strategy.identity(),
         description: describe(strategy),
+        median_market_cap: median(picks.iter().map(|p| p.market_cap)),
+        median_ebitda_yield: median(picks.iter().map(|p| p.ebitda_yield)),
         picks,
     })
+}
+
+/// The median of `values`, or `None` when there are none.
+fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
+    let values: Vec<f64> = values.collect();
+    (!values.is_empty()).then(|| numbers::median(&values))
 }
 
 /// `bt check FILE...`.

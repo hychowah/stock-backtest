@@ -5,7 +5,9 @@
 //! HTTP replies and the website's types; only the attribution's exported
 //! row differs from the one the website reads.
 //!
-//! - [`statistics`]: the statistics over the trials, one row each.
+//! - [`statistics`]: the statistics over the trials, one row each;
+//!   [`add_spy_total_return`]: SPY's total return over the trials, for the
+//!   HTTP replies only.
 //! - [`growth`]: each trial's growth of 1 by day, and [`band`] over the
 //!   trials (`result_curves`).
 //! - [`sectors`]: each trial's sector weights, and [`sector_spread`] over the
@@ -21,7 +23,7 @@
 
 use crate::portfolio;
 use crate::results::{CurveRow, HoldingRow, PeriodRow, ResultFile, TrialRow};
-use crate::statistics::{self, Statistics, Summary};
+use crate::statistics::{self, Distribution, Statistics, Summary};
 use crate::strategy::Source;
 use crate::Error;
 use market_data::Day;
@@ -69,22 +71,39 @@ fn named(s: &Statistics) -> Vec<StatisticRow> {
     let distributions =
         [("cagr", &s.cagr), ("spy_cagr", &s.spy_cagr), ("excess_cagr", &s.excess_cagr), ("total_return", &s.total_return), ("growth", &s.growth)];
     for (field, d) in distributions {
-        let values = [
-            ("mean", d.mean),
-            ("median", d.median),
-            ("p10", d.p10),
-            ("p25", d.p25),
-            ("p75", d.p75),
-            ("p90", d.p90),
-            ("min", d.min),
-            ("max", d.max),
-            ("stddev", d.stddev),
-        ];
-        rows.push(row(format!("{field}.n"), Statistic::Count(d.n)));
-        rows.extend(values.into_iter().map(|(statistic, value)| row(format!("{field}.{statistic}"), Statistic::Value(value))));
+        rows.extend(distribution_rows(field, d));
     }
     rows.sort_by(|a, b| a.statistic.cmp(&b.statistic));
     rows
+}
+
+/// Adds to the statistics `rows`, in name order, `spy_total_return`: the
+/// distribution of each trial's `spy_growth - 1`, with the rows that
+/// `total_return` has. The HTTP replies of a run's trials carry it; the
+/// `statistics` table and `bt explore` do not, as the oracle's have no such
+/// rows.
+pub fn add_spy_total_return(rows: &mut Vec<StatisticRow>, spy_growth: impl Iterator<Item = f64>) {
+    let values: Vec<f64> = spy_growth.map(|g| g - 1.0).collect();
+    rows.extend(distribution_rows("spy_total_return", &statistics::distribution(&values)));
+    rows.sort_by(|a, b| a.statistic.cmp(&b.statistic));
+}
+
+/// `<field>.n` and `<field>.<statistic>` of one distribution.
+fn distribution_rows(field: &str, d: &Distribution) -> Vec<StatisticRow> {
+    let row = |statistic: String, value| StatisticRow { statistic, value };
+    let values = [
+        ("mean", d.mean),
+        ("median", d.median),
+        ("p10", d.p10),
+        ("p25", d.p25),
+        ("p75", d.p75),
+        ("p90", d.p90),
+        ("min", d.min),
+        ("max", d.max),
+        ("stddev", d.stddev),
+    ];
+    let n = row(format!("{field}.n"), Statistic::Count(d.n));
+    [n].into_iter().chain(values.into_iter().map(|(statistic, value)| row(format!("{field}.{statistic}"), Statistic::Value(value)))).collect()
 }
 
 /// One day of one trial's growth of 1 (`growth`).

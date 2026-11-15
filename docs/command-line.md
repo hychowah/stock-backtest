@@ -209,7 +209,7 @@ bt explore out/pe-30.sqlite --trial 1 --periods 2-5 --ranks 1-2
 bt screen value.json --market us --home HOME_DIR
 ```
 
-`bt screen` selects with the strategy file on the latest session of the market. The reply has `day`, `identity`, `description` (the `variables`, `sleeves` and `ranks` that `bt check` prints) and `picks`. Each pick has `rank`, `symbol`, `name`, `sector`, the candidate's other fields as a `holdings` row names them (`exchange`, `candidate_rank`, `fiscal`, `market_cap`, `enterprise_value`, `ebitda`, `ebitda_yield`, `ev_ebitda` and `spread`), `ranking_value` and `steps`: for each step, its `value` and, for a Rank step, its `step_rank`.
+`bt screen` selects with the strategy file on the latest session of the market. The reply has `day`, `identity`, `description` (the `variables`, `sleeves` and `ranks` that `bt check` prints), `picks`, and `median_market_cap` and `median_ebitda_yield`, the medians of the picks' `market_cap` and `ebitda_yield` (absent when there is no pick). Each pick has `rank`, `symbol`, `name`, `sector`, the candidate's other fields as a `holdings` row names them (`exchange`, `candidate_rank`, `fiscal`, `market_cap`, `enterprise_value`, `ebitda`, `ebitda_yield`, `ev_ebitda` and `spread`), `known` (the day its report counts as available), `price` (the entry close in US dollars) and `price_date` (the day of that close), `ranking_value` and `steps`: for each step, its `value` and, for a Rank step, its `step_rank`.
 
 ### Cross-section
 

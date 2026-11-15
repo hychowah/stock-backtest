@@ -21,13 +21,13 @@
 //! | `PUT /api/variables/{id}` | [`NewVariable`](crate::NewVariable) | the entry |
 //! | `DELETE /api/variables/{id}` | | [`Deleted`](crate::Deleted); 409 when another entry uses it |
 //! | `POST /api/formula` | [`FormulaRequest`](crate::formula::FormulaRequest) | [`FormulaReply`](crate::formula::FormulaReply): `checked`, or a `fault`, always with 200 |
-//! | `GET /api/runs/{id}/trials` | | [`TrialsReply`](crate::results::TrialsReply): the statistics and each trial |
+//! | `GET /api/runs/{id}/trials` | | [`TrialsReply`](crate::results::TrialsReply): the statistics (with `spy_total_return`) and each trial |
 //! | `GET /api/runs/{id}/periods?trial` | | one trial's `PeriodRow`s |
 //! | `GET /api/runs/{id}/holdings?trial[&period]` | | [`HoldingsReply`](crate::results::HoldingsReply): the holdings with their source values, and their steps |
 //! | `GET /api/runs/{id}/curve[?trial]` | | [`CurveReply`](crate::results::CurveReply): `band` over the trials, or one trial's `growth` |
 //! | `GET /api/runs/{id}/sectors[?trial]` | | [`SectorsReply`](crate::results::SectorsReply): each trial's shares and the spread, or one trial's `weights` by period |
 //! | `GET /api/runs/{id}/contributions?trial` | | one trial's `Attribution`s: each period's top holdings and totals |
-//! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` prints it |
+//! | `GET /api/runs/{id}/explore?trial&periods&ranks` | | `ExploreReply`, as `bt explore` prints it, with `spy_total_return` in the statistics of all trials |
 //! | `GET /api/catalog/{market}` | | `CatalogReply`, as `bt catalog` prints it |
 //! | `POST /api/screen` | [`ScreenBody`](crate::reference::ScreenBody) | `ScreenReply`, as `bt screen` prints it |
 //! | `GET /api/data/status` | | `StatusReply`, as `bt data status` prints it |
