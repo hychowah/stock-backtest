@@ -156,6 +156,7 @@ dependencies = [
 name = "bt"
 version = "0.1.0"
 dependencies = [
+ "app",
  "chrono",
  "clap",
  "engine",
@@ -164,6 +165,7 @@ dependencies = [
  "serde_json",
  "tables",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]

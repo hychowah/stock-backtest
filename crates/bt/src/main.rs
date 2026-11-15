@@ -72,6 +72,12 @@ enum Command {
         #[arg(long)]
         market: String,
     },
+    /// Serve the website and its API on 127.0.0.1 and run the queue, until Ctrl+C or SIGTERM
+    Serve {
+        /// The port; 0 for a free one
+        #[arg(long, default_value_t = 3000)]
+        port: u16,
+    },
 }
 
 #[derive(Args)]
@@ -170,10 +176,11 @@ fn main() -> ExitCode {
         Err(e) if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) => e.exit(),
         Err(e) => return reply::<()>(Err(Error::new(usage_message(&e), "arguments"))),
     };
-    let home = match cli.home {
-        Some(path) => Ok(Home::new(path)),
+    let root = match cli.home {
+        Some(path) => Ok(path),
         None => own_home(),
     };
+    let home = root.clone().map(Home::new);
     match cli.command {
         Command::Run(args) => reply(home.and_then(|home| run(&home, args))),
         Command::Export(Export::Tables(ExportArgs { results, out })) => {
@@ -209,6 +216,12 @@ fn main() -> ExitCode {
             let strategy = strategy(&file)?;
             engine::commands::screen(&home, &ScreenRequest { name: name(&file), strategy, market })
         })),
+        Command::Serve { port } => match root.and_then(|root| {
+            app::serve(&root, port, |address| println!("{}", serde_json::json!({ "serving": format!("http://{address}") })))
+        }) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => reply::<()>(Err(error)),
+        },
         Command::Data(Data::Prepare { as_of }) => reply(home.and_then(|home| {
             let as_of = match as_of {
                 Some(text) => DateTime::parse_from_rfc3339(&text)
@@ -288,10 +301,10 @@ fn range(text: &str, place: &str) -> Result<(u32, u32), Error> {
 
 /// The runtime folder holds `bin/bt`, so it is the parent of the folder that
 /// holds this program.
-fn own_home() -> Result<Home, Error> {
+fn own_home() -> Result<PathBuf, Error> {
     let exe = std::env::current_exe().map_err(|e| Error::new(format!("cannot find this program: {e}"), "--home"))?;
     let home = exe.parent().and_then(|bin| bin.parent());
-    home.map(Home::new).ok_or_else(|| Error::new("this program is not in `bin/` of a runtime folder: pass --home", exe.display()))
+    home.map(Path::to_path_buf).ok_or_else(|| Error::new("this program is not in `bin/` of a runtime folder: pass --home", exe.display()))
 }
 
 /// Clap's message without its `error:` prefix and usage lines, on one line.

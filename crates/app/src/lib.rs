@@ -1,8 +1,11 @@
-//! This crate is not built yet: this comment is the behavior it will have.
-//!
 //! The runs service behind `bt serve`: one list of runs that is both the
 //! queue and the saved results, a worker that runs the queue, and the
 //! variable library.
+//!
+//! Built so far: the database, `bt serve` with the router, the error
+//! replies, the origin rule, the static files and `GET /api/runs`. The
+//! worker, the other run and queue routes, `bt save` and the library are
+//! not built yet: the sections below describe what they will do.
 //!
 //! # The database
 //!
@@ -13,9 +16,9 @@
 //!   never shows another run. The row holds the name, the market, the
 //!   schedule (the flat [`engine::Schedule`], with a seed drawn when the row
 //!   is written), the strategy's canonical form, the state, the queue
-//!   position (waiting and held runs only), whether it is locked, and the
-//!   times it was created, started and finished. A complete run also holds
-//!   its outcome: the [`engine::commands::Headline`], the prepared
+//!   position (waiting, held and running runs), whether it is locked, and
+//!   the times it was created, started and finished. A complete run also
+//!   holds its outcome: the [`engine::commands::Headline`], the prepared
 //!   generation and as-of time, the program and the seconds. A failed run
 //!   holds its error. The list reads these rows and opens no result file.
 //! - `queue`: one row, whether the queue is paused.
@@ -71,3 +74,9 @@
 //! `bt serve` holds `data/serve.lock` while it runs, and a second server on
 //! the same home is refused. At start, with the lock held, every running run
 //! goes back to waiting: this one rule covers both a crash and a shutdown.
+
+pub mod http;
+mod store;
+
+pub use http::{App, Body, Failure, blocking, serve};
+pub use store::{Outcome, RunRow, RunsReply, State, Store};

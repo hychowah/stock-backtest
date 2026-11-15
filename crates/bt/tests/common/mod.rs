@@ -3,8 +3,9 @@
 #![allow(dead_code)]
 
 use serde_json::Value;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 
 /// The as-of time of the fictional fixture's expected tables: the Hong Kong
 /// session of the last day has not closed yet.
@@ -108,4 +109,68 @@ pub fn schedule(settings: &Value) -> Vec<String> {
         args.extend(["--trials".into(), trials.to_string(), "--seed".into(), settings["seed"].to_string()]);
     }
     args
+}
+
+/// A `bt serve` child process of a home, on a free port that the system
+/// chooses. Dropping it stops it with SIGTERM.
+pub struct Server {
+    child: Child,
+    /// `http://127.0.0.1:PORT`.
+    pub url: String,
+}
+
+/// Starts `bt serve` on `home` and waits until it says it is ready.
+pub fn serve(home: &Path) -> Server {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bt"))
+        .args(["serve", "--port", "0", "--home", path(home)])
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("start bt serve");
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let ready: Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("bt serve did not start: {line}"));
+    Server { child, url: ready["serving"].as_str().unwrap().to_string() }
+}
+
+impl Server {
+    /// Sends `method` to `path` with a JSON body, and an `Origin` header when
+    /// one is given; returns the status and the JSON reply.
+    pub fn send(&self, method: &str, path: &str, body: Option<&Value>, origin: Option<&str>) -> (u16, Value) {
+        let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+        let mut request = ureq::http::Request::builder().method(method).uri(format!("{}{path}", self.url));
+        if let Some(origin) = origin {
+            request = request.header("Origin", origin);
+        }
+        let request = request.header("Content-Type", "application/json").body(body.map_or(String::new(), Value::to_string)).unwrap();
+        let mut response = agent.run(request).unwrap_or_else(|e| panic!("{method} {path}: {e}"));
+        let text = response.body_mut().read_to_string().unwrap();
+        let reply = serde_json::from_str(&text).unwrap_or_else(|_| panic!("{method} {path}: {text}"));
+        (response.status().as_u16(), reply)
+    }
+
+    /// GET `path`, which must answer 200; its JSON reply.
+    pub fn get(&self, path: &str) -> Value {
+        let (status, reply) = self.send("GET", path, None, None);
+        assert_eq!(status, 200, "GET {path}: {reply}");
+        reply
+    }
+
+    /// Sends SIGTERM and waits; whether the server exited with success.
+    pub fn terminate(mut self) -> bool {
+        self.stop()
+    }
+
+    fn stop(&mut self) -> bool {
+        let pid = self.child.id().to_string();
+        if self.child.try_wait().unwrap().is_none() {
+            Command::new("kill").args(["-TERM", &pid]).status().unwrap();
+        }
+        self.child.wait().unwrap().success()
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
