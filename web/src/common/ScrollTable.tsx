@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 
-/** A wide table or chart in the old focusable scroll region: a hint line,
- *  then a region that scrolls sideways and takes keyboard focus. `kind` is
+/** A wide table or chart in a scroll region: a hint line, then a region
+ *  that scrolls sideways and takes keyboard focus. `kind` is
  *  the region's class, which sets its height in the carried CSS: `table-wrap`
  *  (370 px high), `latest-table` (520 px) or `scroll` (a chart; no limit). A
  *  table with the class `stock-table` keeps its second column (the symbol)
