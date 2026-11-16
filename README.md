@@ -4,7 +4,7 @@ A local research tool that screens stocks by valuation and backtests the picks a
 
 [![Tests](https://github.com/hychowah/stock-backtest/actions/workflows/tests.yml/badge.svg)](https://github.com/hychowah/stock-backtest/actions/workflows/tests.yml)
 
-Rust · TypeScript · one prepared store · runs on one computer
+Rust · TypeScript · runs on one computer
 
 ## What it does
 
@@ -77,49 +77,11 @@ flowchart LR
     RESULTS --> CLI["Command line<br/>bt export, bt explore"]
 ```
 
-- **Raw files.** `bt data update` downloads prices, annual reports, FX rates,
-  SPY and Treasury yields from Financial Modeling Prep (FMP) into `raw/`. It
-  asks for new prices on each run and checks reports once a week.
-- **The prepared store.** `bt data prepare` reads `raw/` and writes typed
-  column files for each market, in about 21 seconds for the owner's US and
-  Hong Kong data. It publishes them as a whole new generation. A reader keeps the
-  generation it opened, so a preparation never changes a run in progress.
-- **The engine.** On each trade date, the engine calculates that day's
-  candidates from the prepared store, runs the strategy's steps and values the
-  portfolio. Strategy calculations never download data.
-- **Result files.** A run writes one SQLite file for each strategy. A result
-  file never changes. The website's charts and tables and the command-line
-  exports read the same rows.
-- **Two faces of the same commands.** The website (`bt serve`) and the command
-  line call the same commands, so a test gives the same numbers in both.
-- **The nightly update.** A user timer runs `bt data update` every night.
-  It downloads, then prepares every market.
-
-## Engineering notes
-
-- **The replacement was shown equal.** The program replaced an earlier Python
-  product with equal results. Prepared data and results were
-  compared with the Python product's on real data: 75.3 million prepared rows
-  and 5.3 million result rows, with no difference. The data update was
-  replayed on recorded provider replies at full scale, and every raw file was
-  byte-equal (48,165 and 63,334 files). One real update ran beside the Python
-  updater. The files were equal except where the provider's data changed
-  between the two downloads. The owner's 66 saved tests were converted and
-  run again in the new program.
-- **Frozen fixtures are the specification.** The number vectors, formula
-  vectors, fictional data set, expected tables and data-update cases were
-  taken from the Python product and do not change
-  ([fixtures](fixtures/README.md)). The Python source remains at the Git tag
-  `python-oracle`.
-- **Faster and smaller.** On the owner's computer, a nightly update takes
-  about 7 and a half minutes, where the Python one took 24. A 3.8 GB research
-  database and an 11 GB store of precomputed sheets became one prepared store,
-  with candidates calculated on demand.
-- **Safe writes.** A raw file, a generation or a result file is written whole
-  and then published, so an interrupted write keeps the old one. A stopped
-  update keeps what it saved and continues from there.
-- **No secrets in output.** The provider key stays in the client. Logs,
-  status and records never hold the key, a request URL or a reply.
+The program downloads market data into local files, prepares them into one
+store, and calculates each test from that store. A finished result is a file
+that never changes; the website and the command line read the same results.
+An update runs each night. [Development notes](docs/development.md) describe
+the parts.
 
 ## Methodology essentials
 
@@ -146,17 +108,6 @@ flowchart LR
 
 See [docs/methodology.md](docs/methodology.md) for the full rules, the
 original January study and its limits.
-
-## Project layout
-
-| Path | Contents |
-|---|---|
-| `crates/` | The Rust program `bt`: `numbers`, `market-data` (raw files and the prepared store), `engine` (strategies, formulas, schedules, results), `tables`, `app` (the run list and the HTTP server), `fetch` (the data update) and `bt` (the commands) |
-| `web/` | The TypeScript website that `bt serve` serves ([web/README.md](web/README.md)) |
-| `fixtures/` | The frozen test data ([fixtures/README.md](fixtures/README.md)) |
-| `results/` | The frozen January study record ([results/README.md](results/README.md)) |
-| `docs/` | The [command-line guide](docs/command-line.md), [methodology](docs/methodology.md), [parameter catalog](docs/parameter-catalog.md) and [running the program](docs/running.md) |
-| `install.sh` | Builds and installs the program and the website |
 
 ## Getting started
 
@@ -196,22 +147,13 @@ Open `http://127.0.0.1:3000`. Press Ctrl+C to stop the server.
 **Daily use:** install the program with `./install.sh` and follow
 [docs/running.md](docs/running.md).
 
-## Testing
+## Documentation
 
-```bash
-cargo test --locked                      # Rust tests, from the root
-cd web && npm ci && npm run check && npm test && npm run build
-npx playwright test                      # browser checks, in web/
-```
-
-The Rust tests compare whole runs, prepared data and data updates with the
-frozen fixtures. They also write the website's API types into `web/src/api/`.
-The browser checks need `cargo build -p bt` and, once,
-`npx playwright install chromium`. Each worker starts `bt serve` on a private
-home made from the fictional data, with a stand-in for the provider
-([web/README.md](web/README.md#browser-checks)). GitHub Actions runs all of
-these on every push, and fails when the committed API types differ from the
-ones the tests write.
+- [Command-line guide](docs/command-line.md): the `bt` commands and strategy files.
+- [Methodology](docs/methodology.md): the financial rules, the January study and its limits.
+- [Parameter catalog](docs/parameter-catalog.md): each input and where it comes from.
+- [Running the program](docs/running.md): installing, the nightly update, starting and stopping.
+- [Development notes](docs/development.md): how the parts work, the layout and the tests.
 
 ## Limits
 
