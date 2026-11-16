@@ -1,250 +1,169 @@
-# Parameter catalog: FMP-backed inputs
+# Parameter catalog
 
-Checked: 2026-11-08.
+This page maps each input that a formula can read to its provider field and
+unit. `bt catalog` lists every name, with its display and category
+([command-line guide](command-line.md#variables-and-formulas)). The provider
+is Financial Modeling Prep (FMP).
 
-The formula editor names each `/4` input once in plain words
-(`backtest/application/vocabulary.py`); this inventory keeps the owner
-descriptions. A catalog entry does not establish installed readiness or
-observed coverage.
+## Units and rules
 
-Captured programs run through Original in Latest, fixed and random modes; a
-January request is refused. Catalogs `/3` and `/4` each contain 77 IDs. New
-definitions use `/4` and `market-annual/1`; Hong Kong and Japan runs use the
-`/4` form of older definitions. A capture retains the 32-definition
-ceiling. Eager scalar execution remains unsupported.
-These source capabilities establish no installed readiness or live-cache coverage.
+- **USD:** an amount in US dollars. A Hong Kong or Tokyo value is converted
+  to USD at the rate of the day that the formula reads. A step shows it in
+  millions of dollars.
+- **share:** a share count. It is never converted.
+- **USD/share:** an amount per share, in US dollars.
+- **scalar:** a ratio or a rate, read as a fraction (0.15 is 15%).
 
-This inventory maps documented fields from existing FMP routes. Include an input
-only when an existing route supplies it or an explicit calculation uses supplied
-inputs. Preserve the [versioned field contract](custom-variables.md#parameters),
-source meanings, original immutable definitions and financial policy. Commit
-messages retain earlier implementation states and exact verification.
+Statement inputs are yearly: a formula can read up to 10 fiscal years,
+ending at the year of the selected report. Which statement values count is in
+the [methodology](methodology.md#when-a-report-counts-as-known). A missing value
+stays missing: null is not zero, and no other field fills it.
 
-## Source check and its limits
+Weighted-average shares describe a year, not the share count on the screen
+day. Cash-flow fields keep the provider's signs: spending is usually negative.
 
-The tables map 57 direct inputs to FMP's documented response fields. Public FMP
-documentation was checked against the project's current download routes. No
-authenticated request, native-cache inspection or market-data download was made.
-This establishes the documented source path. It does not establish nonmissing
-coverage for every company or historical date, or test account-specific limits.
+## Income statement
 
-The existing Full annual financial data action requests `income-statement`,
-`balance-sheet-statement` and `cash-flow-statement` with annual periods. It also
-requests `key-metrics` and `ratios`. See
-[`website/server/data_manager.py`](../website/server/data_manager.py).
-[`backtest/inputs/financial_inputs.py`](../backtest/inputs/financial_inputs.py)
-saves full statement responses, including fields not currently prepared. At the original source check, its
-validated projection included only:
+Endpoint: `income-statement`, annual.
 
-- Income: `revenue`, `operatingIncome`, `netIncome`, `epsDiluted`, `ebit`,
-  `interestExpense`.
-- Balance: `totalStockholdersEquity`, `totalCurrentAssets`,
-  `totalCurrentLiabilities`, `totalDebt`.
-- Cash flow: `freeCashFlow`.
+| Input | Field | Unit |
+|---|---|---|
+| Revenue | `revenue` | USD |
+| Cost of revenue | `costOfRevenue` | USD |
+| SG&A expense | `sellingGeneralAndAdministrativeExpenses` | USD |
+| R&D expense | `researchAndDevelopmentExpenses` | USD |
+| Operating income | `operatingIncome` | USD |
+| EBIT | `ebit` | USD |
+| Interest income | `interestIncome` | USD |
+| Interest expense | `interestExpense` | USD |
+| Pretax income | `incomeBeforeTax` | USD |
+| Income tax expense | `incomeTaxExpense` | USD |
+| Net income | `netIncome` | USD |
+| Basic shares | `weightedAverageShsOut` | share |
+| Diluted shares | `weightedAverageShsOutDil` | share |
+| Basic EPS | `eps` | USD/share |
+| Diluted EPS | `epsDiluted` | USD/share |
 
-Later work added validation, conflict resolution, prepared evidence and
-execution for the remaining mapped fields. A raw field
-must not become usable merely because the downloader retained it. Reuse valid
-saved responses first. Missing data stays unavailable. Downloads remain an
-explicit data-panel action.
+## Balance sheet
 
-The existing price route is `historical-price-eod/dividend-adjusted`. The existing
-rate route is `treasury-rates`. Both retain complete rows. New observations such
-as volume still need validation and preparation. This inventory requires no new
-FMP endpoint or as-reported filing parser.
+Endpoint: `balance-sheet-statement`, annual.
 
-## Direct statement inputs
+| Input | Field | Unit |
+|---|---|---|
+| Cash and equivalents | `cashAndCashEquivalents` | USD |
+| Short term investments | `shortTermInvestments` | USD |
+| Long term investments | `longTermInvestments` | USD |
+| Net receivables | `netReceivables` | USD |
+| Accounts receivable | `accountsReceivables` | USD |
+| Inventory | `inventory` | USD |
+| Prepaid expenses | `prepaids` | USD |
+| Current assets | `totalCurrentAssets` | USD |
+| Net PP&E | `propertyPlantEquipmentNet` | USD |
+| Goodwill | `goodwill` | USD |
+| Intangible assets | `intangibleAssets` | USD |
+| Total assets | `totalAssets` | USD |
+| Accounts payable | `accountPayables` | USD |
+| Accrued expenses | `accruedExpenses` | USD |
+| Current deferred revenue | `deferredRevenue` | USD |
+| Noncurrent deferred revenue | `deferredRevenueNonCurrent` | USD |
+| Current liabilities | `totalCurrentLiabilities` | USD |
+| Total liabilities | `totalLiabilities` | USD |
+| Short term debt | `shortTermDebt` | USD |
+| Long term debt | `longTermDebt` | USD |
+| Lease obligations | `capitalLeaseObligations` | USD |
+| Total debt | `totalDebt` | USD |
+| Shareholders equity | `totalStockholdersEquity` | USD |
+| Preferred stock | `preferredStock` | USD |
+| Minority interest | `minorityInterest` | USD |
 
-Catalog `/2` retains its original 52 direct inputs. Catalog `/3` adds reported
-EBIT, basic EPS, diluted EPS, total debt and free cash flow. The tables below
-include these five fields. Their source mappings match `parameters.py`.
+Net receivables and accounts receivable are different fields. Shareholders
+equity leaves out minority interest. Preferred stock is a book amount. Debt and
+lease fields can overlap: do not add them to replace Total debt.
 
-Unless stated otherwise, statement amounts use USD from eligible annual reports.
-Shares use a share count. Every field must be finite and unambiguous for its
-endpoint and fiscal date. A documented zero in one provider example does not
-prove zero coverage for other companies. Null is not zero.
+## Cash-flow statement
 
-### Income statement
+Endpoint: `cash-flow-statement`, annual.
 
-Source: [FMP Income Statement API](https://site.financialmodelingprep.com/developer/docs/stable/income-statement).
-All rows use `income-statement`.
+| Input | Field | Unit |
+|---|---|---|
+| Operating cash flow | `operatingCashFlow` | USD |
+| CapEx | `capitalExpenditure` | USD |
+| Reported free cash flow | `freeCashFlow` | USD |
+| Depreciation and amortization | `depreciationAndAmortization` | USD |
+| Stock based compensation | `stockBasedCompensation` | USD |
+| Net acquisitions | `acquisitionsNet` | USD |
+| Income taxes paid | `incomeTaxesPaid` | USD |
+| Interest paid | `interestPaid` | USD |
+| Net debt issuance | `netDebtIssuance` | USD |
+| Common dividends paid | `commonDividendsPaid` | USD |
+| Preferred dividends paid | `preferredDividendsPaid` | USD |
+| Share buybacks | `commonStockRepurchased` | USD |
+| Share issuance | `commonStockIssuance` | USD |
 
-| Input | FMP field |
+Depreciation and amortization comes from the cash-flow statement, not from the
+income statement. Net acquisitions and net debt issuance are net amounts: they
+do not give gross spending, borrowing or repayment.
+
+## Market and rate inputs
+
+| Input | Source | Unit |
+|---|---|---|
+| Share price | `historical-price-eod/dividend-adjusted`, `adjClose`, in USD at the day's rate | USD/share |
+| Trading volume | `historical-price-eod/dividend-adjusted`, `volume` | share |
+| Treasury 3 month yield | `treasury-rates`, `month3`, divided by 100 | scalar |
+| Treasury 10 year yield | `treasury-rates`, `year10`, divided by 100 | scalar |
+
+A price or volume is the one of the last session on or before the day, at
+most 7 days earlier. A Treasury yield is the one of the last Treasury day on
+or before the screen day (before it, for Hong Kong and Tokyo).
+
+## Calculated inputs
+
+| Input | How it is calculated | Unit |
+|---|---|---|
+| EBITDA | US: report enterprise value / EV/EBITDA, from `key-metrics`. Hong Kong and Tokyo: `income-statement` `ebitda`. One value for each fiscal year of the selected reports. | USD |
+| Operating margin | Operating income / Revenue, when Revenue is above zero | scalar |
+
+Market cap and Enterprise value are built-in values: the entry valuation of
+the [methodology](methodology.md#valuation-and-currency).
+
+## Named measures
+
+| Measure | Formula |
 |---|---|
-| Revenue | `revenue` |
-| Cost of revenue | `costOfRevenue` |
-| Selling, general and administrative expense | `sellingGeneralAndAdministrativeExpenses` |
-| Research and development expense | `researchAndDevelopmentExpenses` |
-| Operating income | `operatingIncome` |
-| Reported EBIT (`/3`) | `ebit` |
-| Interest income | `interestIncome` |
-| Interest expense | `interestExpense` |
-| Pretax income | `incomeBeforeTax` |
-| Income tax expense | `incomeTaxExpense` |
-| Net income under the existing FMP definition | `netIncome` |
-| Basic EPS (`/3`); USD/share | `eps` |
-| Diluted EPS (`/3`); USD/share | `epsDiluted` |
-| Weighted-average basic shares; shares | `weightedAverageShsOut` |
-| Weighted-average diluted shares; shares | `weightedAverageShsOutDil` |
+| Gross profit | Revenue − Cost of revenue |
+| Gross margin | Gross profit / positive(Revenue) |
+| Working capital | Current assets − Current liabilities |
+| Net debt | Total debt − Cash and equivalents |
+| Tangible book equity | Shareholders equity − Goodwill − Intangible assets |
+| Operating cash flow plus CapEx | Operating cash flow + CapEx |
+| Price/sales | Market cap / positive(Revenue) |
+| Debt/assets | Total debt / positive(Total assets) |
 
-Weighted-average shares describe an annual period. They are not an exact share
-count at the screen date. Preserve the existing `annual.net_income` meaning.
-Do not relabel it as a separately verified consolidated or common-only figure.
+## Built-in values
 
-### Balance sheet
+The program calculates the built-in values from the selected report, the
+prices and the entry valuation; `bt catalog` lists them all. "The year" is the
+selected report's fiscal year. A value is missing when a part of it is
+missing or a bottom is not above zero. The values that need a definition:
 
-Source: [FMP Balance Sheet Statement API](https://site.financialmodelingprep.com/developer/docs/stable/balance-sheet-statement).
-All rows use `balance-sheet-statement`.
-
-| Input | FMP field |
+| Value | Definition |
 |---|---|
-| Cash and cash equivalents | `cashAndCashEquivalents` |
-| Short-term investments | `shortTermInvestments` |
-| Long-term investments | `longTermInvestments` |
-| Net receivables | `netReceivables` |
-| Accounts receivable | `accountsReceivables` |
-| Inventory | `inventory` |
-| Prepaid expenses | `prepaids` |
-| Total current assets | `totalCurrentAssets` |
-| Net property, plant and equipment | `propertyPlantEquipmentNet` |
-| Goodwill | `goodwill` |
-| Intangible assets excluding goodwill | `intangibleAssets` |
-| Total assets | `totalAssets` |
-| Accounts payable | `accountPayables` |
-| Accrued expenses | `accruedExpenses` |
-| Current deferred revenue | `deferredRevenue` |
-| Noncurrent deferred revenue | `deferredRevenueNonCurrent` |
-| Total current liabilities | `totalCurrentLiabilities` |
-| Total liabilities | `totalLiabilities` |
-| FMP short-term debt | `shortTermDebt` |
-| FMP long-term debt | `longTermDebt` |
-| Reported total debt (`/3`) | `totalDebt` |
-| FMP lease obligations | `capitalLeaseObligations` |
-| Book shareholders' equity | `totalStockholdersEquity` |
-| Book preferred stock | `preferredStock` |
-| Noncontrolling interests | `minorityInterest` |
+| P/E, P/S, P/B, Price/FCF | Market cap ÷ the year's net income, revenue, shareholders equity or free cash flow |
+| ROE | The year's net income ÷ the mean of the year's and the year before's shareholders equity, both above zero |
+| PEG | P/E ÷ the yearly growth, in percent, of diluted EPS over 3 years; needs diluted EPS above zero in all 4 years |
+| EV/3-year average EBITDA | Enterprise value ÷ the mean EBITDA of the 3 calendar years that end with the year; needs a report in each year. 3-year average EBITDA yield is its inverse |
+| Operating yield spread | Revenue × the mean operating margin of the same 3 years ÷ enterprise value, in percent, − the US 10-year Treasury yield, in percentage points |
+| One year return, Three year return | The dividend-adjusted close of the screen day ÷ the close of the same date 1 or 3 years earlier − 1, in USD. Each close is the last one on or before its date, at most 7 days earlier; 29 February becomes 28 February |
+| P/E, P/S and P/B 3-year and 5-year averages | 1 ÷ the mean daily yield (net income, revenue or equity of the report selected that day ÷ that day's market cap; a loss counts) over the days after the same date 3 or 5 years earlier, through the screen day. Needs a day with a yield on or before that start, and a mean above zero |
+| P/E, P/S and P/B vs 3-year or 5-year average | The current value ÷ its average: below 1 is cheaper than usual |
+| Dividend yield | The year's common dividends paid, with the sign reversed (the provider shows a payment as negative), ÷ market cap. 0 when the report shows no payment |
+| Turnover rate 1-week average | The mean of the saved volumes in the 7 calendar days that end on the screen day ÷ the year's basic weighted shares. The provider restates volumes and report shares to the latest split, so a split after a report was saved skews turnover until the reports are downloaded again |
 
-Keep net receivables distinct from accounts receivable. Keep shareholders' equity
-distinct from common-only equity and from equity including noncontrolling
-interests. Preferred stock here is a book amount, not its market value.
-The lease field does not establish separate operating and finance lease values.
-Debt and lease categories can overlap. Reuse existing total-debt and EV policy;
-do not sum these fields into a replacement for either calculation.
+## Not available
 
-### Cash-flow statement
-
-Source: [FMP Cash Flow Statement API](https://site.financialmodelingprep.com/developer/docs/stable/cashflow-statement).
-All rows use `cash-flow-statement`.
-
-| Input | FMP field |
-|---|---|
-| Combined depreciation and amortization | `depreciationAndAmortization` |
-| Stock-based compensation | `stockBasedCompensation` |
-| Operating cash flow | `operatingCashFlow` |
-| Free cash flow (`/3`) | `freeCashFlow` |
-| Capital-expenditure cash flow; retain the FMP sign | `capitalExpenditure` |
-| Net acquisition cash flow; retain the FMP sign | `acquisitionsNet` |
-| Cash income taxes paid | `incomeTaxesPaid` |
-| Cash interest paid | `interestPaid` |
-| Net debt issuance | `netDebtIssuance` |
-| Common dividends paid | `commonDividendsPaid` |
-| Preferred dividends paid | `preferredDividendsPaid` |
-| Common-share repurchase cash flow | `commonStockRepurchased` |
-| Common-share issuance cash flow | `commonStockIssuance` |
-
-Retain source signs in raw assets. Specify sign conversion per field before
-exposing a positive spending amount. Never apply absolute value to all cash-flow
-fields. Net acquisition cash flow is not gross acquisition spending. Net debt
-issuance cannot reveal separate gross borrowing and repayment.
-
-Use the cash-flow endpoint as the source of the combined depreciation and
-amortization input. The same key in the income endpoint is a distinct source;
-do not silently switch between them to fill a missing value.
-
-## Direct market and rate inputs
-
-Sources: [FMP Historical Market Data](https://site.financialmodelingprep.com/datasets/market-data-historic)
-and [FMP Treasury Rates API](https://site.financialmodelingprep.com/developer/docs/stable/treasury-rates).
-
-| Input | Existing route | Field | Canonical unit |
-|---|---|---|---|
-| Dividend-adjusted close | `historical-price-eod/dividend-adjusted` | `adjClose` | USD/share |
-| Trading volume | `historical-price-eod/dividend-adjusted` | `volume` | Shares per session |
-| US 3-month Treasury yield | `treasury-rates` | `month3` | Fraction; divide provider percent by 100 |
-| US 10-year Treasury yield | `treasury-rates` | `year10` | Fraction; divide provider percent by 100 |
-
-Use explicit dates and the existing availability and lookup rules. Historical
-volume requires a saved value for the relevant session; an old price does not
-provide missing volume. Dividend-adjusted prices must not be presented as
-unadjusted transaction prices or multiplied by annual average shares to replace
-the existing market-cap calculation.
-
-## Calculated measures and existing adapters
-
-These are reusable built-in variables or compatibility adapters. They are not
-additional raw ingredients. Every calculation needs its own named definition,
-required inputs and missing-data rules. Built-in ratios retain their declared
-positive-denominator rules. General division keeps the signed-arithmetic
-rules and rejects zero denominators. Existing built-ins retain their exact
-arithmetic and stored rounding.
-
-| Measure | Supported source path or proposed calculation |
-|---|---|
-| Gross profit | `revenue - costOfRevenue` |
-| Gross margin | Gross profit / positive `revenue` |
-| Operating and net margins | `operatingIncome` or `netIncome` / positive `revenue`; preserve existing net-margin policy |
-| EBIT | Existing validated `income-statement.ebit`; do not equate it with operating income |
-| EBITDA | The proposed `annual.ebitda` adapter keeps the existing report EV / report EV-to-EBITDA series for eligible reports. FMP also documents `income-statement.ebitda`; any separately named statement-EBITDA variable needs its own admission. Do not replace or fill the existing series with it. |
-| Free cash flow | Preserve existing `cash-flow-statement.freeCashFlow`. A separately named CFO-plus-signed-CapEx formula can use `operatingCashFlow + capitalExpenditure`; require all inputs and do not silently substitute it for the stored value. |
-| Total debt | Existing validated `balance-sheet-statement.totalDebt`; preserve its provider definition |
-| Net debt, cash-only definition | `totalDebt - cashAndCashEquivalents`; define investment treatment separately |
-| Working capital | `totalCurrentAssets - totalCurrentLiabilities` |
-| Tangible book equity | `totalStockholdersEquity - goodwill - intangibleAssets`; no common-only claim |
-| Market cap and enterprise value | Existing dated financial adapters and report bindings in `backtest/financial/books.py`; no share-count shortcut or new EV formula |
-| Basic and diluted EPS | Documented `income-statement.eps` and existing validated `epsDiluted`; expose as built-ins with provider definitions |
-| P/S and debt/assets | Existing dated market cap / positive `revenue`; existing `totalDebt` / positive `totalAssets` |
-| Existing ratios, yields and operating spread | Reuse `backtest/financial/metrics.py`, the built-in compatibility map and their existing input/denominator policies |
-| Historical growth and averages | Apply supported date/history operators to one underlying input; require the requested history and explicit growth rules |
-
-P/S and debt/assets have documented inputs. They still require future formula
-and preparation work. Do not advertise them as current website capabilities.
-Growth, averaging and calendar lookbacks are operations on an input. They do not
-create extra raw parameters. Quarterly and TTM data are not supported.
-
-## Items excluded from the target inventory
-
-The earlier suggested list included finer splits that the existing routes do
-not establish. Exclude the following from the admitted list:
-
-| Excluded item | Reason |
-|---|---|
-| Separate depreciation and separate amortization | The checked standardized responses provide their combined amount. Do not infer either component. |
-| Separate impairment charges, restructuring charges and asset-sale gains/losses | No distinct verified field in the checked responses. `otherNonCashItems` and other aggregates cannot isolate them. |
-| Restricted cash and investments in associates as separate inputs | No distinct verified standardized field. Broader cash/investment totals are insufficient. |
-| Separate current portion of long-term debt | `shortTermDebt` does not isolate this component. |
-| Separate operating and finance lease liabilities | The verified lease fields do not establish this split. |
-| Separate gross borrowing and gross debt repayment | The checked cash-flow schema supplies net issuance. Changes in balance-sheet debt do not reconstruct the gross flows. |
-| Gross acquisition spending and asset-sale proceeds | Net acquisitions and aggregated investing flows cannot establish these amounts. |
-| Exact shares outstanding at a screening date | Annual weighted-average shares are not an exact dated share count. No current profile/quote substitution is allowed in historical tests. |
-| Book value or dividends per exact current share | No verified exact dated share count or separate per-share dividend source in these routes. Do not approximate it with annual weighted-average shares. |
-| Unadjusted historical transaction price | The verified existing dividend-adjusted route does not supply this observation. |
-| Separately defined consolidated and common-only net income | Keep the existing `netIncome` meaning. The check did not establish these attribution splits. |
-
-These exclusions mean "not admitted by this check." They do not claim that FMP
-can never supply an item through another endpoint or company-specific filing.
-A later addition needs a separate verified source path and scope agreement.
-
-## Adding an input
-
-Each new input is a separate, verified increment. Map the chosen field to
-validation, prepared evidence, freshness and backend capabilities. Test missing values, currencies, conflicts,
-signs, fiscal dates and unavailable histories. Reuse complete saved responses;
-do not redownload them just to expose an additional retained field. Measure
-company/date coverage before the picker marks an input usable.
-
-Catalogs `/1`–`/3` retain the US 90-day lag. Catalog `/4` uses market report
-availability, context-date USD conversion for annual money and observation-date
-FX for prices. Keep strict availability-before-date and the 800-day anchor age
-limit. Bind all inputs to their admitted generation. No later report
-may fill a missing selected-report field. This record adds no filing-vintage
-accuracy claim or numerical-engine support.
+The provider's standard annual fields do not give these items, so no input
+reads them: depreciation and amortization apart; impairment and restructuring
+charges; restricted cash; the current part of long-term debt; operating and
+finance leases apart; the share count on a given day; dividends per share;
+quarterly or trailing-twelve-month values.

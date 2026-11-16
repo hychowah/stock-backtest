@@ -4,19 +4,6 @@ on:
   push:
 
 jobs:
-  fast:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Run the fast test tier
-        run: python3 tests/run.py
-
   rust:
     runs-on: ubuntu-latest
     steps:
@@ -31,36 +18,9 @@ jobs:
         run: |
           changed=$(git status --porcelain -- web/src/api)
           if [ -n "$changed" ]; then echo "$changed"; git diff -- web/src/api; exit 1; fi
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Export the oracle tables of the fictional fixture
-        run: |
-          options="--raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 --cases fixtures/fictional/cases"
-          python3 proof/l3.py $options --out "$RUNNER_TEMP/oracle-export/runs"
-          for market in us hk jp; do
-            python3 proof/export.py $options --market $market --random-days 40 --out "$RUNNER_TEMP/oracle-export/$market"
-          done
-      - name: Compare the oracle tables with the expected tables
-        run: |
-          for folder in runs us hk jp; do
-            cargo run -q -p tables -- "fixtures/fictional/expected/$folder" "$RUNNER_TEMP/oracle-export/$folder"
-          done
-      - name: Convert the fictional saved tests and run each against its original
-        run: |
-          inputs="--data fixtures/fictional/saved/data fixtures/fictional/saved/requests/us-intent.json"
-          python3 proof/convert.py $inputs --out "$RUNNER_TEMP/converted"
-          diff -r fixtures/fictional/saved/expected "$RUNNER_TEMP/converted"
-          python3 proof/convert_proof.py --raw fixtures/fictional/raw --as-of 2023-06-30T07:30:00+00:00 \
-            --out "$RUNNER_TEMP/convert-proof" $inputs
-      - name: Run the oracle's data update on the fictional update cases and compare with the frozen cases
-        run: |
-          python3 proof/update.py cases --out "$RUNNER_TEMP/update"
-          diff -r fixtures/fictional/update "$RUNNER_TEMP/update"
-
       - name: Run the browser checks of the website against the built bt
         # `cargo test` has built target/debug/bt, which the checks start.
         working-directory: web

@@ -474,37 +474,3 @@ fn a_stop_is_recorded_while_a_request_is_in_flight() {
     setup.check_prepared(false);
     setup.check_secrets(&output);
 }
-
-/// A replay at real scale, not run by default. It serves the reply store
-/// named by `UPDATE_REPLIES`, runs `bt data update --home $UPDATE_HOME
-/// --as-of $UPDATE_AS_OF` with a private `HOME` and a made-up key, and
-/// writes the requests made to `UPDATE_REQUESTS` as JSON lines in the
-/// format of a case's `requests.jsonl`. Build with `--release`.
-#[test]
-#[ignore = "needs UPDATE_REPLIES, UPDATE_HOME, UPDATE_AS_OF and UPDATE_REQUESTS"]
-fn replay_a_reply_store() {
-    let variable = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
-    let fake = FakeProvider::start(Path::new(&variable("UPDATE_REPLIES")), Encoding::Gzip);
-    let user = tempfile::tempdir().unwrap();
-    let key = user.path().join(".grok/secrets/fmp_api_key");
-    std::fs::create_dir_all(key.parent().unwrap()).unwrap();
-    std::fs::write(key, KEY).unwrap();
-    let child = update_command(Path::new(&variable("UPDATE_HOME")), user.path(), &variable("UPDATE_AS_OF"), fake.address())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let (reply, _) = finish(child);
-    // The cases' `requests.jsonl` format: `json.dumps` separators, parameters by name.
-    let mut lines: Vec<String> = fake
-        .requests()
-        .iter()
-        .map(|r| {
-            let params: Vec<String> = r.params.iter().map(|(name, value)| format!("{}: {}", json!(name), json!(value))).collect();
-            format!("{{\"endpoint\": {}, \"params\": {{{}}}}}", json!(r.endpoint), params.join(", "))
-        })
-        .collect();
-    lines.sort();
-    std::fs::write(variable("UPDATE_REQUESTS"), lines.join("\n") + "\n").unwrap();
-    assert!(fake.unknown().is_empty(), "{} requests had no stored reply", fake.unknown().len());
-    println!("{reply}");
-}

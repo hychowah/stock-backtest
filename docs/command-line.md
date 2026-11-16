@@ -185,7 +185,7 @@ bt export tables out/pe-20.sqlite out/pe-30.sqlite --out tables
 - `trials` (`case`, `trial`): one row for each trial, with its `cagr` and SPY's.
 - `statistics` (`case`, `statistic`): the `value` of each statistic over the trials, such as `cagr.median` and `beat_spy`.
 - `periods` (`case`, `trial`, `period`): the entry, the exit and the returns of each period.
-- `holdings` (`case`, `trial`, `period`, `rank`): one row for each holding, with its `return`, `weight` and `contribution`, and also its `status`, `ranking_value` and `sleeve`. `return` is the holding's return from its entry to its exit in US dollars; how dividends and prices enter it is in [Dividends](research-workflow.md#dividends).
+- `holdings` (`case`, `trial`, `period`, `rank`): one row for each holding, with its `return`, `weight` and `contribution`, and also its `status`, `ranking_value` and `sleeve`. `return` is the holding's return from its entry to its exit in US dollars; how dividends and prices enter it is in [Dividends](methodology.md#dividends).
 - `steps` (`case`, `trial`, `period`, `rank`, `sleeve`, `step`): the `value` that each step read for a holding.
 - `curve` (`case`, `trial`, `period`, `day`): the return to date on each day of a period.
 - `growth` (`case`, `trial`, `day`) and `band` (`case`, `day`): the value of 1 for the strategy and for SPY on each day, and its median, lowest and highest over the trials.
