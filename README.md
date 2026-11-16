@@ -154,7 +154,7 @@ exit rules and its limits.
 | `crates/` | The Rust program that will replace the Python product; [command-line guide](docs/command-line.md) |
 | `web/` | The TypeScript website that will replace the browser interface |
 | `fixtures/` | Number test vectors from the Python product and a fictional dataset with expected tables, for checking the Rust program; saved-test stores in the Python product's old formats, with their expected conversion; data-update cases: the provider replies and the raw files the Python product's data update writes from them |
-| `proof/` | Scripts that export the Python product's results for comparison with the Rust program; the converter of saved tests, the queue and the variable library into strategy files, and its proof against the original runs; the harness that runs the Python product's data update on stored provider replies |
+| `proof/` | Scripts that export the Python product's results for comparison with the Rust program; the converter of saved tests, the queue and the variable library into strategy files, and its proof against the original runs; the import of the converted tests and variables into the new site; the harness that runs the Python product's data update on stored provider replies |
 | `tools/` | Deployment, operations and FMP API probes |
 | `tests/` | Python and Node.js tests and the test runner |
 | `docs/` | Methodology, design notes and the architecture guide ([index](docs/README.md)) |
