@@ -247,11 +247,10 @@ impl PyJson {
         }
     }
 
-    /// The old updater's number reader (`rules.num`) of a field: a number,
-    /// a boolean as 1 or 0, or a text that Python's `float()` reads; `None`
-    /// for a missing field, `null`, `""`, a container, or a value that is
-    /// not finite. Not ported: underscores between digits and non-ASCII
-    /// digits in a text.
+    /// The old updater's number reader of a field: a number, a boolean as 1 or
+    /// 0, or a text that Python's `float()` reads; `None` for a missing field,
+    /// `null`, `""`, a container, or a value that is not finite. Not ported:
+    /// underscores between digits and non-ASCII digits in a text.
     pub fn number(value: Option<&PyJson>) -> Option<f64> {
         let x = match value? {
             PyJson::Bool(b) => f64::from(u8::from(*b)),
@@ -263,9 +262,9 @@ impl PyJson {
         x.is_finite().then_some(x)
     }
 
-    /// The old updater's date reader (`rules.parse_day`) of a field, on the
-    /// form the provider sends: a text whose first ten characters are
-    /// `YYYY-MM-DD`. Other values are `None`.
+    /// The old updater's date reader of a field, on the form the provider
+    /// sends: a text whose first ten characters are `YYYY-MM-DD`. Other values
+    /// are `None`.
     pub fn day(value: Option<&PyJson>) -> Option<Day> {
         super::day_prefix(value?.as_str()?)
     }

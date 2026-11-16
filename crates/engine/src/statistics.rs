@@ -1,5 +1,4 @@
-//! A trial's summary and the statistics over a run's trials
-//! (`robustness.summarize`, `summarize_trials` and `distribution`).
+//! A trial's summary and the statistics over a run's trials.
 
 use market_data::Day;
 
@@ -59,9 +58,9 @@ pub(crate) struct Distribution {
 
 /// The statistics over a run's trials.
 ///
-/// The oracle leaves out a trial without a CAGR; every trial here has one,
-/// because the window holds two sessions or more and a period's return is
-/// never missing, so every distribution covers every trial.
+/// Every trial has a CAGR, because the window holds two sessions or more
+/// and a period's return is never missing, so every distribution covers
+/// every trial.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Statistics {
     pub completed: usize,

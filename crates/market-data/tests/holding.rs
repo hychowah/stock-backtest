@@ -1,9 +1,8 @@
 //! A holding's exit and the closes of its daily path, on the fictional raw
-//! cache, equal the oracle's. The expected numbers come from the oracle on
-//! the same raw, prepared at the same as-of time: `books.close` with
-//! `BookFacts.usd_price` as its lookup (as `schedules` calls it), and the
-//! closes that `curves.holding` reads. Each entry is
-//! `BookFacts.usd_price(symbol, day, True, 4)`, the dated screen's entry.
+//! cache, equal the expected numbers: those that the Python product that
+//! this program replaced gave on the same raw, prepared at the same as-of
+//! time. Each entry is the dated screen's entry of that day: the first valid
+//! close on or after it, at most 4 days later, in US dollars.
 
 use market_data::commands::{self, Home, PrepareRequest};
 use market_data::{CompanyId, Day, Exit, ExitStatus, Market, MarketData, MissingExitPrice};
@@ -58,7 +57,7 @@ fn a_foreign_exit_close_converts_at_the_fx_of_its_own_day() {
     assert_eq!(jp.exit(t7101, entry, day("2022-05-04")), Ok(exit));
 
     // USDJPY has no fixing from 2021-06-21 to 2021-07-02: the close of
-    // 2021-07-01 has no FX, and the oracle's run stops.
+    // 2021-07-01 has no FX, and a run stops.
     let entry = (day("2021-06-01"), f64::from_bits(0x4040aafa630bef43));
     assert_eq!(jp.exit(t7101, entry, day("2021-07-01")), Err(MissingExitPrice));
 }

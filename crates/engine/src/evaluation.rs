@@ -1,5 +1,5 @@
 //! Formula values: a checked formula's value for one candidate of a screen
-//! day, exactly as the oracle's `columns.Formulas.evaluate` computes it.
+//! day.
 //!
 //! - The root context is the candidate on the screen day; `ago` moves to the
 //!   same company `months` calendar months earlier, `at` to a fixed date. A
@@ -13,18 +13,16 @@
 //! - A missing member or operand makes the result missing, and so does a
 //!   result that is not finite.
 //!
-//! Every node is evaluated, as the oracle does, so an `at` date after its
-//! context's day stops the evaluation (FUTURE_DATE) even where the value is
-//! missing anyway.
+//! Every node is evaluated, so an `at` date after its context's day stops
+//! the evaluation (FUTURE_DATE) even where the value is missing anyway.
 
 use crate::Error;
 use crate::formula::{Formula, Node, Op, Stat};
 use market_data::{At, Candidate, Day, Observer, Parameter};
 
 /// The value of `formula` for `candidate` of the screen of `day`, in the
-/// formula's unit, or `None` when the oracle has no valid value. The error
-/// is the oracle's FUTURE_DATE (or, before year 1, INVALID_DATE); its place
-/// is empty.
+/// formula's unit, or `None` when it has no valid value. The error is
+/// FUTURE_DATE (or, before year 1, INVALID_DATE); its place is empty.
 pub(crate) fn value(observer: &Observer<'_>, formula: &Formula, candidate: &Candidate, day: Day) -> Result<Option<f64>, Error> {
     Evaluation { observer, candidate, day }.node(formula.tree(), None)
 }

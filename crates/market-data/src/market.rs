@@ -40,11 +40,11 @@ impl Market {
         }
     }
 
-    /// Whether preparation keeps a saved listing (`market.common_stock` of
-    /// symbol and name). Hong Kong: `[0-35-9]ddd.HK`, which leaves out the 4xxx
-    /// lines and the five-digit RMB counters; Tokyo: `dddd.T` or `dddL.T`; and
-    /// no ` ETF `, ` FUND ` or ` ETN ` word in the name. The saved US list is
-    /// kept as saved: its rules run when the list is downloaded.
+    /// Whether preparation keeps a saved listing of symbol and name. Hong
+    /// Kong: `[0-35-9]ddd.HK`, which leaves out the 4xxx lines and the
+    /// five-digit RMB counters; Tokyo: `dddd.T` or `dddL.T`; and no ` ETF `,
+    /// ` FUND ` or ` ETN ` word in the name. The saved US list is kept as
+    /// saved: its rules run when the list is downloaded.
     pub(crate) fn admits(self, symbol: &str, name: &str) -> bool {
         let b = symbol.as_bytes();
         let digits = |range: std::ops::Range<usize>| b[range].iter().all(u8::is_ascii_digit);
@@ -58,8 +58,7 @@ impl Market {
     }
 
     /// Whether an index row of `day` names a completed local session at
-    /// `as_of` (`market.completed_session`, with the as-of time as the
-    /// clock): a weekday that is not a holiday the index wrongly lists (Hong
+    /// `as_of`: a weekday that is not a holiday the index wrongly lists (Hong
     /// Kong 1 January; Tokyo 1 to 3 January and 31 December), before the local
     /// date of `as_of`, or on it once the close has passed (Hong Kong 16:00 at
     /// UTC+8, Tokyo 15:30 at UTC+9). Foreign markets only.
@@ -80,11 +79,11 @@ impl Market {
     }
 
     /// When an annual statement of fiscal date `fiscal` becomes known, and
-    /// why (`market.available`). US: 90 days after the fiscal date, whatever
-    /// the publication date. Hong Kong and Tokyo: `publication`, the
-    /// statement's one publication date, when it is later than the fiscal
-    /// date; otherwise 4 (Hong Kong) or 3 (Tokyo) months after the fiscal
-    /// date, on the same day of the month or the month's last day.
+    /// why. US: 90 days after the fiscal date, whatever the publication date.
+    /// Hong Kong and Tokyo: `publication`, the statement's one publication
+    /// date, when it is later than the fiscal date; otherwise 4 (Hong Kong)
+    /// or 3 (Tokyo) months after the fiscal date, on the same day of the
+    /// month or the month's last day.
     pub(crate) fn available(self, fiscal: Day, publication: Option<Day>) -> (Day, Basis) {
         let months = match self {
             Market::Us => return (Day(fiscal.0 + 90), Basis::FiscalPlus90),
@@ -120,7 +119,7 @@ impl Basis {
         }
     }
 
-    /// The oracle's text.
+    /// Its text in exports.
     pub(crate) fn text(self) -> &'static str {
         match self {
             Basis::FiscalPlus90 => "fiscal-plus-90",

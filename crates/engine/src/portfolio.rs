@@ -1,6 +1,5 @@
 //! A period's holdings valued from their entry to the period's exit, and a
-//! trial's periods compounded (`schedules._backtest_periods`,
-//! `portfolio_results` and `curves.book`).
+//! trial's periods compounded.
 //!
 //! - A holding exits as [`MarketData::exit`] says; the last period's
 //!   scheduled exits are marked to date when the plan ends on a mark.
@@ -8,9 +7,9 @@
 //!   `sum` of their returns / their number, or 0 for a period without one.
 //! - SPY's return is its close at the exit / its close at the entry − 1.
 //! - The curve has one row for each session after the entry through the
-//!   exit: the holdings' mean return to date, added from left to right as the
-//!   oracle does, and SPY's. Its last row holds the period's own returns, so
-//!   the curve compounds to the result.
+//!   exit: the holdings' mean return to date, added from left to right, and
+//!   SPY's. Its last row holds the period's own returns, so the curve
+//!   compounds to the result.
 
 use crate::Error;
 use crate::run::{Holding, PeriodRun, Point, Status};
@@ -18,7 +17,7 @@ use crate::schedule::Period;
 use crate::selection::Pick;
 use market_data::{Day, ExitStatus, MarketData};
 
-/// The oracle's causes of a run that stops.
+/// The causes of a run that stops.
 const NO_EXIT: &str = "a selected company has no valid exit (MISSING_EXIT_PRICE): it has no close from its entry \
                        through the exit day, or the last one has no FX";
 const NO_SPY: &str = "SPY comparison coverage is missing for this market window";
@@ -71,8 +70,8 @@ pub(crate) fn value(data: &MarketData, sessions: &[Day], picks: Vec<Pick<'_>>, p
     Ok(PeriodRun { entry: period.entry, exit: period.exit, portfolio, spy: spy_exit / spy_entry - 1.0, holdings, curve })
 }
 
-/// The period's daily rows (`curves.book`). A holding's return to date is
-/// 0 before its first close and keeps its last close on a day without one.
+/// The period's daily rows. A holding's return to date is 0 before its
+/// first close and keeps its last close on a day without one.
 fn curve(data: &MarketData, sessions: &[Day], holdings: &[Holding], period: Period, spy_entry: f64, portfolio: f64) -> Vec<Point> {
     let days = &sessions[sessions.partition_point(|&d| d <= period.entry)..sessions.partition_point(|&d| d <= period.exit)];
     let mut sums = vec![0.0; days.len()];
@@ -105,8 +104,7 @@ fn curve(data: &MarketData, sessions: &[Day], holdings: &[Holding], period: Peri
 }
 
 /// A trial's growth, SPY growth, CAGR and SPY CAGR over the window from
-/// `start` to `end` (`portfolio_results.reduce_returns`), from each
-/// period's (return, SPY return) in order.
+/// `start` to `end`, from each period's (return, SPY return) in order.
 pub(crate) fn compound(returns: impl Iterator<Item = (f64, f64)>, start: Day, end: Day) -> [f64; 4] {
     let (mut growth, mut spy_growth) = (1.0, 1.0);
     for (portfolio, spy) in returns {

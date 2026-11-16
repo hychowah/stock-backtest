@@ -1,4 +1,4 @@
-//! `POST /api/formula`: the editor's check, as the oracle's editor answers it.
+//! `POST /api/formula`: the editor's check of a formula.
 
 mod common;
 

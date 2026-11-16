@@ -1,6 +1,7 @@
-//! The companies of a market: its saved listing with the oracle's defaults
-//! for missing metadata, in symbol byte order. A [`CompanyId`] is a
-//! company's position in that order, and every per-company column follows it.
+//! The companies of a market: its saved listing, with `Unavailable` for a
+//! missing name, exchange or sector and the market's currency for a missing
+//! currency, in symbol byte order. A [`CompanyId`] is a company's position in
+//! that order, and every per-company column follows it.
 //!
 //! Columns: `companies.symbol`, `.name`, `.exchange`, `.sector` and
 //! `.currency` (text), `.listed` and `.priced` (`u8`, 0 or 1), `.order`
@@ -36,10 +37,10 @@ pub(crate) struct Company {
     pub(crate) listed: bool,
 }
 
-/// Reads the market's saved listing (`facts.store_companies`), in symbol
-/// order. A symbol saved twice keeps its last row. Hong Kong and Tokyo keep
-/// only the rows the market admits ([`Market::admits`]). An unreadable list,
-/// or a row without a text symbol, stops preparation.
+/// Reads the market's saved listing, in symbol order. A symbol saved twice
+/// keeps its last row. Hong Kong and Tokyo keep only the rows the market
+/// admits ([`Market::admits`]). An unreadable list, or a row without a text
+/// symbol, stops preparation.
 pub(crate) fn read(raw: &Raw, market: Market) -> Result<Vec<Company>, Error> {
     let path = raw.universe(market);
     let unreadable = |what: &str| Error::new(format!("the saved company list {what}: download it again"), path.display());

@@ -1,7 +1,7 @@
-//! Formula observations on the fictional raw cache equal the oracle's. The
-//! expected numbers come from the oracle on the same raw, prepared at the
-//! same as-of time: `columns.Formulas._observation` at a root (the stored
-//! dated book's row) or at an `at` context of that root.
+//! Formula observations on the fictional raw cache equal the expected
+//! numbers: those that the Python product that this program replaced
+//! observed on the same raw, prepared at the same as-of time, at a root (a
+//! candidate of the dated screen) or at an `at` context of that root.
 
 use market_data::commands::{self, Home, PrepareRequest};
 use market_data::parameters::PARAMETERS;
@@ -126,7 +126,7 @@ fn report_ebitda_has_the_selected_reports_ebitda_of_each_year() {
 }
 
 #[test]
-fn a_value_the_oracle_does_not_have_is_none() {
+fn a_missing_value_is_none() {
     let (_dir, home) = prepared();
     let us = MarketData::open(&home, Market::Us).unwrap();
     let us_observer = us.observer();

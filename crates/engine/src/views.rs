@@ -1,24 +1,24 @@
 //! The views of a result file: what a person or a script reads from a run,
-//! derived from its stored rows alone with the oracle's arithmetic. No view
-//! opens market data or selects again. Each view has one row type, shared,
-//! like the stored rows of [`results`](crate::results), by the export, the
-//! HTTP replies and the website's types; only the attribution's exported
-//! row differs from the one the website reads.
+//! derived from its stored rows alone. No view opens market data or selects
+//! again. Each view has one row type, shared, like the stored rows of
+//! [`results`](crate::results), by the export, the HTTP replies and the
+//! website's types; only the attribution's exported row differs from the one
+//! the website reads.
 //!
 //! - [`statistics`]: the statistics over the trials, one row each;
 //!   [`add_spy_total_return`]: SPY's total return over the trials, for the
 //!   HTTP replies only.
 //! - [`growth`]: each trial's growth of 1 by day, and [`band`] over the
-//!   trials (`result_curves`).
+//!   trials.
 //! - [`sectors`]: each trial's sector weights, and [`sector_spread`] over the
-//!   trials (`result_sectors`); [`sector_weights`]: the holdings and weight
-//!   of each sector in each period, which [`sectors`] totals; and
+//!   trials; [`sector_weights`]: the holdings and weight of each sector in
+//!   each period, which [`sectors`] totals; and
 //!   [`sector_cash`]: each trial's share of periods in cash, and its mean.
-//! - [`contributions`]: each period's equal-weight attribution
-//!   (`contributions.js`): the top holdings with their contributions, which
-//!   the exported [`ContributionRow`] joins into a text of symbols.
+//! - [`contributions`]: each period's equal-weight attribution: the top
+//!   holdings with their contributions, which the exported
+//!   [`ContributionRow`] joins into a text of symbols.
 //! - [`explore`]: one trial or all trials over a window of periods and a
-//!   range of ranks (`result_exploration`).
+//!   range of ranks.
 //! - [`holdings`]: each holding with its weight, contribution and the value
 //!   of each numeric source of its step trail.
 
@@ -81,8 +81,7 @@ fn named(s: &Statistics) -> Vec<StatisticRow> {
 /// Adds to the statistics `rows`, in name order, `spy_total_return`: the
 /// distribution of each trial's `spy_growth - 1`, with the rows that
 /// `total_return` has. The HTTP replies of a run's trials carry it; the
-/// `statistics` table and `bt explore` do not, as the oracle's have no such
-/// rows.
+/// `statistics` table and `bt explore` do not.
 pub fn add_spy_total_return(rows: &mut Vec<StatisticRow>, spy_growth: impl Iterator<Item = f64>) {
     let values: Vec<f64> = spy_growth.map(|g| g - 1.0).collect();
     rows.extend(distribution_rows("spy_total_return", &statistics::distribution(&values)));
@@ -226,8 +225,8 @@ pub struct SectorWeight {
     pub weight: f64,
 }
 
-/// One trial's share of periods that hold no stock (`result_sectors`
-/// `cash`): its empty periods / its periods.
+/// One trial's share of periods that hold no stock: its empty periods / its
+/// periods.
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct TrialCash {
@@ -291,7 +290,7 @@ fn weigh(file: &ResultFile, mut each: impl FnMut(u32, &str, u32, f64)) -> Result
                 let count = counts.get(name).copied().unwrap_or(0);
                 let weight = if count == 0 { 0.0 } else { f64::from(count) / f64::from(period.names) };
                 each(period.period, name, count, weight);
-                // Python's min and max keep the first of equal values.
+                // Of equal values, the minimum and maximum keep the first.
                 *minimum = if weight < *minimum { weight } else { *minimum };
                 *maximum = if weight > *maximum { weight } else { *maximum };
                 *total += weight;
@@ -560,12 +559,12 @@ pub enum ExploreReply {
     },
 }
 
-/// Explores the result (`result_exploration`). Fails, naming the setting,
-/// when the periods or the ranks are not `A-B` with 1 ≤ A ≤ B, the trial is
-/// not in the result, `all` is asked of a run without random dates, a trial
-/// has fewer periods than the window's last, or the ranks are outside the
-/// strategy's (one sleeve: its last Rank step's; several: 1 to the sum of
-/// their last Rank steps' sizes).
+/// Explores the result. Fails, naming the setting, when the periods or the
+/// ranks are not `A-B` with 1 ≤ A ≤ B, the trial is not in the result,
+/// `all` is asked of a run without random dates, a trial has fewer periods
+/// than the window's last, or the ranks are outside the strategy's (one
+/// sleeve: its last Rank step's; several: 1 to the sum of their last Rank
+/// steps' sizes).
 pub fn explore(file: &ResultFile, selection: &Selection) -> Result<ExploreReply, Error> {
     for (place, (from, to)) in [("periods", selection.periods), ("ranks", selection.ranks)] {
         if !(1 <= from && from <= to) {

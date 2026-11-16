@@ -109,7 +109,7 @@ fn screen_sleeves(dir: &std::path::Path, strategy: &std::path::Path) -> Value {
 }
 
 #[test]
-fn a_pick_gives_the_price_and_report_dates_of_the_oracles_latest_candidate() {
+fn a_pick_gives_the_price_and_report_dates_of_the_expected_latest_candidate() {
     let dir = tempfile::tempdir().unwrap();
     let screen = screen_sleeves(dir.path(), &fixtures().join("cases/builtins/hk-sleeves/strategy.json"));
     let text = std::fs::read_to_string(fixtures().join("expected/hk/candidates.jsonl")).unwrap();

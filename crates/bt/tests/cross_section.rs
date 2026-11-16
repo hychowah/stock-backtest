@@ -1,13 +1,16 @@
-//! `bt export cross-section`: its variable columns equal the oracle's
-//! formula values (the expected table `formula_values` of `proof/l3.py`),
-//! bit for bit and null for null, for every case of kind `formulas`; its
-//! returns are those a run's holdings get; and an `at` date after the screen
-//! day stops a run only when a candidate reaches its formula.
+//! `bt export cross-section`: its variable columns equal the expected
+//! formula values, bit for bit and null for null, for every case of kind
+//! `formulas`; its returns are those a run's holdings get; and an `at` date
+//! after the screen day stops a run only when a candidate reaches its
+//! formula. The expected table `formula_values` has one row for each case,
+//! entry day, candidate of that day's screen and named variable, keyed
+//! (case, day, symbol, variable); its `value` is null where the formula has
+//! no valid value.
 //!
-//! The proof's folders are the `l3` test's (`L3_CASES`, `L3_EXPECTED`,
-//! `L3_HOME`). The oracle's table of a long random case may hold only its
-//! first trials' entry days: set `L3_TRIALS` to export at most that many
-//! trials (random dates are drawn trial by trial, so the days are the same).
+//! The folders are the `l3` test's (`L3_CASES`, `L3_EXPECTED`, `L3_HOME`).
+//! The expected table of a long random case may hold only its first trials'
+//! entry days: set `L3_TRIALS` to export at most that many trials (random
+//! dates are drawn trial by trial, so the days are the same).
 
 mod common;
 
@@ -26,7 +29,7 @@ fn rows(file: &Path) -> impl Iterator<Item = Value> {
 }
 
 #[test]
-fn cross_section_variables_equal_the_oracles_formula_values() {
+fn cross_section_variables_equal_the_expected_formula_values() {
     let dir = tempfile::tempdir().unwrap();
     let proof = Proof::new(dir.path());
     // (case, day, symbol, variable): value, from each case's cross-section.

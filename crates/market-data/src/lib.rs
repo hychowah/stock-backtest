@@ -43,12 +43,12 @@ use store::Generation;
 /// record it.
 pub const PROGRAM: &str = concat!("bt ", env!("CARGO_PKG_VERSION"));
 
-/// The first day a screen can have, 1996-01-01 (`rules.FIRST_DAY`).
+/// The first day a screen can have, 1996-01-01.
 pub const FIRST_DAY: Day = Day(9496);
 
 /// One market's prepared data: the generation `current` named at open,
 /// memory-mapped. It stays readable until dropped, even after a later
-/// preparation publishes another. Values equal the oracle's; reads do not fail.
+/// preparation publishes another. Reads do not fail.
 pub struct MarketData {
     generation: Generation,
 }
@@ -59,15 +59,14 @@ pub struct MarketData {
 pub struct Observer<'a>(Columns<'a>);
 
 impl Observer<'_> {
-    /// The last `count` values of formula parameter `p` at `at`, oldest
-    /// first, as the oracle's formulas read them; `None` when the oracle has
-    /// no value for any reason or a value is not finite. For a
-    /// [`yearly`](Parameter::yearly) parameter `count` is the number of
-    /// calendar years ending at the year of the report the context's day
-    /// selects; otherwise it is 1. The rules live with their owners: the
-    /// income fiscal spine and the formula reading of statements in
-    /// `annual`, the report EBITDA in `reports`, the session and Treasury
-    /// day in `series`, and the shifted context's valuation in `screen` and
+    /// The last `count` values of formula parameter `p` at `at`, oldest first,
+    /// as formulas read them; `None` when any of them has no value or is not
+    /// finite. For a [`yearly`](Parameter::yearly) parameter `count` is the
+    /// number of calendar years ending at the year of the report the context's
+    /// day selects; otherwise it is 1. The rules live with their owners: the
+    /// income fiscal spine and the formula reading of statements in `annual`,
+    /// the report EBITDA in `reports`, the session and Treasury day in
+    /// `series`, and the shifted context's valuation in `screen` and
     /// `builtins`. At [`At::Root`] owner values and EV are the candidate's.
     pub fn observe(&self, at: At<'_>, p: Parameter, count: usize) -> Option<Vec<f64>> {
         parameters::observe(&self.0, at, p, count)
@@ -117,7 +116,7 @@ impl MarketData {
         Companies::open(&self.generation)
     }
 
-    /// The oracle's sheet of `day` (a session from 1996-01-01): the admitted
+    /// The candidates of `day` (a session from 1996-01-01): the admitted
     /// companies in company order, with the US tie rank; numbers normalized
     /// as [`Candidate`] says.
     pub fn candidates(&self, day: Day, screen: Screen) -> Vec<Candidate> {

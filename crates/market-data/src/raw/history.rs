@@ -1,7 +1,6 @@
 //! Dated histories: company prices (`px/`, rows under `div`), native prices
 //! (`px-full/`), SPY, Treasury rates, index calendars and FX rates, as the
-//! old updater admits and refreshes them (`cache_assets.SeriesAsset`,
-//! `data_refresh.refresh_series`).
+//! old updater admits and refreshes them.
 
 use super::{ItemError, PyJson, Raw, read_file, replace};
 use super::pyjson::Object;
@@ -63,7 +62,7 @@ pub struct Window {
 /// [`save`](Self::save).
 ///
 /// A row is usable when its `date` begins with `YYYY-MM-DD` and its value
-/// field is a number (`rules.num`): positive, except a Treasury rate.
+/// field is a number ([`PyJson::number`]): positive, except a Treasury rate.
 pub struct History {
     path: PathBuf,
     field: &'static str,

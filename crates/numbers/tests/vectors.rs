@@ -1,6 +1,7 @@
 //! The number vectors in fixtures/numbers/, each written by CPython 3.14 from
-//! the call that the Python product makes. Every expected value must equal
-//! the Rust result bit for bit; `-0.0` differs from `0.0`.
+//! the call that the Python product that this program replaced made, at tag
+//! `python-oracle`, and frozen. Every expected value must equal the Rust
+//! result bit for bit; `-0.0` differs from `0.0`.
 //!
 //! A vector file is `{"behavior", "python", "source", "cases": [...]}`.
 //! Numbers have the shortest round-trip spelling, the strings `"NaN"`,
@@ -66,7 +67,7 @@ fn sorted(values: &[f64]) -> Vec<f64> {
     values
 }
 
-/// The built-in `sum()` and the product's mean of holding returns.
+/// The built-in `sum()` and the mean of holding returns.
 #[derive(Deserialize)]
 struct SumCase {
     /// Holding returns in order.

@@ -4,6 +4,10 @@
 //! files an update changes ([`Universe`], [`History`], [`Statements`],
 //! [`KeyMetrics`]), and below, preparation's reader.
 //!
+//! "The old updater" in these modules is the nightly update of the Python
+//! product that this program replaced, whose files and merge rules this
+//! module reproduces.
+//!
 //! No raw file is changed in place: each is replaced whole, so a `cp -al`
 //! copy of `raw/` stays a private copy.
 //!
@@ -29,18 +33,15 @@
 //! does, and a repeated key keeps its last value. Numbers are JSON numbers,
 //! and dates are `YYYY-MM-DD`, alone or followed by a time.
 //!
-//! Forms that no raw file holds are not ported and differ from the oracle:
+//! Forms that no raw file holds are read as follows:
 //! - `NaN`, `Infinity`, numbers beyond the binary64 range, lone surrogates
 //!   and a byte-order mark make a file unreadable; the literal `-0` reads as
-//!   `-0.0` (Python: `0`).
-//! - A number stored as text, `""` or a boolean is not a number (Python: text
-//!   is parsed, `""` is missing rather than invalid, a boolean is 1 or 0 in
-//!   reports).
+//!   `-0.0` (Python's `json.loads`: `0`).
+//! - A number stored as text, `""` or a boolean is not a number.
 //! - A date in another spelling (`YYYYMMDD`, one-digit months or days, ISO
 //!   weeks) is no date.
-//! - A currency code must equal the expected code exactly (Python: `""` is
-//!   absent; a report's code is compared in capitals).
-//! - A SPY file must be a list (Python also reads rows wrapped in an object).
+//! - A currency code must equal the expected code exactly.
+//! - A SPY file must be a list.
 
 mod history;
 mod key_metrics;
@@ -143,7 +144,7 @@ impl Raw {
         for entry in entries {
             let entry = entry.map_err(|e| Error::new(format!("cannot list the folder: {e}"), dir.display()))?;
             let name = entry.file_name();
-            // The oracle's glob USD???.json: three characters of any kind.
+            // `USD???.json`: three characters of any kind.
             if let Some(currency) = name.to_str().and_then(|n| n.strip_prefix("USD")?.strip_suffix(".json"))
                 && currency.chars().count() == 3
             {
@@ -224,10 +225,10 @@ pub(crate) fn file_name(symbol: &str) -> String {
     name + ".json"
 }
 
-/// A raw JSON file as the oracle reads it with `json.loads(path.read_bytes())`.
+/// A raw JSON file as Python's `json.loads` reads its bytes.
 pub(crate) enum Json {
     Missing,
-    /// Not JSON, as the oracle's `ValueError` or `UnicodeDecodeError`.
+    /// Not JSON, or not UTF-8.
     Unreadable,
     Value(Value),
 }
@@ -242,17 +243,15 @@ pub(crate) fn read_json(path: &Path) -> Result<Json, Error> {
     }
 }
 
-/// A number as both oracle number readers read the raw cache's forms: a JSON
-/// number (`rules.num` of reports, `facts._number` of dated rows); anything
-/// else is absent.
+/// A number of a report or a dated row, on the raw cache's forms: a JSON
+/// number; anything else is absent.
 pub(crate) fn number(value: Option<&Value>) -> Option<f64> {
     value?.as_f64()
 }
 
-/// A day as both oracle date readers read the raw cache's forms: the first
-/// ten characters of a text as `YYYY-MM-DD` (`rules.parse_day` of report and
-/// publication dates, some of which carry a time; `facts.row_day` of the
-/// `date` of a dated row). Other values are `None`.
+/// A day on the raw cache's forms: the first ten characters of a text as
+/// `YYYY-MM-DD` (report and publication dates, some of which carry a time,
+/// and the `date` of a dated row). Other values are `None`.
 pub(crate) fn parse_day(value: Option<&Value>) -> Option<Day> {
     let Some(Value::String(text)) = value else { return None };
     day_prefix(text)
@@ -263,7 +262,7 @@ fn day_prefix(text: &str) -> Option<Day> {
     Day::parse(text.char_indices().nth(10).map_or(text, |(i, _)| &text[..i]))
 }
 
-/// Why a field of a dated row has no value: the oracle's reason texts.
+/// Why a field of a dated row has no value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum Reason {
@@ -310,8 +309,8 @@ impl Reason {
 /// One field of one day: its value, or why it has none.
 pub(crate) type State = Result<f64, Reason>;
 
-/// A stored value and reason code as the oracle's value and reason columns
-/// of an export.
+/// A stored value and reason code as the value and reason columns of an
+/// export: the value or null, and null or the reason text.
 pub(crate) fn state_cells(value: f64, reason: u8) -> (Cell<'static>, Cell<'static>) {
     match Reason::text(reason) {
         None => (Cell::Number(value), Cell::Null),
@@ -319,13 +318,13 @@ pub(crate) fn state_cells(value: f64, reason: u8) -> (Cell<'static>, Cell<'stati
     }
 }
 
-/// `facts.observe`, the one value rule of a day: each day's state of each
-/// field, by day, from rows whose `date` reads ([`parse_day`]). Equal
-/// admissible values agree (the first is kept, so `0.0` and `-0.0` agree on
-/// the first); different ones are [`Reason::Conflicting`]. `adjClose` and
-/// `close` must be positive and, when `currency` is given, the row's
-/// `currency` and `reportedCurrency` must be absent, null or equal to it;
-/// `volume` must not be negative; other fields take any finite value.
+/// The one value rule of a day: each day's state of each field, by day, from
+/// rows whose `date` reads ([`parse_day`]). Equal admissible values agree (the
+/// first is kept, so `0.0` and `-0.0` agree on the first); different ones are
+/// [`Reason::Conflicting`]. `adjClose` and `close` must be positive and, when
+/// `currency` is given, the row's `currency` and `reportedCurrency` must be
+/// absent, null or equal to it; `volume` must not be negative; other fields
+/// take any finite value.
 pub(crate) fn observe(rows: &[Value], fields: &[&str], currency: Option<&str>) -> BTreeMap<Day, Vec<State>> {
     let mut grouped: BTreeMap<Day, Vec<&Map<String, Value>>> = BTreeMap::new();
     for row in rows {

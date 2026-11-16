@@ -265,13 +265,12 @@ pub struct ExportReply {
 }
 
 /// Writes the market's current generation as keyed tables (`tables` crate
-/// format) into `out`, with the oracle's table and field names: `companies`,
-/// `sessions`, `market_days`, `fx_days` (Hong Kong and Tokyo), `stock_days`,
-/// `reports`, `annual_facts`, `annual_metadata` and `valuation_sums`; then
-/// `candidates` and `screens` of the dated screens of the days file and the
-/// latest screen of the last session. Fails when the market is not prepared,
-/// a line of the days file is not a session from 1996-01-01, or `out` exists
-/// and is not empty.
+/// format) into `out`: `companies`, `sessions`, `market_days`, `fx_days`
+/// (Hong Kong and Tokyo), `stock_days`, `reports`, `annual_facts`,
+/// `annual_metadata` and `valuation_sums`; then `candidates` and `screens`
+/// of the dated screens of the days file and the latest screen of the last
+/// session. Fails when the market is not prepared, a line of the days file
+/// is not a session from 1996-01-01, or `out` exists and is not empty.
 pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error> {
     let data = MarketData::open(home, request.market)?;
     let days = match &request.days {
@@ -300,7 +299,7 @@ pub fn export(home: &Home, request: &ExportRequest) -> Result<ExportReply, Error
     write("annual_metadata", annual.export_metadata(&companies, &mut writer))?;
     write("valuation_sums", ValuationColumns::open(generation).export(&companies, &mut writer))?;
     // A Hong Kong or Tokyo market without a saved index calendar has no
-    // sessions, and the oracle then no latest book.
+    // sessions, and so no latest screen.
     if let Some(&latest) = data.sessions().last() {
         let (candidates, screens) = screen::export(&data, &days, latest, &mut writer).map_err(fail)?;
         tables.insert("candidates".to_string(), candidates);
@@ -371,7 +370,7 @@ pub struct InspectedCandidate {
     pub price: f64,
     pub market_cap: f64,
     pub enterprise_value: f64,
-    /// The report's yield × the report's EV, as the oracle's sheet holds it.
+    /// The report's yield × the report's EV.
     pub ebitda: f64,
     pub ebitda_yield: f64,
     pub ev_ebitda: f64,

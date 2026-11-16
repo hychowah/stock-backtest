@@ -1,8 +1,14 @@
-//! Formula text against the oracle: the vectors in fixtures/formulas/,
-//! written by proof/formula_vectors.py from the Python product's formula
-//! editor. Each case must give the same canonical text, tree, unit and
-//! display and picture, or the same error code, suggestions (and the same
-//! characters for an error of the text).
+//! Formula text against the vectors in `fixtures/formulas/vectors.json`,
+//! written by the Python product that this program replaced, at tag
+//! `python-oracle`, and frozen. `libraries` maps a library name to its
+//! variables, each `[name, formula, display or null]` in file order. A case
+//! is a `text`, read with all of a `library`'s variables, with those
+//! `before` one of them, or with no variables when it names no `library`,
+//! and an optional `display`; it holds a `result` (the canonical `text`, the
+//! `tree` as [`dump`] writes it, `unit`, `display` and `picture`) or an
+//! `error` (`code`, the characters `[start, end)` of an error of the text,
+//! and up to three `suggestions`, each `{text, label}`). Each case must give
+//! the same result or error.
 
 use engine::formula::{Formula, Node, Op, Stat};
 use serde::Deserialize;
@@ -87,11 +93,11 @@ fn read(text: &str, display: Option<&str>, earlier: &[Arc<Formula>]) -> Result<F
 }
 
 #[test]
-fn formula_text_reads_and_prints_as_the_oracle_does() {
+fn formula_text_reads_and_prints_as_the_vectors_say() {
     let path = format!("{}/../../fixtures/formulas/vectors.json", env!("CARGO_MANIFEST_DIR"));
     let vectors: Vectors = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     // Each library's variables, and those before each variable; a refused
-    // variable is left out, as the oracle's editor leaves it out.
+    // variable is left out of the library.
     let mut libraries = BTreeMap::new();
     let mut before = BTreeMap::new();
     for (name, variables) in &vectors.libraries {
@@ -140,7 +146,7 @@ fn formula_text_reads_and_prints_as_the_oracle_does() {
 }
 
 #[test]
-fn a_field_or_a_name_the_oracle_does_not_list_is_step_only_inside_a_formula() {
+fn a_field_or_a_name_outside_the_vocabulary_is_step_only_inside_a_formula() {
     for (text, start, end) in [("Sector", 0, 6), ("2 * Market cap in dollars", 4, 25), ("[Free cash flow] / 2", 0, 16)] {
         let fault = Formula::read(text, &[]).unwrap_err();
         assert_eq!((fault.code, fault.start, fault.end), ("STEP_ONLY", start, end), "{text}");

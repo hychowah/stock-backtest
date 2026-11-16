@@ -1,15 +1,14 @@
 //! Formulas: the text a strategy file writes for a variable or a step.
 //!
-//! [`Formula::read`] accepts and refuses what the Python product's formula
-//! editor does (`formula_text.from_text`, then the checks of
-//! `variable_authoring.validate`, catalog 4), with the file's earlier
-//! variables as its saved variables, except that it sets no ceiling on the
+//! [`Formula::read`] reads formula text (catalog 4) and checks it, with the
+//! file's earlier variables as its saved variables; it sets no ceiling on the
 //! parts of a formula or on the variables and measures it uses. A caller
-//! gets the checked tree ([`Node`]), its unit and display, and its canonical
-//! text: the tree printed as the product's `to_text` prints it, which reads
-//! back to the same tree, and its [`Picture`], the layout the editor draws.
-//! A refusal is a [`Fault`] with the product's error code, the characters at
-//! fault and the names it suggests instead.
+//! gets the checked tree ([`Node`]), its unit and display, its canonical
+//! text ([`Formula::text`]), which reads back to the same tree, and its
+//! [`Picture`], the layout the editor draws. A refusal is a [`Fault`] with
+//! its error code, the characters at fault and the names it suggests
+//! instead. The vectors in `fixtures/formulas/` pin what it accepts, refuses
+//! and prints.
 
 use crate::names::{self, Kind, NAMES};
 use crate::strategy::{MAX_LITERAL, expand};
@@ -33,7 +32,7 @@ pub struct Formula {
     dependency: usize,
 }
 
-/// A formula's tree, as the oracle stores it (catalog 4).
+/// A formula's tree (catalog 4).
 #[derive(Debug)]
 pub enum Node {
     /// The value of a parameter at the context.
@@ -140,7 +139,7 @@ impl Unit {
         }
     }
 
-    /// The display of a formula that names none (`vocabulary.DISPLAYS`).
+    /// The display of a formula that names none.
     pub(crate) fn default_display(self) -> &'static str {
         match self {
             Unit::Scalar => "percent",
@@ -259,8 +258,9 @@ impl Formula {
         self.display
     }
 
-    /// The canonical text: the tree printed as the oracle's `to_text` does,
-    /// each name as the list spells it.
+    /// The canonical text: the tree printed with the parentheses that
+    /// reading it back to the same tree needs, each name as the list spells
+    /// it.
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -338,9 +338,9 @@ impl PartialEq for Formula {
 
 impl Eq for Formula {}
 
-/// A named measure of `measures.py` that a formula can reach: the eight
-/// compound measures of the list, and the two single-parameter measures they
-/// refer to. It prints as its name in the list.
+/// A named measure that a formula can reach: the eight compound measures of
+/// the list, and the two single-parameter measures they refer to. It prints
+/// as its name in the list.
 #[derive(Debug)]
 pub struct Measure {
     pub key: &'static str,
@@ -373,7 +373,7 @@ impl Measure {
         Measure { key, built: OnceLock::new() }
     }
 
-    /// The measure of `measures.py` with this key.
+    /// The measure with this key.
     pub fn of(key: &str) -> &'static Measure {
         MEASURES.iter().find(|m| m.key == key).expect("a known measure")
     }
@@ -582,9 +582,9 @@ pub(crate) const MAX_DEPENDENCY: usize = 8;
 /// The most months `ago` goes back, and yearly values a statistic reads.
 pub(crate) const MAX_MONTHS: u64 = 120;
 pub(crate) const MAX_YEARLY: u64 = 10;
-/// Brackets and signs nested deeper than this stop the reader. The oracle's
-/// reader recurses as this one does and fails at Python's recursion limit,
-/// around 240 levels; a formula has at most 32 levels of nodes.
+/// Brackets and signs nested deeper than this stop the reader
+/// (DEFINITION_LIMIT), which bounds its recursion; a formula has at most 32
+/// levels of nodes.
 const MAX_NESTING: usize = 128;
 
 /// What a known name reads inside a formula.
@@ -622,8 +622,8 @@ static LIST: LazyLock<Vec<Known>> = LazyLock::new(|| {
     NAMES.iter().map(|name| Known::new(name.name, term(&name.kind))).collect()
 });
 
-/// The oracle's `_Reader`: a recursive-descent reader over the characters
-/// of the text, whose `peek` skips spaces.
+/// A recursive-descent reader over the characters of the text, whose
+/// `peek` skips spaces.
 struct Reader {
     text: Vec<char>,
     at: usize,
@@ -770,8 +770,8 @@ impl Reader {
         })
     }
 
-    /// A constant; its literal is checked as the oracle's definition owner
-    /// checks it (`definitions._decimal`).
+    /// A constant: its literal must [`expand`] to a decimal that reads as a
+    /// finite binary64, zero only when it is `0`; else INVALID_LITERAL.
     fn constant(&mut self, literal: &str, unit: Unit, start: usize) -> Part {
         let end = self.at;
         let value = expand(literal, MAX_LITERAL).filter(|value| {
@@ -918,7 +918,7 @@ impl Reader {
         Err(fault("BAD_ARGUMENT", start, stop, message))
     }
 
-    // The oracle's regular expressions, each matched at a position.
+    // Regular expressions, each matched at a position.
 
     fn digits(&self, at: usize) -> usize {
         (at..self.text.len()).find(|&i| !self.text[i].is_ascii_digit()).unwrap_or(self.text.len())
@@ -1046,7 +1046,7 @@ impl Reader {
         })
     }
 
-    /// The checks of the tree after reading, in the oracle's order: the
+    /// The checks of the tree after reading, in this order: the
     /// formula's depth, its own checks, its units, then its depth and levels
     /// of reference with what it refers to.
     fn check(self, root: Part) -> Result<Formula, Fault> {
@@ -1089,7 +1089,7 @@ fn suggest<'a>(word: &str, known: impl IntoIterator<Item = &'a str>, suffix: &st
     close.into_iter().map(|name| Suggestion { text: format!("{}{suffix}", spelling(name)), label: name.to_string() }).collect()
 }
 
-// Printing (`formula_text._write`).
+// Printing.
 
 fn precedence(node: &Node) -> u8 {
     match node {
@@ -1179,9 +1179,8 @@ fn write(node: &Node, out: &mut String) {
     }
 }
 
-/// A constant as the editor shows it (`definitions.authored_bundle`): the
-/// expanded decimal, or with an exponent when that is longer than a
-/// literal may be.
+/// A constant as the editor shows it: the expanded decimal, or with an
+/// exponent when that is longer than a literal may be.
 fn editable(value: &str) -> String {
     if value.chars().count() <= MAX_LITERAL {
         return value.to_string();

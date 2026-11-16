@@ -1,5 +1,5 @@
-//! The engine against the oracle's number vectors (fixtures/numbers/, written
-//! by proof/number_vectors.py).
+//! The engine against the number vectors in fixtures/numbers/ (their format
+//! is in `crates/numbers/tests/vectors.rs`).
 
 use engine::selection::{Row, rank};
 use engine::strategy::{Order, Threshold};
@@ -97,7 +97,7 @@ struct ThresholdCase {
     comparison_value: Option<f64>,
     /// The threshold in stored units, which a filter compares with.
     storage_comparison_value: Option<f64>,
-    /// The product's error code when it refuses the threshold.
+    /// The error code when the threshold is refused.
     error: Option<String>,
 }
 

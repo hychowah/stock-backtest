@@ -1,8 +1,15 @@
-//! `bt data prepare` of the fictional raw cache equals the oracle: each
-//! market's export of the days in its `days.txt` equals the oracle's tables
-//! in `fixtures/fictional/expected/<market>/`, row for row and bit for bit;
-//! and `bt data inspect` explains a stale report and a day that is not a
+//! `bt data prepare` of the fictional raw cache equals the expected tables:
+//! each market's `bt data export` of the days in its `days.txt` equals the
+//! tables in `fixtures/fictional/expected/<market>/`, row for row and bit for
+//! bit; and `bt data inspect` explains a stale report and a day that is not a
 //! session. One test does both, so the inspect checks reuse the prepared home.
+//!
+//! Each expected folder is a `tables` crate export with the tables of `bt
+//! data export`, and `days.txt`, one ISO day per line, ascending: the entry
+//! days of the market's cases, the latest session, every session dated 29
+//! February and some random sessions. They were written by the Python
+//! product that this program replaced, at tag `python-oracle`, from the raw
+//! cache at the as-of time [`AS_OF`], and are frozen.
 
 mod common;
 
@@ -22,7 +29,7 @@ fn bt(home: &Path, args: &[&str]) -> Value {
 }
 
 #[test]
-fn the_fictional_raw_cache_prepares_to_the_oracle_tables_and_inspect_explains_its_rows() {
+fn the_fictional_raw_cache_prepares_to_the_expected_tables_and_inspect_explains_its_rows() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path().join("home");
     std::fs::create_dir(&home).unwrap();

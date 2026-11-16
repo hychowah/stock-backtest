@@ -1,7 +1,7 @@
 //! The US annual key metrics, `metrics.jsonl`: one JSON record `{symbol,
-//! rows, full_response}` per line, where a symbol's last line is its record
-//! (`cache_assets.financial_records`, `data_refresh.download`). An update
-//! keeps the values of fiscal dates already saved and appends new records.
+//! rows, full_response}` per line, where a symbol's last line is its record.
+//! An update keeps the values of fiscal dates already saved and appends new
+//! records.
 
 use super::{PyJson, Raw, read_file, replace};
 use super::pyjson::Object;

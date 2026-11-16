@@ -46,8 +46,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use ts_rs::TS;
 
-/// The longest threshold text, and the longest decimal it expands to
-/// (`definitions.CEILINGS` literal and expanded_literal).
+/// The longest threshold text, and the longest decimal it expands to.
 pub(crate) const MAX_LITERAL: usize = 64;
 const MAX_EXPANDED: usize = 1024;
 
@@ -187,7 +186,7 @@ pub enum Order {
     Lowest,
 }
 
-/// A filter's threshold (`strategy_requests._quantity`).
+/// A filter's threshold.
 #[derive(Debug)]
 pub struct Threshold {
     /// The decimal text in the display unit, expanded without an exponent,
@@ -203,8 +202,8 @@ impl Threshold {
     /// values are `10 ** scale` of its unit. The text is scaled to the
     /// unit and then to the stored units by moving its decimal exponent,
     /// and read as binary64 once at each step; neither may overflow, or
-    /// underflow to zero from a value that is not zero. `display` is a
-    /// display or unit name that `definitions.normalize_quantity` knows.
+    /// underflow to zero from a value that is not zero. `display` is one
+    /// of the display or unit names below.
     pub fn new(text: &str, display: &str, scale: i32) -> Result<Threshold, String> {
         let shift = match display {
             "scalar" | "number" | "multiple" | "USD" | "usd" | "USD/share" | "usd_per_share" | "share" | "shares" => 0,
@@ -225,11 +224,10 @@ impl Threshold {
     }
 }
 
-/// `definitions._decimal(value)` (not normalized, no binary64 check): the
-/// decimal text without an exponent, leading or trailing zeros, a `+` sign
-/// or the sign of zero; `None` when `value` is not a decimal of 1 to
-/// `max_length` characters, its exponent exceeds 2048 or the result exceeds
-/// [`MAX_EXPANDED`] characters.
+/// The decimal text of `value` without an exponent, leading or trailing
+/// zeros, a `+` sign or the sign of zero (not checked as binary64); `None`
+/// when `value` is not a decimal of 1 to `max_length` characters, its
+/// exponent exceeds 2048 or the result exceeds [`MAX_EXPANDED`] characters.
 pub(crate) fn expand(value: &str, max_length: usize) -> Option<String> {
     if !(1..=max_length).contains(&value.chars().count()) {
         return None;
@@ -351,9 +349,9 @@ impl Strategy {
         &self.sleeves
     }
 
-    /// The ranks a period's holdings can have (`selection.rank_range`): one
-    /// sleeve, its last Rank step's; several, 1 to the sum of the sizes of
-    /// their last Rank steps, at most `u32::MAX`.
+    /// The ranks a period's holdings can have: one sleeve, its last Rank
+    /// step's; several, 1 to the sum of the sizes of their last Rank steps,
+    /// at most `u32::MAX`.
     pub fn ranks(&self) -> (u32, u32) {
         let last = |steps: &[Step]| match steps.iter().rev().find(|s| matches!(s, Step::Rank { .. })) {
             Some(&Step::Rank { from, to, .. }) => (from, to),

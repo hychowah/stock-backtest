@@ -1,11 +1,9 @@
 //! The built-ins: the two metrics (EV / EBITDA and EV / 3-year average
 //! EBITDA, each as a yield and a multiple) and the filter values. Each one's
-//! id, label, unit, display unit and storage scale ([`BUILTINS`], the oracle's
-//! `builtin_catalog`), and their values for one company valued on one day
-//! (`books.owner_values`, `metrics.evaluate`, `metrics.filter_values`,
-//! `metrics.financial_values`, `metrics.operating_yield_spread`).
+//! id, label, unit, display unit and storage scale ([`BUILTINS`]), and their
+//! values for one company valued on one day.
 //!
-//! Values are raw binary64 in the oracle's stored units, with its order of
+//! Values are raw binary64 in stored units, each computed in a fixed order of
 //! floating-point operations: dollars in millions (scale 6), percentages and
 //! percentage points times 100 (scale -2), multiples as they are (scale 0).
 
@@ -45,7 +43,7 @@ const fn filter(id: &'static str, label: &'static str, display: &'static str) ->
     Builtin { id, label, unit, display, scale }
 }
 
-/// The built-ins in the oracle's catalog order; a candidate's values follow it.
+/// The built-ins in catalog order; a candidate's values follow it.
 pub const BUILTINS: [Builtin; 38] = [
     metric("metric:ev_ebitda:yield", "EBITDA / EV yield", "percent"),
     metric("metric:ev_ebitda:multiple", "EV / EBITDA multiple", "multiple"),
@@ -141,8 +139,8 @@ const FILTER_EV_EBITDA: usize = at("filter:ev_ebitda");
 const FILTER_EV_EBITDA_3Y: usize = at("filter:ev_ebitda_3y");
 const FILTER_EBITDA_YIELD: usize = at("filter:ebitda_yield");
 
-/// Built-in values, indexed as [`BUILTINS`]; `None` where the oracle leaves
-/// a value out.
+/// Built-in values, indexed as [`BUILTINS`]; `None` where a built-in has no
+/// valid value.
 pub type Values = [Option<f64>; BUILTINS.len()];
 
 /// One company's prepared data, as the built-ins read it.
@@ -166,8 +164,7 @@ pub(crate) struct Valuation {
     pub(crate) ebitda: f64,
 }
 
-/// EBITDA / EV and EV / EBITDA, each divided on its own
-/// (`books.ebitda_yield_and_multiple`).
+/// EBITDA / EV and EV / EBITDA, each divided on its own.
 pub(crate) fn yield_and_multiple(ebitda: f64, enterprise_value: f64) -> (f64, f64) {
     (ebitda / enterprise_value, enterprise_value / ebitda)
 }
@@ -240,9 +237,8 @@ fn ratio(numerator: Option<f64>, denominator: Option<f64>, scale: f64) -> Option
     (d > 0.0).then(|| n / d * scale).filter(|v| v.is_finite())
 }
 
-/// The annual ratios of fiscal date `fiscal` at market cap `cap`
-/// (`metrics.financial_values`), from `annual`, the legacy values by fiscal
-/// date in fiscal order.
+/// The annual ratios of fiscal date `fiscal` at market cap `cap`, from
+/// `annual`, the legacy values by fiscal date in fiscal order.
 fn financial_values(fiscal: Day, cap: f64, annual: &[(Day, LegacyValues)], out: &mut Values) {
     use LegacyField::*;
     let year = fiscal.ymd().0;
@@ -274,14 +270,13 @@ fn financial_values(fiscal: Day, cap: f64, annual: &[(Day, LegacyValues)], out: 
     }
 }
 
-/// Operating income / revenue, when the revenue is positive
-/// (`metrics.operating_margin`).
+/// Operating income / revenue, when the revenue is positive.
 pub(crate) fn operating_margin(income: f64, revenue: f64) -> Option<f64> {
     (revenue > 0.0).then(|| income / revenue)
 }
 
 /// Sales × the mean operating margin of the 3 calendar years ending at
-/// `fiscal` / `ev` × 100 − `ten_year` (`metrics.operating_yield_spread`).
+/// `fiscal` / `ev` × 100 − `ten_year`.
 fn operating_yield_spread(fiscal: Day, ev: f64, annual: &[(Day, LegacyValues)], ten_year: Option<f64>) -> Option<f64> {
     use LegacyField::*;
     let ten_year = ten_year.filter(|t| t.is_finite())?;
@@ -306,7 +301,7 @@ mod tests {
     use super::*;
     use serde::Deserialize;
 
-    /// A case of `fixtures/numbers/peg.json`: the oracle's annual ratios of a
+    /// A case of `fixtures/numbers/peg.json`: the expected annual ratios of a
     /// 2023-12-31 report with one diluted EPS per year.
     #[derive(Deserialize)]
     struct PegCase {
@@ -316,9 +311,10 @@ mod tests {
         net_income: f64,
         /// Diluted EPS of the selected year, then of each of the three years before it.
         eps: [f64; 4],
-        /// The P/E; `null` when the oracle leaves it out.
+        /// The P/E; `null` when the net income is not positive.
         pe: Option<f64>,
-        /// The PEG; `null` when the oracle leaves it out.
+        /// The PEG; `null` without a P/E, with an EPS that is not positive or
+        /// when the 3-year EPS growth is not positive.
         peg: Option<f64>,
     }
 

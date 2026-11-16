@@ -1,7 +1,6 @@
-//! A day's screen (`books.Screen` and `books.book` of the cached pool): the
-//! report each company selects, the US tie rank, the admission gates and the
-//! entry valuation of each candidate; and the L2 tables `candidates` and
-//! `screens`.
+//! A day's screen: the report each company selects, the US tie rank, the
+//! admission gates and the entry valuation of each candidate; and the
+//! exported tables `candidates` and `screens`.
 //!
 //! - A dated screen admits every company and enters at the first valid close
 //!   on or after the day, at most [`ENTRY_SLACK`] days later; the latest
@@ -34,7 +33,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tables::Cell;
 
-/// How many legacy-pool companies the US tie rank ranks (`rules.BUFFER`).
+/// How many legacy-pool companies the US tie rank ranks.
 const BUFFER: usize = 250;
 /// How many days after a dated screen's day its entry may be.
 pub(crate) const ENTRY_SLACK: i32 = 4;
@@ -50,9 +49,9 @@ pub enum Screen {
     Latest,
 }
 
-/// One admitted company of a day: the oracle's sheet row. Its numbers are
-/// those the oracle's REAL columns stored ([`numbers::stored_real`]: `-0.0` is
-/// `0.0`); only a candidate normalizes them, the built-ins and reports do not.
+/// One admitted company of a day. Its numbers are as a SQLite REAL column
+/// stores them ([`numbers::stored_real`]: `-0.0` is `0.0`); only a candidate
+/// normalizes them, the built-ins and reports do not.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Candidate {
     pub company: CompanyId,
@@ -68,7 +67,7 @@ pub struct Candidate {
     pub price: f64,
     pub market_cap: f64,
     pub enterprise_value: f64,
-    /// The report's yield × the report's EV (`books.admit`).
+    /// The report's yield × the report's EV.
     pub ebitda: f64,
     pub ebitda_yield: f64,
     pub ev_ebitda: f64,
@@ -147,9 +146,9 @@ impl<'a> Columns<'a> {
     }
 }
 
-/// The entry valuation of `report` on `day` (`books.admit`) and its entry
-/// close: the first valid close on or after `day`, at most `slack` days
-/// later; or the gate that refuses it.
+/// The entry valuation of `report` on `day` and its entry close: the first
+/// valid close on or after `day`, at most `slack` days later; or the gate that
+/// refuses it.
 pub(crate) fn admit(report: &Report, prices: &Prices<'_>, day: Day, slack: i32) -> Result<(Valuation, (Day, f64)), Denial> {
     let (Some(fiscal_close), Some(entry)) = (fiscal_price(report, prices), prices.price(day, Direction::OnOrAfter, Some(slack))) else {
         return Err(Denial::MissingPrice);
@@ -263,20 +262,21 @@ impl<'c, 'a> DayScreen<'c, 'a> {
     }
 }
 
-/// The tie rank (`books.candidates`): `pool` holds each company's report
-/// yield in first-appearance order; the [`BUFFER`] highest yields get ranks from 1,
-/// and equal yields keep their pool order.
+/// The tie rank: `pool` holds each company's report yield in first-appearance
+/// order; the [`BUFFER`] highest yields get ranks from 1, and equal yields
+/// keep their pool order.
 fn tie_ranks<K: Copy>(pool: &[(K, f64)]) -> Vec<(K, u32)> {
     let mut sorted = pool.to_vec();
     sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).expect("report yields are numbers"));
     sorted.into_iter().take(BUFFER).zip(1..).map(|((k, _), rank)| (k, rank)).collect()
 }
 
-/// Writes the L2 tables: `candidates` (key `screen`, `day`, `symbol`; the
-/// oracle's book-row fields) and `screens` (key `screen`, `day`; `reported`
-/// and `admitted`), for the dated screens of `days` (ascending) and the
-/// latest screen of `latest`. Days are calculated in parallel. Returns the
-/// rows of each table.
+/// Writes the tables `candidates` (key `screen`, `day`, `symbol`; the
+/// [`Candidate`] fields, `candidate_rank` for its rank, then a column for
+/// each built-in, `m_<metric>` or `f_<filter>`) and `screens` (key `screen`,
+/// `day`; `reported` and `admitted`), for the dated screens of `days`
+/// (ascending) and the latest screen of `latest`. Days are calculated in
+/// parallel. Returns the rows of each table.
 pub(crate) fn export(data: &MarketData, days: &[Day], latest: Day, out: &mut tables::Writer) -> Result<(u64, u64), String> {
     let companies = data.companies();
     let lanes: Vec<String> = BUILTINS

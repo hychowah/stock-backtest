@@ -1,6 +1,6 @@
 //! The source names: one list of the names a strategy file can use as a step
-//! source, as `bt catalog` prints it. It holds the rows of the oracle's
-//! vocabulary (`backtest/application/vocabulary.py`), "Free cash flow" and
+//! source, as `bt catalog` prints it. It holds the vocabulary's rows (the
+//! inputs, measures and built-ins a person can name), "Free cash flow" and
 //! the four fields.
 //!
 //! - A name that links a built-in, or that only a step can use, reads the
@@ -215,11 +215,9 @@ pub fn key(text: &str) -> String {
 /// Up to three of `known` that look like `word`, as Python's
 /// `difflib.get_close_matches` picks them: the best matches with a ratio of
 /// 0.6 or more, a higher ratio first, and of equal ratios the later matching
-/// form. `word` is compared as given; each name by its matching form. The
-/// rule must be Python's, because the suggestions must equal the ones the
-/// Python product's editor gives. Python's rule that sets aside very common
-/// characters in a word of 200 characters or more is left out on purpose: no
-/// real name is that long.
+/// form. `word` is compared as given; each name by its matching form.
+/// Python's rule that sets aside very common characters in a word of 200
+/// characters or more is left out on purpose: no real name is that long.
 pub fn suggestions<'a>(word: &str, known: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
     let word: Vec<char> = word.chars().collect();
     let mut close: Vec<(f64, String, &str)> = known

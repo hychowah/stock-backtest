@@ -1,6 +1,5 @@
-//! The typed raw files and their merge rules, from the cases the old
-//! updater's checks protect (`tests/test_data_refresh.py`,
-//! `tests/test_data_manager.py`).
+//! The typed raw files and their merge rules, on the cases that the old
+//! updater's own tests protected.
 
 use market_data::raw::{self, History, HistoryFile, KeyMetrics, Listing, PyJson, Raw, StatementKind, Statements, Universe};
 use market_data::{Day, Market};

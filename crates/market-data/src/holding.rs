@@ -1,6 +1,6 @@
-//! A holding's prices after its entry: its exit (`books.close`) and the
-//! closes its daily path reads (`curves.holding`). Each close is converted to
-//! US dollars at the FX of its own day ([`convert`]).
+//! A holding's prices after its entry: its exit and the closes its daily
+//! path reads. Each close is converted to US dollars at the FX of its own day
+//! ([`convert`]).
 
 use crate::prices::{Direction, Prices};
 use crate::reports::convert;
@@ -32,8 +32,7 @@ pub enum ExitStatus {
 }
 
 /// A holding has no close from its entry day through its exit day, or the
-/// last one has no FX at its day. The oracle stops the run ("A selected sheet
-/// row has no valid exit: MISSING_EXIT_PRICE").
+/// last one has no FX at its day. A run stops at it (MISSING_EXIT_PRICE).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MissingExitPrice;
 

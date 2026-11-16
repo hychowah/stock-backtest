@@ -1,16 +1,23 @@
-//! Whole runs equal the oracle's: each case runs through `bt run` with the
-//! schedule of its `run.json`; `bt export tables` of the results, `bt
-//! explore` of each result with the oracle's selections, and `bt screen` of
-//! each strategy file equal the expected tables of those cases
-//! (`proof/l3.py`), row for row and bit for bit.
+//! Whole runs equal the expected tables: each case runs through `bt run`
+//! with the schedule of its `run.json`; `bt export tables` of the results,
+//! `bt explore` of each result with the selections below, and `bt screen` of
+//! each strategy file equal the expected tables of those cases, row for row
+//! and bit for bit.
 //!
 //! A case is a folder `KIND/NAME/` holding `strategy.json` and `run.json`;
-//! its name is the case name. Every case found is run, of both kinds
-//! (`builtins` and `formulas`); `cross_section.rs` proves the formula cases'
-//! values. The explore selections need at least two periods in each trial
-//! and a strategy that holds at least two ranks. The expected folder may
-//! hold other cases and tables: only the rows of the cases found, in the
-//! tables below, are compared.
+//! its name is the case name. `run.json` holds `market`, `start` and `end`,
+//! then `interval` (a count and `w` or `m`, such as "6m") or `dates` (ISO
+//! days), and, for random trials, `trials` and `seed`. Every case found is
+//! run, of both kinds (`builtins` and `formulas`); `cross_section.rs` proves
+//! the formula cases' values. The explore selections need at least two
+//! periods in each trial and a strategy that holds at least two ranks.
+//!
+//! The expected folder is a `tables` crate export: the tables of `bt export
+//! tables`, and `explore`, `picks` and `pick_steps` as [`read_rows`] makes
+//! them, each keyed from `case`. It may hold other cases and tables: only the
+//! rows of the cases found, in the tables below, are compared. The fictional
+//! cases' tables were written by the Python product that this program
+//! replaced, at tag `python-oracle`, and are frozen.
 //!
 //! The folders default to the fictional fixture. To run the same test
 //! elsewhere, such as on real data with `cargo test --release`, set
@@ -51,7 +58,8 @@ fn expected(source: &Path, cases: &BTreeSet<String>, out: &Path) {
     }
 }
 
-/// The ranks a period of the strategy file can hold (`selection.rank_range`).
+/// The ranks a period of the strategy file can hold: one sleeve, its last
+/// Rank step's; several, 1 to the sum of their last Rank steps' sizes.
 fn rank_range(strategy: &Value) -> (u64, u64) {
     let sleeves = strategy["sleeves"].as_array().unwrap();
     let last = |sleeve: &Value| {
@@ -137,7 +145,7 @@ fn write_rows(rows: &BTreeMap<&str, Vec<Map<String, Value>>>, out: &Path) {
 }
 
 #[test]
-fn every_case_runs_to_the_oracles_tables() {
+fn every_case_runs_to_the_expected_tables() {
     let dir = tempfile::tempdir().unwrap();
     let Proof { cases: found, expected: expected_dir, home } = Proof::new(dir.path());
     let mut cases = BTreeSet::new();

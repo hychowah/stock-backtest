@@ -1,5 +1,6 @@
-//! `Plan` gives the oracle's trade dates on the fictional data. The expected
-//! dates are those of `backtest.calendar` on the same sessions.
+//! `Plan` gives the expected trade dates on the fictional data: the dates
+//! that the Python product that this program replaced planned on the same
+//! sessions.
 
 use engine::{Plan, Schedule};
 use market_data::commands::{Home, PrepareRequest, prepare};
@@ -72,7 +73,7 @@ fn dates(dates: &[&str]) -> impl FnOnce(&mut Schedule) {
 }
 
 #[test]
-fn the_fictional_tests_trade_on_the_oracles_dates() {
+fn the_fictional_tests_trade_on_the_expected_dates() {
     let us = plan(Market::Us, "2021-07-01", "2023-06-28", random("6m", 3, 20210701));
     assert_eq!(us.window(), (day("2021-07-01"), day("2023-06-28")));
     assert_eq!(

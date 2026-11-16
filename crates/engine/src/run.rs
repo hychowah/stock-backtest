@@ -104,7 +104,7 @@ pub enum Status {
 impl Status {
     pub(crate) const ALL: [Status; 3] = [Status::Scheduled, Status::LastAvailable, Status::Marked];
 
-    /// The oracle's text.
+    /// Its text in a result.
     pub(crate) fn text(self) -> &'static str {
         match self {
             Status::Scheduled => "Scheduled exit",
@@ -127,11 +127,11 @@ pub(crate) struct Point {
 /// strategy that trades on that day, and dropped when that day's periods are
 /// selected and valued; results do not depend on the order of the threads.
 ///
-/// A run stops at the oracle's run-stopping errors: a selected company
-/// without a valid exit, and SPY without a close at a period's entry or exit.
-/// The error is the first one taken by strategy, then trial, then period; it
-/// comes with the strategy's position, and its place names the market,
-/// trial, entry day and, for a company, the symbol.
+/// A run stops at an error: a formula's FUTURE_DATE or INVALID_DATE, a
+/// selected company without a valid exit, or SPY without a close at a
+/// period's entry or exit. The error is the first one taken by strategy,
+/// then trial, then period; it comes with the strategy's position, and its
+/// place names the market, trial, entry day and, for a company, the symbol.
 ///
 /// `stop` is read at the start of each entry day's work, which is almost all
 /// of a run: once it is set, the days not yet started are skipped and the
@@ -256,10 +256,10 @@ pub struct ScreenedStep {
     pub step_rank: Option<u32>,
 }
 
-/// The strategy's picks on the market's last session, as the oracle's
-/// latest screen: listed companies entering at that session's close, with no
-/// exit. Gives the session and the picks in rank order. An error's place
-/// names the market and the session.
+/// The strategy's picks on the market's last session, as a latest screen:
+/// listed companies entering at that session's close, with no exit. Gives
+/// the session and the picks in rank order. An error's place names the
+/// market and the session.
 pub(crate) fn screen(data: &MarketData, strategy: &Strategy) -> Result<(Day, Vec<Screened>), Error> {
     let market = data.manifest().market;
     let &day = data.sessions().last().ok_or_else(|| Error::new("the market has no session", market.id()))?;

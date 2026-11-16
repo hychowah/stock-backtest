@@ -48,7 +48,7 @@ pub fn prepared(dir: &Path) -> PathBuf {
     home
 }
 
-/// The proof folders: `L3_CASES` holds kind folders of case folders
+/// The case folders: `L3_CASES` holds kind folders of case folders
 /// (default the fictional `cases`), `L3_EXPECTED` the expected tables
 /// (default the fictional `expected/runs`), and `L3_HOME` a prepared home
 /// (default the fictional raw cache prepared in `dir`).

@@ -4,13 +4,13 @@
 //! readings of them: the one books and the built-ins use, and the one
 //! formulas use.
 //!
-//! Reading a company (`financial_inputs.resolve_history`):
+//! Reading a company:
 //! - A statement file counts when it is JSON, version 2, names the company and
 //!   the endpoint, and holds a list of rows; otherwise, or when it is missing,
 //!   it gives no rows. Of its rows, those that are objects with a readable
 //!   `date`, the company's `symbol` or none, `period` `FY` or none, and a
-//!   number or null in each legacy field are kept; the others are left out
-//!   (the oracle's salvage of a damaged file).
+//!   number or null in each legacy field are kept; the others are left out,
+//!   so a damaged file still gives its readable rows.
 //! - Rows with the same fiscal date (the day of `date`) form one statement.
 //!   Its currency is its rows' one `reportedCurrency`, in capitals, or none
 //!   when they name none or several. Its publication date is the one date,
@@ -46,7 +46,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tables::Cell;
 
 /// One kind of annual statement: its provider endpoint, its column group and
-/// its fields as (provider field, oracle column).
+/// its fields as (provider field, column name).
 struct Statement {
     endpoint: &'static str,
     group: &'static str,
@@ -181,7 +181,7 @@ pub(crate) const fn is_share_count(field: Field) -> bool {
 }
 const DIVIDENDS: Field = field(CASH_FLOW, "commonDividendsPaid");
 
-/// The legacy annual fields that books read (`facts.LEGACY`).
+/// The legacy annual fields that books read.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum LegacyField {
     Revenue,
@@ -197,9 +197,8 @@ pub(crate) enum LegacyField {
     FreeCashFlow,
 }
 
-/// The field of each [`LegacyField`], indexed by it (`facts.LEGACY` order).
-/// A statement row whose value of one of them is not a number or null is
-/// left out.
+/// The field of each [`LegacyField`], indexed by it. A statement row whose
+/// value of one of them is not a number or null is left out.
 const LEGACY: [Field; 11] = [
     field(INCOME, "revenue"),
     field(INCOME, "operatingIncome"),
@@ -470,7 +469,7 @@ impl<'a> Annual<'a> {
 
     /// The valid value of `field` at `fiscal` as a book on `day` reads it,
     /// with its currency: US whatever the day, foreign only when its
-    /// statement is known before `day` (`BookFacts._annual_value`).
+    /// statement is known before `day`.
     fn readable(&self, field: Field, fiscal: Day, day: Day) -> Option<(f64, &'a str)> {
         let s = &self.statements[field.statement];
         let row = s.row(fiscal)?;
@@ -481,46 +480,44 @@ impl<'a> Annual<'a> {
         }
     }
 
-    /// The legacy values of fiscal date `fiscal` that a book on `day` reads
-    /// (`BookFacts.report_at`'s values): US as stored; foreign only those
-    /// known before `day`, converted to USD at `day`, and left out when the
-    /// FX is missing or the result is not finite.
+    /// The legacy values of fiscal date `fiscal` that a book on `day` reads:
+    /// US as stored; foreign only those known before `day`, converted to USD
+    /// at `day`, and left out when the FX is missing or the result is not
+    /// finite.
     pub(crate) fn legacy(&self, fiscal: Day, day: Day, series: &Series<'_>) -> LegacyValues {
         LegacyValues(LEGACY.map(|field| self.readable(field, fiscal, day).and_then(|(v, c)| convert(series, v, c, day))))
     }
 
     /// The legacy values of every fiscal date at `day`, in fiscal order,
-    /// leaving out dates without any (`BookFacts.legacy_annual(symbol,
-    /// day)`): what the built-ins read for the selected report and the years
-    /// before it.
+    /// leaving out dates without any: what the built-ins read for the
+    /// selected report and the years before it.
     pub(crate) fn legacy_at(&self, day: Day, series: &Series<'_>) -> Vec<(Day, LegacyValues)> {
         let fiscals: BTreeSet<Day> = [BALANCE, CASH_FLOW, INCOME].iter().flat_map(|&s| self.statements[s].fiscal.iter().copied()).collect();
         fiscals.into_iter().map(|fiscal| (fiscal, self.legacy(fiscal, day, series))).filter(|(_, v)| !v.is_empty()).collect()
     }
 
     /// The common dividends paid of fiscal date `fiscal` in USD at `day`,
-    /// signed as reported (`BookFacts.dividends`): read as a legacy value is,
-    /// and converted at `day` (US: times 1).
+    /// signed as reported: read as a legacy value is, and converted at `day`
+    /// (US: times 1).
     pub(crate) fn dividends(&self, fiscal: Day, day: Day, series: &Series<'_>) -> Option<f64> {
         let (value, currency) = self.readable(DIVIDENDS, fiscal, day)?;
         convert(series, value, currency, day)
     }
 
-    /// The annual weighted-average basic shares of fiscal date `fiscal`
-    /// (`BookFacts.shares`): read as a legacy value is, and never converted.
+    /// The annual weighted-average basic shares of fiscal date `fiscal`: read
+    /// as a legacy value is, and never converted.
     pub(crate) fn shares(&self, fiscal: Day, day: Day) -> Option<f64> {
         self.readable(SHARES, fiscal, day).map(|(value, _)| value)
     }
 
     /// The fiscal dates of the `count` calendar years ending at the year of
     /// `anchor` (the selected report's fiscal date), oldest first, that a
-    /// formula on `day` reads (`columns._periods`, the income fiscal spine):
-    /// the anchor itself, and for each earlier year the last income statement
-    /// of that year on or before `anchor` known before `day`; `None` for a
-    /// year without one. (The oracle reads no US metadata and takes the
-    /// fiscal date + 90 days, which is the US known date.) The built-ins
-    /// choose a year's statement among every statement kind instead, from
-    /// those with a legacy value.
+    /// formula on `day` reads (the income fiscal spine): the anchor itself,
+    /// and for each earlier year the last income statement of that year on
+    /// or before `anchor` known before `day`; `None` for a year without one.
+    /// (A US statement's known date is its fiscal date + 90 days.) The
+    /// built-ins choose a year's statement among every statement kind
+    /// instead, from those with a legacy value.
     pub(crate) fn spine(&self, anchor: Day, day: Day, count: usize) -> Vec<Option<Day>> {
         let income = &self.statements[INCOME];
         let year = anchor.ymd().0;
@@ -531,9 +528,9 @@ impl<'a> Annual<'a> {
         (year + 1 - count as i32..=year).map(|y| if y == year { Some(anchor) } else { earlier(y) }).collect()
     }
 
-    /// The value of `field` at `fiscal` as a formula on `day` reads it
-    /// (`fact_view.View.company`): as [`legacy`](Self::legacy) reads a value,
-    /// except that the two weighted share counts are never converted.
+    /// The value of `field` at `fiscal` as a formula on `day` reads it: as
+    /// [`legacy`](Self::legacy) reads a value, except that the two weighted
+    /// share counts are never converted.
     pub(crate) fn formula_value(&self, field: Field, fiscal: Day, day: Day, series: &Series<'_>) -> Option<f64> {
         let (value, currency) = self.readable(field, fiscal, day)?;
         if is_share_count(field) { Some(value) } else { convert(series, value, currency, day) }

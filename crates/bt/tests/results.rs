@@ -1,7 +1,7 @@
 //! The read routes of `bt serve`: each result route answers the rows that
 //! `bt export tables` (and `bt export holdings`) write for the same result
-//! file, which the proof tests compare with the oracle's; explore, catalog,
-//! screen and data status answer what the `bt` commands print, the
+//! file, which the `l3` test compares with the expected tables; explore,
+//! catalog, screen and data status answer what the `bt` commands print, the
 //! statistics with SPY's total return beside them; one trial's sector
 //! weights by period give that trial's sector shares, and their counts the
 //! period's holdings; each trial's cash share is its empty periods' share.

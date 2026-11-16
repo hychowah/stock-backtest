@@ -1,6 +1,5 @@
 //! The company lists, `universe.json` (US) and `markets/hk/universe.json`,
-//! as the old updater builds and merges them (`data_manager.fetch_universe`,
-//! `fetch_market_universe` and `download_market`, `data_refresh.download`).
+//! as the old updater builds and merges them.
 
 use super::{PyJson, Raw, read_file, replace};
 use super::pyjson::Object;
@@ -163,9 +162,9 @@ fn text(value: Option<&PyJson>, default: &str) -> String {
     }
 }
 
-/// `rules.common_stock`: an upper-case symbol of at most 6 characters,
-/// letters and digits or `LETTERS-L`, with no `.`; and no ETF, fund, ETN,
-/// ProShares or iShares word in the name.
+/// Whether a US listing is common stock: an upper-case symbol of at most 6
+/// characters, letters and digits or `LETTERS-L`, with no `.`; and no ETF,
+/// fund, ETN, ProShares or iShares word in the name.
 fn us_common_stock(symbol: &str, name: &str) -> bool {
     let upper = symbol.chars().any(char::is_uppercase) && !symbol.chars().any(char::is_lowercase);
     if symbol.is_empty() || !upper || symbol.contains('.') || symbol.chars().count() > 6 {
@@ -180,8 +179,8 @@ fn us_common_stock(symbol: &str, name: &str) -> bool {
     form && ![" ETF", "ETF ", " FUND", "FUND ", " ETN", "PROSHARES", "ISHARES"].iter().any(|t| label.contains(t))
 }
 
-/// `rules.us_exchange`: NYSE, NASDAQ, AMEX or ASE in the name, and no ARCA,
-/// OTC, PINK or BATS.
+/// Whether a US exchange name is kept: NYSE, NASDAQ, AMEX or ASE in the name,
+/// and no ARCA, OTC, PINK or BATS.
 fn us_exchange(name: &str) -> bool {
     let text = name.to_uppercase();
     !["ARCA", "OTC", "PINK", "BATS"].iter().any(|t| text.contains(t))

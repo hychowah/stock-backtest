@@ -1,8 +1,7 @@
 //! The valuation sums: per company and priced day, the running sums of the
-//! daily E/P, S/P and B/P yields and their day counts, folded at preparation
-//! (`facts.refold` over `books.valuation_days`); and the 3- and 5-year
-//! valuation averages read from them (`metrics.filter_values`). The sums stay
-//! private to this module.
+//! daily E/P, S/P and B/P yields and their day counts, folded at
+//! preparation; and the 3- and 5-year valuation averages read from them. The
+//! sums stay private to this module.
 //!
 //! The fold takes each valid close in day order. A day counts when a book on
 //! it selects a report ([`Reports::report_at`]), the report has a fiscal
@@ -26,7 +25,7 @@ use crate::store::{Generation, GenerationWriter};
 use crate::{Day, Error};
 use tables::Cell;
 
-/// The yields' fields in sum order (`rules.VALUATIONS`): E/P, S/P, B/P.
+/// The yields' fields in sum order: E/P, S/P, B/P.
 const FIELDS: [LegacyField; 3] = [LegacyField::NetIncome, LegacyField::Revenue, LegacyField::Equity];
 /// The sums' names, in that order.
 const NAMES: [&str; 3] = ["earnings", "sales", "equity"];
@@ -129,11 +128,10 @@ impl<'a> ValuationColumns<'a> {
         (self.sums.map(|s| s[at - 1]), self.counts.map(|n| n[at - 1]))
     }
 
-    /// The 3- and 5-year valuation averages of company `c` on `day`
-    /// (`metrics.filter_values`), indexed `[years: 3, 5][P/E, P/S, P/B]`.
-    /// Over the window from the day `years` earlier ([`Day::anniversary`])
-    /// to `day`, the mean daily yield is the difference of the sums over the
-    /// difference of the counts. An average is 1 / mean; it is `None` when
+    /// The 3- and 5-year valuation averages of company `c` on `day`, indexed
+    /// `[years: 3, 5][P/E, P/S, P/B]`. Over the window from the day `years`
+    /// earlier ([`Day::anniversary`]) to `day`, the mean daily yield is the
+    /// difference of the sums over the difference of the counts. An average is 1 / mean; it is `None` when
     /// there is no counted day on or before the window's start, no counted
     /// day in the window, the mean is not positive or 1 / mean is not finite.
     /// `current` holds the current P/E, P/S and P/B, whose ratio to the

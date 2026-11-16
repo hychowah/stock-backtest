@@ -85,7 +85,7 @@ enum Dates<'a> {
     Explicit(&'a [String]),
 }
 
-/// The trade dates of every trial of a run, as the oracle plans them.
+/// The trade dates of every trial of a run.
 ///
 /// The window runs from the first session on or after the start to the
 /// final mark, the last session on or before the end. Every trial starts at
@@ -106,7 +106,7 @@ pub struct Plan {
 pub struct Trial {
     /// The first entry of a random or explicit schedule: the trial holds
     /// cash from the window's first session until then. `None` for a fixed
-    /// interval, as in the oracle.
+    /// interval.
     pub first_trade: Option<Day>,
     /// The calendar days from the window's first session to the first trade;
     /// `None` for a fixed interval.
@@ -123,7 +123,7 @@ pub struct Period {
 
 impl Plan {
     /// Checks the schedule against the market's sessions: first which keys
-    /// it combines, then, in the oracle's order, the interval, the start and
+    /// it combines, then, in this order, the interval, the start and
     /// end, the trials, the window and each explicit date. An error names
     /// the key at fault in `place`. A schedule with trials and no seed is
     /// refused: [draw](Schedule::drawn) its seed first.

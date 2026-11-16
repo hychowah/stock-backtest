@@ -37,10 +37,10 @@ impl<'d> DayValues<'d> {
     /// `None` when it is missing. A built-in is missing when its stored lane
     /// is absent or not finite in canonical units. Sector and Exchange are
     /// text and have no number. A formula's value is in its unit. Its errors
-    /// stop a run, as the oracle's do: FUTURE_DATE, an `at` date after the
-    /// day it is read on, and INVALID_DATE, a lookback before year 1. The
-    /// place of either is the candidate's symbol and the formula's label
-    /// (the variable's name or the formula's text): `ABC, Debt to EV`.
+    /// stop a run: FUTURE_DATE, an `at` date after the day it is read on,
+    /// and INVALID_DATE, a lookback before year 1. The place of either is the
+    /// candidate's symbol and the formula's label (the variable's name or the
+    /// formula's text): `ABC, Debt to EV`.
     pub fn of(&self, source: &Source, i: usize) -> Result<Option<f64>, Error> {
         let candidate = &self.candidates[i];
         Ok(match *source {

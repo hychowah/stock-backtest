@@ -1,9 +1,7 @@
-//! The formula parameters ([`PARAMETERS`], the oracle's catalog
-//! `financial-parameters/4`) and their observations
-//! ([`Observer::observe`](crate::Observer::observe), the oracle's
-//! `columns.Formulas._observation` over `fact_view.View`). Each reading
-//! calls the module that owns its rule; this module only chooses the
-//! context's anchor report and valuation.
+//! The formula parameters ([`PARAMETERS`], catalog `financial-parameters/4`)
+//! and their observations ([`Observer::observe`](crate::Observer::observe)).
+//! Each reading calls the module that owns its rule; this module only chooses
+//! the context's anchor report and valuation.
 
 use crate::annual::{BALANCE, CASH_FLOW, Field, INCOME, field, is_share_count};
 use crate::builtins::{self, BUILTINS};
@@ -14,7 +12,7 @@ use crate::{CompanyId, Day};
 /// One formula parameter: a quantity a formula reads at a context.
 #[derive(Clone, Copy, Debug)]
 pub struct Parameter {
-    /// The oracle's id: `annual.<field>`, `market.<name>`, `treasury.<name>`
+    /// Its id: `annual.<field>`, `market.<name>`, `treasury.<name>`
     /// or `owner.<lane>`.
     pub id: &'static str,
     /// `USD`, `USD/share`, `share` or `scalar`.
@@ -192,8 +190,9 @@ pub(crate) fn observe(columns: &Columns<'_>, at: At<'_>, p: Parameter, count: us
                 }),
                 Source::ReportEbitda => facts.reports.yearly_ebitda(anchor.fiscal, day, series, count).into_iter().collect(),
                 _ => {
-                    // The oracle also leaves out every owner lane when the yield or multiple is not
-                    // finite; reports have positive EBITDA, market cap and EV, so that cannot arise.
+                    // The rule leaves out every owner lane when the yield or multiple is not finite;
+                    // reports have positive EBITDA, market cap and EV, so that cannot arise, and it
+                    // is not checked here.
                     let (valuation, _) = screen::admit(&anchor, &facts.prices, day, ENTRY_SLACK).ok()?;
                     one(match source {
                         Source::EnterpriseValue => Some(valuation.enterprise_value),
@@ -208,7 +207,7 @@ pub(crate) fn observe(columns: &Columns<'_>, at: At<'_>, p: Parameter, count: us
     values.filter(|values: &Vec<f64>| values.iter().all(|v| v.is_finite()))
 }
 
-/// An owner value from its built-in lane (`measure_observations.lane`).
+/// An owner value from its built-in lane; a percentage lane gives a fraction.
 fn owner_lane(stored: Option<f64>, lane: usize) -> Option<f64> {
     stored.map(|v| if BUILTINS[lane].scale == -2 { v / 100.0 } else { v })
 }

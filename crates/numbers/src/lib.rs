@@ -1,7 +1,7 @@
 //! CPython 3.14 number behavior that results depend on. Each function equals
 //! the Python call in its comment bit for bit; fixtures/numbers/ proves it.
 //!
-//! Inputs are what the Python product passes. Where Python would raise (an
+//! Inputs are what this program passes. Where Python would raise (an
 //! empty list, a non-finite value for the exact statistics), the function
 //! states the precondition instead of checking it.
 
@@ -31,9 +31,8 @@ pub fn sum(values: &[f64]) -> f64 {
     total
 }
 
-/// The product's equally weighted return of holdings
-/// (`portfolio_results.mean_return`): `sum(values) / len(values)`, or `0.0`
-/// for no values.
+/// The equally weighted return of holdings: `sum(values) / len(values)`, or
+/// `0.0` for no values.
 pub fn mean_return(values: &[f64]) -> f64 {
     if values.is_empty() { 0.0 } else { sum(values) / values.len() as f64 }
 }

@@ -4,26 +4,25 @@
 //!
 //! US, from the annual key metrics of `metrics.jsonl`:
 //! - The last record of a symbol wins, but the symbol keeps the position of
-//!   its first record (`cache_assets.financial_records`).
+//!   its first record.
 //! - A report is accepted when its date reads, its market cap, enterprise
 //!   value and EV/EBITDA are positive numbers and its `reportedCurrency` is
 //!   USD or absent; it is known 90 days after its fiscal date, its EBITDA is
-//!   EV / multiple and its yield 1 / multiple (`books.statements`). Of two
-//!   reports with the same fiscal date, the later row wins.
+//!   EV / multiple and its yield 1 / multiple. Of two reports with the same
+//!   fiscal date, the later row wins.
 //! - The reported set: the listed US companies with an accepted report. Its
 //!   first-appearance order breaks the legacy ranking's ties, and it is the US
 //!   price scope.
 //!
-//! Hong Kong and Tokyo, the foreign anchors (`facts.store_foreign_reports`):
-//! one for each fiscal date with an income statement and a balance sheet
-//! that name the same one currency, positive basic weighted shares and
-//! EBITDA, and a valid total debt and cash ([`crate::annual`]). It is known
-//! on the later of the two statements' known dates and keeps the income
-//! statement's basis. Its fiscal cap is the shares times the last native
-//! (unadjusted, `px-full`) close on a local session within the 7 days up to
-//! the fiscal date, or none. Native closes follow the rules of a dated row
-//! (positive, in the quote currency); only the fiscal cap reads them, so they
-//! are not stored.
+//! Hong Kong and Tokyo, the foreign anchors: one for each fiscal date with an
+//! income statement and a balance sheet that name the same one currency,
+//! positive basic weighted shares and EBITDA, and a valid total debt and cash
+//! ([`crate::annual`]). It is known on the later of the two statements' known
+//! dates and keeps the income statement's basis. Its fiscal cap is the shares
+//! times the last native (unadjusted, `px-full`) close on a local session
+//! within the 7 days up to the fiscal date, or none. Native closes follow the
+//! rules of a dated row (positive, in the quote currency); only the fiscal cap
+//! reads them, so they are not stored.
 //!
 //! Columns: `reports.offsets` (`u64`, one more than companies), and per
 //! report in fiscal order `reports.fiscal` and `reports.known`; US
@@ -46,7 +45,7 @@ use tables::Cell;
 
 /// The oldest report a book selects: 800 days after its fiscal date.
 const MAX_AGE: i32 = 800;
-/// The US legacy pool's report floors (`rules.MIN_MARKET_CAP`, `MIN_EV`).
+/// The US legacy pool's report floors.
 const MIN_MARKET_CAP: f64 = 100_000_000.0;
 const MIN_EV: f64 = 50_000_000.0;
 
@@ -187,23 +186,23 @@ impl Reported {
     }
 }
 
-/// The FX conversion of an amount in `currency` at `day`
-/// (`BookFacts.convert`): times the day's USD per unit ([`Series::fx`]);
-/// `None` without a fixing or when the result is not finite.
+/// The FX conversion of an amount in `currency` at `day`: times the day's USD
+/// per unit ([`Series::fx`]); `None` without a fixing or when the result is
+/// not finite.
 pub(crate) fn convert(series: &Series<'_>, value: f64, currency: &str, day: Day) -> Option<f64> {
     let (_, usd) = series.fx(currency, day)?;
     Some(value * usd).filter(|v| v.is_finite())
 }
 
-/// A report's fiscal price (`books.fiscal_price`): the last valid close on
-/// or before its fiscal date, at most 7 days earlier, with its day.
+/// A report's fiscal price: the last valid close on or before its fiscal date,
+/// at most 7 days earlier, with its day.
 pub(crate) fn fiscal_price(report: &Report, prices: &Prices<'_>) -> Option<(Day, f64)> {
     prices.price(report.fiscal, Direction::OnOrBefore, Some(7))
 }
 
 /// A report's market cap rescaled from its fiscal price to `price`, a close
-/// with its day (`books.rescaled_cap`): cap × (price / fiscal price). Both
-/// the valuation fold and admission value a company with it.
+/// with its day: cap × (price / fiscal price). Both the valuation fold and
+/// admission value a company with it.
 pub(crate) fn rescaled_cap(report: &Report, fiscal_price: (Day, f64), price: (Day, f64)) -> f64 {
     report.market_cap * (price.1 / fiscal_price.1)
 }
@@ -376,8 +375,8 @@ enum Values<'a> {
 }
 
 impl<'a> Reports<'a> {
-    /// Whether report `i` is selectable on `day` (`rules.selectable`): known
-    /// before `day`, with its fiscal date at most 800 days earlier.
+    /// Whether report `i` is selectable on `day`: known before `day`, with its
+    /// fiscal date at most 800 days earlier.
     fn selectable(&self, i: usize, day: Day) -> bool {
         self.known[i] < day && day.0 - self.fiscal[i].0 <= MAX_AGE
     }
@@ -395,12 +394,11 @@ impl<'a> Reports<'a> {
         })
     }
 
-    /// Report `i` as a book on `day` reads it: US as stored; foreign
-    /// converted at `day` (`BookFacts._report`): market cap = fiscal cap ×
-    /// quote-currency FX, EBITDA × report-currency FX, EV = market cap +
-    /// (debt − cash) × report-currency FX, yield = EBITDA / EV. `None` when
-    /// it has no fiscal cap, an FX is missing or a value is not positive and
-    /// finite.
+    /// Report `i` as a book on `day` reads it: US as stored; foreign converted
+    /// at `day`: market cap = fiscal cap × quote-currency FX, EBITDA ×
+    /// report-currency FX, EV = market cap + (debt − cash) × report-currency
+    /// FX, yield = EBITDA / EV. `None` when it has no fiscal cap, an FX is
+    /// missing or a value is not positive and finite.
     fn at(&self, i: usize, day: Day, series: &Series<'_>) -> Option<Report> {
         let (fiscal, known) = (self.fiscal[i], self.known[i]);
         match self.values {
@@ -422,17 +420,17 @@ impl<'a> Reports<'a> {
         }
     }
 
-    /// The report a book on `day` selects (`BookFacts.report_at`, the cached
-    /// pool): the last report in fiscal order that is selectable on `day`
-    /// and, foreign, converts at `day`. A foreign report that does not
-    /// convert gives way to the one before it.
+    /// The report a book on `day` selects (the cached pool): the last report
+    /// in fiscal order that is selectable on `day` and, foreign, converts at
+    /// `day`. A foreign report that does not convert gives way to the one
+    /// before it.
     pub(crate) fn report_at(&self, day: Day, series: &Series<'_>) -> Option<Report> {
         (0..self.fiscal.len()).rev().filter(|&i| self.selectable(i, day)).find_map(|i| self.at(i, day, series))
     }
 
-    /// The reports the built-ins read on `day` (`books.owner_values`'
-    /// history), in fiscal order: US every report; foreign those known before
-    /// `day` that convert at `day`.
+    /// The reports the built-ins read on `day` (their history), in fiscal
+    /// order: US every report; foreign those known before `day` that convert
+    /// at `day`.
     pub(crate) fn history(&self, day: Day, series: &Series<'_>) -> Vec<Report> {
         let us = matches!(self.values, Values::Us { .. });
         (0..self.fiscal.len()).filter(|&i| us || self.known[i] < day).filter_map(|i| self.at(i, day, series)).collect()
@@ -441,10 +439,10 @@ impl<'a> Reports<'a> {
     /// The EBITDA of each of the `count` calendar years ending at the year
     /// of `fiscal` (the selected report's), oldest first, read on `day`: the
     /// last report of that year in [`history`](Self::history) on or before
-    /// `fiscal`, or `None` (`metrics.annual_average`, and the formulas'
-    /// report EBITDA, `columns._report_ebitda`, which also asks that a
-    /// report be known before `day`: every US report on or before the
-    /// selected one is).
+    /// `fiscal`, or `None`. The built-ins' annual average and the formulas'
+    /// report EBITDA both read it; the formulas also ask that a report be
+    /// known before `day`, which every US report on or before the selected
+    /// one is.
     pub(crate) fn yearly_ebitda(&self, fiscal: Day, day: Day, series: &Series<'_>, count: usize) -> Vec<Option<f64>> {
         let history = self.history(day, series);
         let year = fiscal.ymd().0;
@@ -453,9 +451,8 @@ impl<'a> Reports<'a> {
             .collect()
     }
 
-    /// The US legacy pool's report on `day` (`books.pools`, then
-    /// `rules.latest_statement`): the last report in fiscal order with a
-    /// market cap of at least $100M and an EV of at least $50M that is
+    /// The US legacy pool's report on `day`: the last report in fiscal order
+    /// with a market cap of at least $100M and an EV of at least $50M that is
     /// selectable on `day`. Hong Kong and Tokyo have no legacy pool: `None`.
     pub(crate) fn legacy_report_at(&self, day: Day) -> Option<Report> {
         let Values::Us { market_cap, enterprise_value, .. } = self.values else { return None };
@@ -531,8 +528,7 @@ impl<'a> ReportColumns<'a> {
     }
 
     /// Writes the `reports` table (key `symbol`, `fiscal`): US the accepted
-    /// reports (the oracle's `statements`), foreign the anchors (its
-    /// `foreign_reports`).
+    /// reports, foreign the anchors.
     pub(crate) fn export(&self, out: &mut tables::Writer) -> Result<u64, String> {
         let companies = &self.companies;
         let mut table = out.table("reports", &["symbol", "fiscal"])?;
@@ -576,7 +572,7 @@ mod tests {
     /// A symbol saved twice (510 in the raw cache) keeps the position of its
     /// first record and the rows of its last.
     #[test]
-    fn crlf_lines_and_repeated_records_read_as_the_oracle_reads_them() {
+    fn crlf_lines_and_repeated_records_read_in_first_position_with_last_rows() {
         let text = b"{\"symbol\": \"B\", \"rows\": []}\r\n{\"symbol\": \"A\", \"rows\": [{}]}\r\n\r\n{\"symbol\": \"B\", \"rows\": [{}, {}]}\r\n{\"symbol\": \"C\"";
         let read = records(text).unwrap();
         let summary: Vec<(&str, usize)> = read.iter().map(|(s, rows)| (s.as_str(), rows.len())).collect();

@@ -242,7 +242,7 @@ impl<'a> Series<'a> {
     }
 
     /// The 10-year Treasury yield of `day` in percent, found as
-    /// [`treasury`](Self::treasury) finds its rate (`facts.ten_year`).
+    /// [`treasury`](Self::treasury) finds its rate.
     pub(crate) fn ten_year(&self, day: Day) -> Option<f64> {
         self.yield_at(day, self.year10, self.year10_reason)
     }
@@ -256,19 +256,18 @@ impl<'a> Series<'a> {
         self.treasury_day.partition_point(|&d| if self.market == Market::Us { d <= day } else { d < day })
     }
 
-    /// The 3-month and 10-year yields as formulas read them on `day`
-    /// (`fact_view.View.treasury`), each as a fraction: those of the last
-    /// Treasury day found as [`treasury`](Self::treasury) finds it; `None`
-    /// where that day's value is not valid. Unlike the built-ins' readings,
-    /// it never passes over that day to an earlier valid value.
+    /// The 3-month and 10-year yields as formulas read them on `day`, each as
+    /// a fraction: those of the last Treasury day found as
+    /// [`treasury`](Self::treasury) finds it; `None` where that day's value is
+    /// not valid. Unlike the built-ins' readings, it never passes over that
+    /// day to an earlier valid value.
     pub(crate) fn treasury_rates(&self, day: Day) -> [Option<f64>; 2] {
         let Some(i) = self.treasury_end(day).checked_sub(1) else { return [None, None] };
         [(self.month3, self.month3_reason), (self.year10, self.year10_reason)].map(|(values, reasons)| (reasons[i] == 0).then(|| values[i] / 100.0))
     }
 
-    /// The session whose saved prices formulas read on `day`
-    /// (`fact_view.View.session`): the last session on or before `day`, at
-    /// most 7 days earlier.
+    /// The session whose saved prices formulas read on `day`: the last
+    /// session on or before `day`, at most 7 days earlier.
     pub(crate) fn session(&self, day: Day) -> Option<Day> {
         let i = self.sessions.partition_point(|&d| d <= day).checked_sub(1)?;
         Some(self.sessions[i]).filter(|s| day.0 - s.0 <= 7)

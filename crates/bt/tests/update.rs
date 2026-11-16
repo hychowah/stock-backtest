@@ -1,8 +1,26 @@
-//! `bt data update` against the fake provider, on the frozen update cases of
-//! `fixtures/fictional/update/` (their format is in `proof/update.py`): the
-//! raw files, the requests, the record and preparation equal the old
-//! updater's; a stop, then the same command, ends equal; nothing secret is
-//! written. Each run has a private `HOME` with a made-up key.
+//! `bt data update` against the fake provider, on the update cases of
+//! `fixtures/fictional/update/`: the raw files, the requests, the record and
+//! preparation equal the old updater's; a stop, then the same command, ends
+//! equal; nothing secret is written. Each run has a private `HOME` with a
+//! made-up key.
+//!
+//! The cases were written by the Python product that this program replaced,
+//! at tag `python-oracle`, and are frozen. A case folder holds:
+//! - `case.json`: `as_of`; `after`, the case whose end it starts from, or
+//!   null; `memory`, the update record's memory at the start; and
+//!   `record`, the Python product's own record, which is not read;
+//! - `before/`: raw files laid over the start;
+//! - `replies.jsonl`: the reply store that the fake provider serves
+//!   (`common/provider.rs`);
+//! - `requests.jsonl`: one `{"endpoint", "params"}` line per attempt, sorted;
+//! - `after/`: every raw file the update added or changed, except the ledger
+//!   `download-coverage.json`, which is not compared;
+//! - `end.json`: the `outcome`, the sorted `failed` items (a price series by
+//!   its raw file, `px/QAB.json`; a report as `key-metrics/QST`), the end
+//!   `memory`, and `deleted`, which is not read: no case deletes a file.
+//!
+//! A case's start raw is the fictional raw without `markets/jp`, then the
+//! `after` case's start and its `after/`, then its own `before/`.
 
 mod common;
 
@@ -67,7 +85,7 @@ fn start_raw(name: &str) -> BTreeMap<PathBuf, Vec<u8>> {
     raw
 }
 
-/// The oracle's raw files at a case's end: its start with `after/`.
+/// The expected raw files at a case's end: its start with `after/`.
 fn end_raw(name: &str) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut raw = start_raw(name);
     raw.extend(files(&case_dir(name).join("after"), &|_| false));
@@ -157,7 +175,7 @@ impl Setup {
         let names = |files: &BTreeMap<PathBuf, Vec<u8>>| files.keys().cloned().collect::<Vec<_>>();
         assert_eq!(names(&actual), names(&expected), "the raw files present");
         for (relative, bytes) in expected {
-            assert!(actual[relative] == *bytes, "{} differs from the oracle's", relative.display());
+            assert!(actual[relative] == *bytes, "{} differs from the expected file", relative.display());
         }
     }
 
@@ -185,14 +203,14 @@ impl Setup {
     }
 
     /// Checks the outcome and the record against `end.json`: the outcome,
-    /// the failed items as the oracle names them, and the report dates and
+    /// the failed items as `end.json` names them, and the report dates and
     /// pending sets.
     fn check_record(&self, reply: &Value) {
         let end = self.end();
         assert_eq!(reply["state"], end["outcome"]);
         let record = self.record();
         assert_eq!(record["progress"]["state"], end["outcome"]);
-        let mut failed: Vec<String> = reply["failures"].as_array().unwrap().iter().map(|f| oracle_item(f["place"].as_str().unwrap())).collect();
+        let mut failed: Vec<String> = reply["failures"].as_array().unwrap().iter().map(|f| expected_item(f["place"].as_str().unwrap())).collect();
         failed.sort();
         assert_eq!(json!(failed), end["failed"]);
         assert_eq!(reply["failed"], json!(failed.len()));
@@ -243,8 +261,8 @@ fn finish(child: Child) -> (Value, Output) {
 }
 
 /// A failure's place (`raw/px/QAB.json`, `raw/financial-inputs/key-metrics/QST.json`)
-/// as the oracle names the item (`px/QAB.json`, `key-metrics/QST`).
-fn oracle_item(place: &str) -> String {
+/// as `end.json` names the item (`px/QAB.json`, `key-metrics/QST`).
+fn expected_item(place: &str) -> String {
     let file = place.strip_prefix("raw/").unwrap();
     match file.strip_prefix("financial-inputs/") {
         Some(report) => report.strip_suffix(".json").unwrap().to_string(),
@@ -270,12 +288,12 @@ fn item(request: &str) -> String {
     }
 }
 
-/// The oracle's requests of a case, less one of each request in `dropped`.
-fn oracle_requests(name: &str, dropped: &[Value]) -> Vec<String> {
+/// The expected requests of a case, less one of each request in `dropped`.
+fn expected_requests(name: &str, dropped: &[Value]) -> Vec<String> {
     let text = std::fs::read_to_string(case_dir(name).join("requests.jsonl")).unwrap();
     let mut requests: Vec<String> = text.lines().map(|line| serde_json::from_str::<Value>(line).unwrap().to_string()).collect();
     for request in dropped {
-        let at = requests.iter().position(|r| *r == request.to_string()).unwrap_or_else(|| panic!("{request} is not in the oracle's list"));
+        let at = requests.iter().position(|r| *r == request.to_string()).unwrap_or_else(|| panic!("{request} is not in the case's requests"));
         requests.remove(at);
     }
     requests.sort();
@@ -302,15 +320,15 @@ fn hong_kong_repeats(from: &str, end: &str) -> Vec<Value> {
     ]
 }
 
-/// Runs a case through and checks it against the oracle. `dropped` are the
-/// oracle's requests that the update does not make.
+/// Runs a case through and checks it against its expected files. `dropped`
+/// are the expected requests that the update does not make.
 fn replay(setup: &Setup, dropped: Vec<Value>) {
     let name = setup.name;
     let (reply, output) = setup.run();
     setup.check_requests();
-    let (mut extra, mut missing) = (setup.requests(0), oracle_requests(name, &dropped));
+    let (mut extra, mut missing) = (setup.requests(0), expected_requests(name, &dropped));
     extra.retain(|r| missing.iter().position(|m| m == r).map(|i| missing.remove(i)).is_none());
-    assert!(extra.is_empty() && missing.is_empty(), "requests not in the oracle's list: {extra:#?}\nthe oracle's requests not made: {missing:#?}");
+    assert!(extra.is_empty() && missing.is_empty(), "requests not in the case's list: {extra:#?}\nthe case's requests not made: {missing:#?}");
     setup.check_record(&reply);
     setup.check_raw(&end_raw(name));
     setup.check_secrets(&output);
@@ -333,9 +351,9 @@ fn monday_gives_the_old_updaters_files_requests_and_record() {
 }
 
 /// Monday with QAB's saved prices unreadable: the history is asked whole
-/// (the case's store holds the whole history, which the oracle asks after
-/// a changed close), so its recent window is not asked, and the file ends
-/// as the oracle's.
+/// (the case's store holds the whole history, which the case asked after a
+/// changed close), so its recent window is not asked, and the file ends as
+/// expected.
 #[test]
 fn an_unreadable_price_file_is_asked_whole_and_replaced() {
     let setup = Setup::new("monday");
@@ -476,7 +494,7 @@ fn replay_a_reply_store() {
         .spawn()
         .unwrap();
     let (reply, _) = finish(child);
-    // The proof's format: `json.dumps` separators, parameters by name.
+    // The cases' `requests.jsonl` format: `json.dumps` separators, parameters by name.
     let mut lines: Vec<String> = fake
         .requests()
         .iter()

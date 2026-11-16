@@ -1,6 +1,6 @@
 //! A company's annual statements of one endpoint,
 //! `financial-inputs/<endpoint>/<symbol>.json`, as the old updater admits
-//! and merges them (`financial_inputs.normalize` and `publish`).
+//! and merges them.
 
 use super::{ItemError, PyJson, Raw, read_file, replace};
 use super::pyjson::Object;
@@ -98,10 +98,11 @@ impl Statements {
         self.bytes.is_some()
     }
 
-    /// `normalize`: rows are a list of objects, each with a `date` that
-    /// begins with `YYYY-MM-DD`, its `symbol` (when present) the company's,
-    /// its `period` (when present) `FY`, and each of the endpoint's number
-    /// fields absent, `null` or a number (`rules.num`, not a boolean).
+    /// The check of the rows of a saved file or of a reply: a list of
+    /// objects, each with a `date` that begins with `YYYY-MM-DD`, its `symbol`
+    /// (when present) the company's, its `period` (when present) `FY`, and
+    /// each of the endpoint's number fields absent, `null` or a number
+    /// ([`PyJson::number`], not a boolean).
     fn check(&self, rows: &PyJson) -> Result<(), String> {
         let rows = rows.as_list().ok_or("the rows are not a list")?;
         for row in rows {

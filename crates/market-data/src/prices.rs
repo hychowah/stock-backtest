@@ -36,10 +36,10 @@ pub(crate) struct PriceRows {
     volume_reason: Vec<u8>,
 }
 
-/// Reads a company's price file (`facts.stock`); `None` when it has none.
-/// `currency` is the quote currency each close must have. `sessions`, for a
-/// foreign company, are the local sessions the rows keep. A file that is not
-/// JSON, or not an object with a `div` list, stops preparation.
+/// Reads a company's price file; `None` when it has none. `currency` is the
+/// quote currency each close must have. `sessions`, for a foreign company,
+/// are the local sessions the rows keep. A file that is not JSON, or not an
+/// object with a `div` list, stops preparation.
 pub(crate) fn read(raw: &Raw, symbol: &str, currency: &str, sessions: Option<&[Day]>) -> Result<Option<PriceRows>, Error> {
     let path = raw.prices(symbol);
     let unreadable = || Error::new("the saved price file is unreadable: download it again from the data panel", path.display());

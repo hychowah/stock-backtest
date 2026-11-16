@@ -1,6 +1,5 @@
 //! Selection: each sleeve's steps over a day's candidates, and the union of
-//! the sleeves' picks (`selection.execute` and `selection.union`, as
-//! `scalar_execution.Executor.select` runs them).
+//! the sleeves' picks.
 //!
 //! - A Filter keeps the candidates whose value passes it; a missing value
 //!   fails it. A Rank orders the candidates with a value and keeps a range
@@ -80,12 +79,11 @@ pub fn rank(rows: &[Row<'_>], order: Order, from: u32, to: u32) -> Vec<(usize, u
     eligible.into_iter().skip(skip).zip(from..=to).map(|((i, _), rank)| (i, rank)).collect()
 }
 
-/// `selection.execute` for each sleeve over the candidates whose entry is
-/// before `exit` (all candidates on the latest screen), then the union in
-/// sleeve order. Sort key: (−value or value, rank present, rank, symbol).
-/// One sleeve keeps the ranks of its last Rank step. Several sleeves number
-/// the union from 1. A holding's ranking value is the value from its first
-/// picking sleeve.
+/// Each sleeve's steps over the candidates whose entry is before `exit`
+/// (all candidates on the latest screen), then the union in sleeve order.
+/// Sort key: (−value or value, rank present, rank, symbol). One sleeve keeps
+/// the ranks of its last Rank step. Several sleeves number the union from 1.
+/// A holding's ranking value is the value from its first picking sleeve.
 pub fn select<'v>(strategy: &Strategy, day: &'v DayValues<'_>, exit: Option<Day>) -> Result<Vec<Pick<'v>>, Error> {
     let candidates = day.candidates();
     let scope: Vec<usize> = (0..candidates.len()).filter(|&i| exit.is_none_or(|exit| candidates[i].entry < exit)).collect();
@@ -128,8 +126,8 @@ pub fn select<'v>(strategy: &Strategy, day: &'v DayValues<'_>, exit: Option<Day>
     Ok(out)
 }
 
-/// A step's value as a result reports it (`scalar_execution`): a built-in's
-/// stored value in canonical units, and no value for a field.
+/// A step's value as a result reports it: a built-in's stored value in
+/// canonical units, and no value for a field.
 fn reported(source: &Source, stored: Option<f64>) -> Option<f64> {
     match source {
         Source::Builtin(_) => stored.and_then(|v| numbers::canonical(v, source.scale())),

@@ -226,9 +226,8 @@ pub struct ExportResultsReply {
 /// with the same stem) as keyed tables (`tables` crate format) into `out`, a
 /// new or empty folder: the stored rows `trials`, `statistics`, `periods`,
 /// `holdings`, `steps` and `curve`, and the views `growth`, `band`,
-/// `sectors` and `contributions`, as `proof/l3.py` defines them. Each
-/// table's rows are its row type's, led by `case`, the result file's stem,
-/// which starts every key.
+/// `sectors` and `contributions`. Each table's rows are its row type's, led
+/// by `case`, the result file's stem, which starts every key.
 pub fn export_tables(results: &[PathBuf], out: &Path) -> Result<ExportResultsReply, Error> {
     let mut export = Export::start(results, out)?;
     export.table("trials", &["trial"], ResultFile::trials)?;
